@@ -12,6 +12,20 @@ becomes an attachment when inserting it would exceed the message limit. On a
 hardware keyboard, use `Cmd+Shift+V` on Apple devices or `Ctrl+Shift+V` elsewhere
 to keep a large paste editable in the composer instead.
 
+## Dictate a draft
+
+Use the microphone beside Send on macOS desktop, supported iPhones and iPads,
+or Android devices with a speech-recognition app installed. Dictation inserts
+text at the cursor or replaces your selection; review the draft and press Send
+when ready. You can dictate into a message that already contains text.
+
+On macOS, enable Dictation in System Settings → Keyboard. Stop using the system
+Dictation controls. On iOS, finish with the checkmark or cancel the recording;
+on-device transcription requires a supported device with iOS 26 or later.
+Android opens the installed speech-recognition app's dialog; finish or cancel
+there. Language support, offline availability, and audio processing on Android
+depend on that app.
+
 ## Attach files
 
 Attach up to 100 files per message. Each image can be up to 10 MiB, with at most

@@ -43,7 +43,14 @@ export interface VoiceRecorder {
   stop(): Promise<void>;
 }
 
+/** A platform-owned speech dialog handles capture, permissions, and cancellation. */
+export type SystemVoiceDictation = {
+  readonly locale: string;
+  readonly recognize: (signal: AbortSignal) => Promise<string | null>;
+};
+
 export type VoiceInputControllerDependencies = {
+  readonly getSystemDictation?: () => SystemVoiceDictation | null;
   readonly recorder: VoiceRecorder;
   readonly getTranscriber: () => VoiceTranscriber | null;
   readonly requestPermission: () => Promise<{
@@ -212,6 +219,28 @@ export class VoiceInputController {
     const abortController = new AbortController();
     this.transcriptionAbortController = abortController;
     this.setState({ phase: "preparing", error: null, errorAction: null });
+
+    const systemDictation = this.dependencies.getSystemDictation?.();
+    if (systemDictation) {
+      // Android's recognizer Activity owns the microphone. Do not start Expo's
+      // recorder or cancel when that Activity backgrounds the React Native host.
+      this.setState({ phase: "transcribing", error: null, errorAction: null });
+      try {
+        const transcript = await systemDictation.recognize(abortController.signal);
+        if (this.isCurrent(operationToken)) {
+          if (transcript === null) this.setState(IDLE_STATE);
+          else this.commitTranscript(initiatingDraft, transcript, systemDictation.locale);
+        }
+      } catch {
+        if (this.isCurrent(operationToken))
+          this.setError("Could not start system dictation.", "retry");
+      } finally {
+        releaseSession(this.sessionToken);
+        this.sessionToken = null;
+        this.transcriptionAbortController = null;
+      }
+      return;
+    }
 
     try {
       const transcriber = this.dependencies.getTranscriber();
@@ -387,26 +416,7 @@ export class VoiceInputController {
       }
       if (!this.isCurrent(operationToken)) return;
 
-      const result = resolveTranscriptCommit(
-        capturedDraft,
-        this.dependencies.readDraft(),
-        transcript,
-        transcription.locale,
-      );
-      if (result.kind === "stale") {
-        this.setError(
-          "The draft changed while voice input was running. The transcript was not added.",
-          "retry",
-        );
-        return;
-      }
-      if (result.kind === "empty") {
-        this.setError("No speech was detected.", "retry");
-        return;
-      }
-
-      this.dependencies.commitDraft(result.text, result.selection);
-      this.setState(IDLE_STATE);
+      this.commitTranscript(capturedDraft, transcript, transcription.locale);
     } catch {
       if (this.isCurrent(operationToken)) {
         this.setError("Could not finish voice recording.", "retry");
@@ -414,6 +424,30 @@ export class VoiceInputController {
     } finally {
       this.finishing = false;
       await this.releaseResources();
+    }
+  }
+
+  private commitTranscript(
+    capturedDraft: VoiceDraftSnapshot,
+    transcript: string,
+    locale: string,
+  ): void {
+    const result = resolveTranscriptCommit(
+      capturedDraft,
+      this.dependencies.readDraft(),
+      transcript,
+      locale,
+    );
+    if (result.kind === "stale") {
+      this.setError(
+        "The draft changed while voice input was running. The transcript was not added.",
+        "retry",
+      );
+    } else if (result.kind === "empty") {
+      this.setError("No speech was detected.", "retry");
+    } else {
+      this.dependencies.commitDraft(result.text, result.selection);
+      this.setState(IDLE_STATE);
     }
   }
 

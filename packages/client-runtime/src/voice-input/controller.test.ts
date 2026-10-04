@@ -533,3 +533,88 @@ describe("VoiceInputController", () => {
     expect(harness.controller.currentState.error).toContain("background");
   });
 });
+
+describe("system dictation", () => {
+  beforeEach(resetVoiceInputGlobalsForTests);
+
+  it("replaces a nonempty draft selection without starting a second recorder", async () => {
+    const permission = vi.fn();
+    const h = createHarness({
+      getSystemDictation: () => ({ locale: "en-US", recognize: async () => "dictated words" }),
+      requestPermission: permission,
+    });
+    await h.controller.start();
+    expect(h.commits).toEqual([
+      { text: "hello dictated words", selection: { start: 20, end: 20 } },
+    ]);
+    expect(h.recorder.record).not.toHaveBeenCalled();
+    expect(permission).not.toHaveBeenCalled();
+    expect(h.controller.currentState.phase).toBe("idle");
+  });
+
+  it("allows the system dialog to background the app without losing the draft", async () => {
+    const result = deferred<string | null>();
+    const h = createHarness({
+      getSystemDictation: () => ({ locale: "en-US", recognize: () => result.promise }),
+    });
+    const operation = h.controller.start();
+    expect(voiceInputBlocksSubmission(h.controller.currentState)).toBe(true);
+    h.controller.appMovedToBackground();
+    result.resolve("native speech");
+    await operation;
+    expect(h.commits[0]?.text).toBe("hello native speech");
+  });
+
+  it.each(["cancel", "ownerChanged", "dispose"] as const)(
+    "discards late results after %s",
+    async (action) => {
+      const result = deferred<string | null>();
+      let signal: AbortSignal | undefined;
+      const h = createHarness({
+        getSystemDictation: () => ({
+          locale: "en-US",
+          recognize: (value) => {
+            signal = value;
+            return result.promise;
+          },
+        }),
+      });
+      const operation = h.controller.start();
+      h.controller[action]();
+      expect(signal?.aborted).toBe(true);
+      result.resolve("late speech");
+      await operation;
+      expect(h.commits).toEqual([]);
+      expect(h.controller.currentState.phase).toBe("idle");
+    },
+  );
+
+  it("discards results if another device edits the draft", async () => {
+    const result = deferred<string | null>();
+    const h = createHarness({
+      getSystemDictation: () => ({ locale: "en-US", recognize: () => result.promise }),
+    });
+    const operation = h.controller.start();
+    h.setDraft(draft({ text: "new draft", revision: 2 }));
+    result.resolve("stale speech");
+    await operation;
+    expect(h.commits).toEqual([]);
+    expect(h.controller.currentState.phase).toBe("error");
+  });
+
+  it("leaves text untouched on native cancel and allows retry after a launch failure", async () => {
+    const recognize = vi
+      .fn<(signal: AbortSignal) => Promise<string | null>>()
+      .mockRejectedValueOnce(new Error("no speech activity"))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("retry");
+    const h = createHarness({ getSystemDictation: () => ({ locale: "en-US", recognize }) });
+    await h.controller.start();
+    expect(h.controller.currentState.phase).toBe("error");
+    await h.controller.start();
+    expect(h.commits).toEqual([]);
+    expect(h.controller.currentState.phase).toBe("idle");
+    await h.controller.start();
+    expect(h.commits[0]?.text).toBe("hello retry");
+  });
+});
