@@ -72,7 +72,7 @@ describe("runAttachmentUploadCycle", () => {
       remove,
       environmentId,
       upload: uploadInput,
-      resolveUploadUrl: (relativeUrl) => `https://environment.test${relativeUrl}`,
+      resolveUploadUrl: async (relativeUrl) => `https://environment.test${relativeUrl}`,
       transport: (url) => {
         transferred.push(url);
         return { done: Promise.resolve(), abort: () => {} };
@@ -100,6 +100,30 @@ describe("runAttachmentUploadCycle", () => {
 
     expect(result).toEqual({ status: "cancelled", attachmentId: "pending-cancelled" });
     expect(removeCalls).toEqual(["pending-cancelled"]);
+  });
+
+  it("keeps the minted id when resolving the connection fails", async () => {
+    const error = new Error("Connection was removed");
+    const result = await runAttachmentUploadCycle({
+      registry,
+      createUploadUrl: makeCreateUploadUrl("pending-unresolved"),
+      remove,
+      environmentId,
+      upload: uploadInput,
+      resolveUploadUrl: async () => {
+        throw error;
+      },
+      transport: () => {
+        throw new Error("transport must not run without a connection");
+      },
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      step: "resolve-url",
+      attachmentId: "pending-unresolved",
+      error,
+    });
   });
 
   it("keeps the minted id on transfer failure so the caller can retry or release", async () => {

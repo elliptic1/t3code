@@ -156,7 +156,7 @@ export async function runAttachmentUploadCycle<E, RE>(input: {
   readonly remove: AttachmentRemoveCommand<RE>;
   readonly environmentId: EnvironmentId;
   readonly upload: AttachmentCreateUploadUrlInput;
-  readonly resolveUploadUrl: (relativeUrl: string) => string | null;
+  readonly resolveUploadUrl: (relativeUrl: string) => string | null | Promise<string | null>;
   readonly transport: (url: string) => AttachmentByteUpload;
   /** Observe the minted id (for cancellation bookkeeping) before bytes move. */
   readonly onMinted?: (attachmentId: string) => "continue" | "cancel";
@@ -187,7 +187,13 @@ export async function runAttachmentUploadCycle<E, RE>(input: {
     return { status: "cancelled", attachmentId };
   }
 
-  const url = input.resolveUploadUrl(minted.value.relativeUrl);
+  let url: string | null;
+  try {
+    const resolved = input.resolveUploadUrl(minted.value.relativeUrl);
+    url = typeof resolved === "string" || resolved === null ? resolved : await resolved;
+  } catch (error) {
+    return { status: "failed", step: "resolve-url", attachmentId, error };
+  }
   if (!url) {
     return {
       status: "failed",

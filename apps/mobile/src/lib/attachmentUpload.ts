@@ -349,13 +349,6 @@ export async function prepareTurnAttachments(input: {
     }
   }
 
-  const connection = appAtomRegistry.get(
-    environmentSession.preparedConnectionValueAtom(environmentId),
-  );
-  if (Option.isNone(connection)) {
-    throw new Error("The environment is not connected.");
-  }
-
   const uploadedAttachments: UploadedMobileAttachment[] = [];
   const pendingAttachmentIds: string[] = [];
   const createdAttachmentIds: string[] = [];
@@ -399,15 +392,19 @@ export async function prepareTurnAttachments(input: {
         remove: attachmentEnvironment.remove,
         environmentId,
         upload: attachmentUploadInput(attachment),
-        // Read the connection at transfer time: the environment may have
-        // reconnected on a new base URL since this cycle started.
-        resolveUploadUrl: (relativeUrl) => {
-          const currentConnection = appAtomRegistry.get(
-            environmentSession.preparedConnectionValueAtom(environmentId),
+        // Read the live supervisor at transfer time. The UI projection can still
+        // contain its initial None when no mounted view consumes the connection.
+        resolveUploadUrl: async (relativeUrl) => {
+          const result = await runAtomCommand(
+            appAtomRegistry,
+            environmentSession.readPreparedConnection,
+            { environmentId, input: undefined },
+            { reportFailure: false },
           );
-          return Option.isNone(currentConnection)
+          if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+          return Option.isNone(result.value)
             ? null
-            : resolveAssetUrl(currentConnection.value.httpBaseUrl, relativeUrl);
+            : resolveAssetUrl(result.value.value.httpBaseUrl, relativeUrl);
         },
         transport: (url) => ({
           done: uploadFileBytes(

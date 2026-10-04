@@ -14,7 +14,7 @@ import { environmentEndpointUrl } from "../environment/endpoint.ts";
 import * as ManagedRelay from "../relay/managedRelay.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import { executeAuthenticatedEnvironmentHttpRequest } from "./environmentHttpAuth.ts";
-import { followStreamInEnvironment } from "./runtime.ts";
+import { createEnvironmentCommand, followStreamInEnvironment } from "./runtime.ts";
 
 function initialConfigOption<E>(
   initialConfig: Effect.Effect<ServerConfig, E>,
@@ -64,6 +64,15 @@ export const fetchEnvironmentSessionState = Effect.fn(
 export function createEnvironmentSessionAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | HttpClient.HttpClient | R, E>,
 ) {
+  // Imperative work must read the supervisor, not a possibly unmounted UI projection.
+  const readPreparedConnection = createEnvironmentCommand(runtime, {
+    label: "environment-command:read-prepared-connection",
+    execute: (_input: void) =>
+      EnvironmentSupervisor.EnvironmentSupervisor.pipe(
+        Effect.flatMap((supervisor) => SubscriptionRef.get(supervisor.prepared)),
+      ),
+  });
+
   const initialConfigAtom = Atom.family((environmentId: EnvironmentId) =>
     runtime.atom(
       followStreamInEnvironment(
@@ -155,6 +164,7 @@ export function createEnvironmentSessionAtoms<R, E>(
   );
 
   return {
+    readPreparedConnection,
     initialConfigAtom,
     initialConfigValueAtom,
     preparedConnectionAtom,
