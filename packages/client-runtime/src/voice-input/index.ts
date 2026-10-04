@@ -1,5 +1,7 @@
 export {
   VoiceInputController,
+  acquireVoiceInputSession,
+  releaseVoiceInputSession,
   VOICE_RECORDING_LIMIT_SECONDS,
   voiceInputBlocksSubmission,
   voiceInputFreezesEditor,

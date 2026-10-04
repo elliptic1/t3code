@@ -135,6 +135,41 @@ Stashes containing uploaded files must be restored in their original environment
 Those files are retained for 24 hours. After an upload expires, restore the prompt
 and use **Attach again** or remove the missing file before sending.
 
+## Voice conversation
+
+In **Settings → Integrations → Voice conversation**, select an OpenAI, Grok, or
+local/custom preset, configure its model and credentials, and enable **Talk to T3**.
+Use the app's microphone button to start a conversation. You can create projects,
+open or message threads, settle or unsettle them, archive or restore them, ask for
+progress, and interrupt an agent. New errors and requests for attention are announced
+while connected. Existing agent permissions still apply; approvals stay in the UI.
+
+A conversation controls the environment shown in its panel. On web and desktop,
+switching environments ends it; on mobile, end the conversation before switching.
+Mute pauses microphone input; **End** closes the connection and releases the microphone.
+Audio and requested project/thread context are sent to your configured provider.
+Provider API usage is billed separately from coding-agent subscriptions. The local
+conversation transcript is cleared when you start another conversation.
+
+Custom servers must implement the selected OpenAI- or xAI-compatible realtime
+protocol, including function calls. WebRTC uses an SDP endpoint; WebSocket uses
+24 kHz mono PCM16 audio. Model, voice, optional transcription model, connection URL,
+and client-secret URL are configurable. A different native protocol needs an adapter.
+The API key stays in T3's server secret store. Authenticated providers must expose
+a client-secret endpoint returning a short-lived `value`; unauthenticated local
+servers can leave the API key and client-secret URL blank.
+
+The connection endpoint is reached from the device running the UI, while the
+client-secret endpoint is reached from the T3 server. `localhost` therefore refers
+to different machines when using T3 remotely. Remote browser microphone access
+requires a secure page; use HTTPS/WSS endpoints and allow the app's origin in your
+voice server's CORS configuration.
+On iOS and Android, use **Talk to T3** to start the same conversation. Configure the
+connection under **Settings → Voice conversation** for the connected environment.
+Voice ends when you put the mobile app in the background or another app interrupts
+audio. Finish dictation before starting a conversation. For a local voice server,
+use an address reachable from the phone; `localhost` refers to the phone itself.
+
 ## Voice input on iPhone
 
 On supported iPhones with iOS 26 or later, use the composer's microphone to record,

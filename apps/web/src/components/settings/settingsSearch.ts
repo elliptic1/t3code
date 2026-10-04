@@ -487,6 +487,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     desktopOnly: true,
   },
   {
+    id: "voice-conversation",
+    title: "Voice conversation",
+    to: "/settings/integrations",
+    searchTerms: ["microphone speech realtime openai grok xai local voice model api key"],
+  },
+  {
     id: "text-generation-model",
     title: "Text generation model",
     to: "/settings/general",

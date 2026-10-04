@@ -1,3 +1,4 @@
+import { VoiceConversation } from "../voice/VoiceConversation";
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -248,6 +249,7 @@ function RootRouteView() {
           {/* Hosted Nightly is "hosted-static", not authenticated, and needs it too. */}
           <NightlyMobileBetaNotice />
           {appShell}
+          <VoiceConversation />
           {/* Above the router: a theme draft is judged by walking the app, so the
               editor has to survive navigation away from settings. */}
           <ThemeEditorHost />

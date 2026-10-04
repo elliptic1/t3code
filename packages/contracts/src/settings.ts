@@ -1,3 +1,4 @@
+import { VoiceConnectionSettings, VOICE_CONNECTION_PRESETS } from "./voice.ts";
 import { SshDeviceHostConfigs } from "./device.ts";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
@@ -1194,6 +1195,9 @@ export const StorageCleanupSettings = Schema.Struct({
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
 export const ServerSettings = Schema.Struct({
+  voiceConnection: VoiceConnectionSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(VOICE_CONNECTION_PRESETS.openai)),
+  ),
   worktreeCleanup: WorktreeCleanup.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   storageCleanup: StorageCleanupSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(StorageCleanupSettings)({}))),
@@ -1574,6 +1578,7 @@ const OpenCodeSettingsPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  voiceConnection: Schema.optionalKey(VoiceConnectionSettings),
   worktreeCleanup: Schema.optionalKey(
     Schema.NullOr(
       Schema.Union([

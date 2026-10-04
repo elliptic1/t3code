@@ -366,6 +366,18 @@
     "./device/duo-control": {
       "types": "./src/device/duoControl.ts",
       "default": "./src/device/duoControl.ts"
+    },
+    "./voice-conversation": {
+      "types": "./src/voice-conversation/tools.ts",
+      "default": "./src/voice-conversation/tools.ts"
+    },
+    "./voice-conversation/actions": {
+      "types": "./src/voice-conversation/actions.ts",
+      "default": "./src/voice-conversation/actions.ts"
+    },
+    "./voice-conversation/session": {
+      "types": "./src/voice-conversation/session.ts",
+      "default": "./src/voice-conversation/session.ts"
     }
   },
   "scripts": {

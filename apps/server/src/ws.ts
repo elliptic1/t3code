@@ -1,3 +1,4 @@
+import { createVoiceSession } from "./voice/session.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
@@ -2533,6 +2534,10 @@ const makeWsRpcLayer = (
               return { keybindings: keybindingsConfig, issues: [] };
             }),
             { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverCreateVoiceSession]: () =>
+          serverSettings.getSettings.pipe(
+            Effect.flatMap((settings) => createVoiceSession(settings.voiceConnection)),
           ),
         [WS_METHODS.serverGetSettings]: (_input) =>
           observeRpcEffect(

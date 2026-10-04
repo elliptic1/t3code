@@ -1,3 +1,5 @@
+import { VoiceConversation } from "./features/voice-conversation/VoiceConversation";
+import { SettingsVoiceRouteScreen } from "./features/settings/SettingsVoiceRouteScreen";
 import {
   createPathConfigForStaticNavigation,
   getPathFromState,
@@ -267,6 +269,11 @@ const SettingsContentStack = createNativeStackNavigator({
       options: {
         title: "Archived Threads",
       },
+    }),
+    SettingsVoice: createNativeStackScreen({
+      screen: SettingsVoiceRouteScreen,
+      linking: "voice",
+      options: { title: "Voice conversation" },
     }),
     SettingsAppearance: createNativeStackScreen({
       screen: SettingsAppearanceRouteScreen,
@@ -622,6 +629,7 @@ function RootStackLayout(props: {
         >
           {props.children}
           <HardwareKeyboardCommandOverlay />
+          <VoiceConversation state={props.state} />
         </AdaptiveWorkspaceLayout>
       </ExistingThreadSettingsRouteProvider>
     </HardwareKeyboardCommandProvider>

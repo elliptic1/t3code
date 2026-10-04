@@ -626,6 +626,14 @@
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2019-present Fabio Spampinato, Andrew Maney"]
       }
+    },
+    {
+      "name": "react-native-audio-api",
+      "sourceUrl": "https://github.com/software-mansion/react-native-audio-api",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2024 Software Mansion"]
+      }
     }
   ]
 }

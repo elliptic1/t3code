@@ -124,14 +124,14 @@ export function resolveTranscriptCommit(
 let activeSession: symbol | null = null;
 let activeTranscriptionOperation: Promise<unknown> | null = null;
 
-function acquireSession(): symbol | null {
+export function acquireVoiceInputSession(): symbol | null {
   if (activeSession) return null;
   const token = Symbol("voice-input-session");
   activeSession = token;
   return token;
 }
 
-function releaseSession(token: symbol | null): void {
+export function releaseVoiceInputSession(token: symbol | null): void {
   if (token && activeSession === token) activeSession = null;
 }
 
@@ -201,7 +201,7 @@ export class VoiceInputController {
       this.setError("This draft is no longer available.", "retry");
       return;
     }
-    const sessionToken = acquireSession();
+    const sessionToken = acquireVoiceInputSession();
     if (!sessionToken) {
       this.setError("Another voice recording is already active.", "retry");
       return;
@@ -447,7 +447,7 @@ export class VoiceInputController {
     }
     this.ownedRecordingUris.clear();
     await this.releaseAudioSession();
-    releaseSession(this.sessionToken);
+    releaseVoiceInputSession(this.sessionToken);
     this.sessionToken = null;
     this.capturedDraft = null;
     this.transcription = null;

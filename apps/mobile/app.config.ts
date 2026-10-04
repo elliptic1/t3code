@@ -311,6 +311,25 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    [
+      "@config-plugins/react-native-webrtc",
+      {
+        microphonePermission: "Allow T3 Code to hear you during voice conversations.",
+      },
+    ],
+    [
+      "react-native-audio-api",
+      {
+        iosMicrophonePermission: "Allow T3 Code to hear you during voice conversations.",
+        iosBackgroundMode: false,
+        disableFFmpeg: true,
+        androidPermissions: [
+          "android.permission.RECORD_AUDIO",
+          "android.permission.MODIFY_AUDIO_SETTINGS",
+        ],
+        androidForegroundService: false,
+      },
+    ],
     "expo-asset",
     [
       "expo-font",
