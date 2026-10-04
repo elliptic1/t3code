@@ -86,7 +86,7 @@ describe("voice agent conversation", () => {
     const sent = run.actions.flatMap((action) =>
       action.action === "send_message" ? [action.message] : [],
     );
-    // Instructions ride on the first message only; silence sends nothing.
+    // Instructions ride on the conversation's first message only; silence sends nothing.
     expect(sent).toEqual([
       `${voiceAgentInstructions}\n\nThe user said: start a thread`,
       "settle it",
@@ -94,13 +94,13 @@ describe("voice agent conversation", () => {
     expect(run.spoken).toEqual(["Done 2.", "Done 5."]);
   });
 
-  it("reuses an existing voice thread without repeating the instructions", async () => {
-    const run = harness({ existingThread: true, utterances: ["what is running"] });
+  it("reuses an existing voice thread and restates the instructions once", async () => {
+    const run = harness({ existingThread: true, utterances: ["what is running", "settle it"] });
     await run.finished;
     expect(run.actions.some((action) => action.action === "create_thread")).toBe(false);
-    expect(run.actions.find((action) => action.action === "send_message")).toMatchObject({
-      message: "what is running",
-    });
+    expect(
+      run.actions.flatMap((action) => (action.action === "send_message" ? [action.message] : [])),
+    ).toEqual([`${voiceAgentInstructions}\n\nThe user said: what is running`, "settle it"]);
   });
 
   it("announces other threads between turns, but never its own", async () => {
