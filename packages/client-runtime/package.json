@@ -375,6 +375,10 @@
       "types": "./src/voice-conversation/actions.ts",
       "default": "./src/voice-conversation/actions.ts"
     },
+    "./voice-conversation/agent": {
+      "types": "./src/voice-conversation/agent.ts",
+      "default": "./src/voice-conversation/agent.ts"
+    },
     "./voice-conversation/session": {
       "types": "./src/voice-conversation/session.ts",
       "default": "./src/voice-conversation/session.ts"

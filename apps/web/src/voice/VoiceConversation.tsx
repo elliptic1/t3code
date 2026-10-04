@@ -1,15 +1,19 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
+import { startVoiceAgentConversation } from "@t3tools/client-runtime/voice-conversation/agent";
 import { randomUUID } from "../lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Mic, MicOff, PhoneOff, Settings } from "lucide-react";
-import { useActiveEnvironmentId, useThreadShells } from "../state/entities";
+import { readThreadShell, useActiveEnvironmentId, useThreadShells } from "../state/entities";
 import { usePrimaryEnvironmentId, useEnvironment } from "../state/environments";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "../components/ui/button";
 import { T3Wordmark } from "../components/T3Wordmark";
 import { useEnvironmentSettings } from "../hooks/useSettings";
 import { createVoiceActions, createVoiceSessionCommand, voiceResult } from "./actions";
+import { createBrowserSpeech } from "./browserSpeech";
 import { connectVoice, type VoiceConnection } from "./connection";
 
 export function VoiceConversation() {
@@ -31,6 +35,7 @@ function EnabledVoiceConversation({ environmentId }: { environmentId: Environmen
 
 function VoiceConversationSession({ environmentId }: { environmentId: EnvironmentId }) {
   const environment = useEnvironment(environmentId);
+  const mode = useEnvironmentSettings(environmentId, (settings) => settings.voiceConnection.mode);
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const focusedThread = useRef<string | null>(null);
@@ -114,37 +119,59 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
         setError("Voice connection timed out. Check Settings and try again.");
       }
     }, 30_000);
+    const shell = (threadId: string | null) =>
+      threadId ? readThreadShell(scopeThreadRef(environmentId, ThreadId.make(threadId))) : null;
+    const conversation = {
+      signal: owner.abort.signal,
+      execute: createVoiceActions(
+        environmentId,
+        async (threadId) => {
+          await navigate({
+            to: "/$environmentId/$threadId",
+            params: { environmentId, threadId },
+          });
+        },
+        () => focusedThread.current,
+      ),
+      onTranscript: (speaker: "You" | "T3", text: string) => {
+        if (session.current === owner)
+          setTranscript((lines) => [...lines.slice(-39), { id: randomUUID(), speaker, text }]);
+      },
+      onStatus: (value: string) => {
+        if (session.current === owner) setStatus(value);
+      },
+      onError: (message: string) => {
+        if (session.current === owner) {
+          stop();
+          setError(message);
+        }
+      },
+    };
     try {
-      const result = await createSession({ environmentId, input: {} });
-      owner.abort.signal.throwIfAborted();
-      const connection = voiceResult(result);
-      owner.connection = await connectVoice({
-        connection,
-        signal: owner.abort.signal,
-        execute: createVoiceActions(
-          environmentId,
-          async (threadId) => {
-            await navigate({
-              to: "/$environmentId/$threadId",
-              params: { environmentId, threadId },
-            });
-          },
-          () => focusedThread.current,
-        ),
-        onTranscript: (speaker, text) => {
-          if (session.current === owner)
-            setTranscript((lines) => [...lines.slice(-39), { id: randomUUID(), speaker, text }]);
-        },
-        onStatus: (value) => {
-          if (session.current === owner) setStatus(value);
-        },
-        onError: (message) => {
-          if (session.current === owner) {
-            stop();
-            setError(message);
-          }
-        },
-      });
+      if (mode === "agent") {
+        owner.connection = {
+          close: () => {},
+          ...startVoiceAgentConversation({
+            ...conversation,
+            speech: createBrowserSpeech(),
+            preferredProjectId: () => shell(focusedThread.current)?.projectId ?? null,
+            threadState: (threadId) => {
+              const thread = shell(threadId);
+              return thread
+                ? {
+                    running: threadRuntimeIsActive(thread.runtime),
+                    error: thread.runtime?.lastError ?? null,
+                    needsAttention: thread.hasPendingApprovals || thread.hasPendingUserInput,
+                  }
+                : null;
+            },
+          }),
+        };
+      } else {
+        const result = await createSession({ environmentId, input: {} });
+        owner.abort.signal.throwIfAborted();
+        owner.connection = await connectVoice({ ...conversation, connection: voiceResult(result) });
+      }
       if (owner.abort.signal.aborted) owner.connection.close();
       else setConnected(true);
     } catch (cause) {
@@ -202,8 +229,10 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
             </div>
           ) : (
             <p className="mb-3 text-xs text-muted-foreground">
-              Ask about your projects, start a thread, or tell an agent what to do. Your configured
-              provider receives the audio and requested context.
+              Ask about your projects, start a thread, or tell an agent what to do.{" "}
+              {mode === "agent"
+                ? "Your browser transcribes your speech, and a coding agent answers from its own thread."
+                : "Your configured provider receives the audio and requested context."}
             </p>
           )}
           <div className="flex gap-2">

@@ -1,7 +1,12 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 export const VoiceConnectionSettings = Schema.Struct({
   enabled: Schema.Boolean,
+  /** "agent" speaks through a coding-agent thread and needs no voice provider or API key. */
+  mode: Schema.Literals(["realtime", "agent"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("realtime" as const)),
+  ),
   protocol: Schema.Literals(["openai", "xai"]),
   transport: Schema.Literals(["webrtc", "websocket"]),
   endpoint: Schema.String,
@@ -16,6 +21,7 @@ export type VoiceConnectionSettings = typeof VoiceConnectionSettings.Type;
 export const VOICE_CONNECTION_PRESETS = {
   openai: {
     enabled: false,
+    mode: "realtime",
     protocol: "openai",
     transport: "webrtc",
     endpoint: "https://api.openai.com/v1/realtime/calls",
@@ -27,6 +33,7 @@ export const VOICE_CONNECTION_PRESETS = {
   },
   xai: {
     enabled: false,
+    mode: "realtime",
     protocol: "xai",
     transport: "websocket",
     endpoint: "wss://api.x.ai/v1/realtime",
@@ -38,6 +45,7 @@ export const VOICE_CONNECTION_PRESETS = {
   },
   local: {
     enabled: false,
+    mode: "realtime",
     protocol: "openai",
     transport: "websocket",
     endpoint: "ws://localhost:8000/v1/realtime",

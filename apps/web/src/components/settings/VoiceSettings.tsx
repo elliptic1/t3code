@@ -27,6 +27,42 @@ export function VoiceSettings() {
         }
       />
       <SettingsRow
+        title="Conversation engine"
+        serverScoped
+        settingKeys={["voiceConnection"]}
+        description="A realtime voice provider answers instantly and needs an API key. A coding agent uses your existing provider subscription instead: this browser transcribes and speaks, and the agent answers one turn at a time from its own thread."
+        control={
+          <Select
+            value={value.mode}
+            onValueChange={(mode) => {
+              if (mode === "realtime" || mode === "agent") patch({ mode });
+            }}
+          >
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              <SelectItem value="realtime">Realtime voice provider</SelectItem>
+              <SelectItem value="agent">Coding agent (no API key)</SelectItem>
+            </SelectPopup>
+          </Select>
+        }
+      />
+      {value.mode === "agent" ? null : <VoiceProviderSettings value={value} patch={patch} />}
+    </SettingsSection>
+  );
+}
+
+function VoiceProviderSettings({
+  value,
+  patch,
+}: {
+  value: VoiceConnectionSettings;
+  patch: (next: Partial<VoiceConnectionSettings>) => void;
+}) {
+  return (
+    <>
+      <SettingsRow
         title="Connection preset"
         serverScoped
         settingKeys={["voiceConnection"]}
@@ -44,11 +80,7 @@ export function VoiceSettings() {
                 key={id}
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  update({
-                    voiceConnection: { ...VOICE_CONNECTION_PRESETS[id], enabled: value.enabled },
-                  })
-                }
+                onClick={() => patch({ ...VOICE_CONNECTION_PRESETS[id], enabled: value.enabled })}
               >
                 {label}
               </Button>
@@ -146,6 +178,6 @@ export function VoiceSettings() {
           }
         />
       ))}
-    </SettingsSection>
+    </>
   );
 }

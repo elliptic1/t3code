@@ -33,6 +33,12 @@ export const createVoiceSession = Effect.fn("voice.createSession")(function* (
     return yield* new VoiceSessionError({
       message: "Enable voice conversation in Settings → Integrations.",
     });
+  // Agent mode has no provider session; clients that cannot run it land here.
+  if (settings.mode === "agent")
+    return yield* new VoiceSessionError({
+      message:
+        "This environment's voice conversation runs through a coding agent, which is available in the web app.",
+    });
   yield* Effect.try({
     try: () => validateVoiceConnection(settings),
     catch: (cause) =>

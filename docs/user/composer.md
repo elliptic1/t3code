@@ -151,6 +151,15 @@ Audio and requested project/thread context are sent to your configured provider.
 Provider API usage is billed separately from coding-agent subscriptions. The local
 conversation transcript is cleared when you start another conversation.
 
+To talk without a voice provider or API key, set **Conversation engine** to
+**Coding agent**. Your browser transcribes what you say and reads replies aloud, and
+a coding agent on your existing subscription answers from a thread named
+**Talk to T3**, using that project's default model. Pick a fast model there; each
+reply takes a full agent turn, and the microphone pauses while the agent thinks and
+speaks. This engine needs a browser with built-in speech recognition (Chrome, Edge,
+or Safari), which may send audio to the browser vendor. It is not available in the
+desktop or mobile apps yet.
+
 Custom servers must implement the selected OpenAI- or xAI-compatible realtime
 protocol, including function calls. WebRTC uses an SDP endpoint; WebSocket uses
 24 kHz mono PCM16 audio. Model, voice, optional transcription model, connection URL,

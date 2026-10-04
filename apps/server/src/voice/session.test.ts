@@ -84,6 +84,17 @@ describe("voice session credentials", () => {
       expect(failure.message).toContain("HTTP 401");
     }),
   );
+  it.effect("never requests provider credentials in agent mode", () =>
+    Effect.gen(function* () {
+      const fetcher = vi.fn<typeof fetch>();
+      const failure = yield* createVoiceSession(
+        { ...VOICE_CONNECTION_PRESETS.openai, enabled: true, mode: "agent", apiKey: "secret" },
+        fetcher,
+      ).pipe(Effect.flip);
+      expect(failure.message).toContain("coding agent");
+      expect(fetcher).not.toHaveBeenCalled();
+    }),
+  );
   it.effect("rejects malformed ephemeral responses", () =>
     Effect.gen(function* () {
       const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ value: "" }));
