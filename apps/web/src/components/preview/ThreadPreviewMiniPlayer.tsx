@@ -297,6 +297,7 @@ function MiniPlayerShell({
       lastInteraction: miniPlayer.lastInteraction,
       source: { width: sourceWidth, height: sourceHeight },
       headerHeight,
+      overlay: miniPlayer.source.kind === "browser",
     });
   }, [
     reportPreview,
@@ -304,6 +305,7 @@ function MiniPlayerShell({
     miniPlayer.width,
     miniPlayer.position,
     miniPlayer.lastInteraction,
+    miniPlayer.source.kind,
     sourceWidth,
     sourceHeight,
     headerHeight,
