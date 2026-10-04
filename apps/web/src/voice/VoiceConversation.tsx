@@ -7,6 +7,8 @@ import { useActiveEnvironmentId, useThreadShells } from "../state/entities";
 import { usePrimaryEnvironmentId, useEnvironment } from "../state/environments";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "../components/ui/button";
+import { T3Wordmark } from "../components/T3Wordmark";
+import { useEnvironmentSettings } from "../hooks/useSettings";
 import { createVoiceActions, createVoiceSessionCommand, voiceResult } from "./actions";
 import { connectVoice, type VoiceConnection } from "./connection";
 
@@ -15,8 +17,16 @@ export function VoiceConversation() {
   const primaryId = usePrimaryEnvironmentId();
   const environmentId = activeId ?? primaryId;
   return environmentId ? (
-    <VoiceConversationSession key={environmentId} environmentId={environmentId} />
+    <EnabledVoiceConversation key={environmentId} environmentId={environmentId} />
   ) : null;
+}
+
+function EnabledVoiceConversation({ environmentId }: { environmentId: EnvironmentId }) {
+  const enabled = useEnvironmentSettings(
+    environmentId,
+    (settings) => settings.voiceConnection.enabled,
+  );
+  return enabled ? <VoiceConversationSession environmentId={environmentId} /> : null;
 }
 
 function VoiceConversationSession({ environmentId }: { environmentId: EnvironmentId }) {
@@ -234,14 +244,15 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
           </div>
         </section>
       ) : null}
-      <Button
-        size="icon"
-        variant={running ? "default" : "outline"}
+      <button
+        type="button"
+        className="flex size-12 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground shadow-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        aria-expanded={open}
         aria-label={running ? "Show voice conversation" : "Talk to T3"}
         onClick={() => setOpen(!open)}
       >
-        <Mic className="size-5" />
-      </Button>
+        <T3Wordmark aria-hidden="true" className="h-5 w-7" />
+      </button>
     </div>
   );
 }

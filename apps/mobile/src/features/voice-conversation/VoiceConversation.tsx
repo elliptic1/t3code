@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { randomUUID } from "expo-crypto";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
+import { Image } from "expo-image";
+import { T3_CODE_BRAND_MARK_SOURCE } from "../../components/brandAssets";
 import { useEnvironments } from "../../state/environments";
 import { useThreadShells } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -25,7 +26,12 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
   const environmentId = selected ?? params?.environmentId ?? available[0]?.environmentId;
   const environment = available.find((entry) => entry.environmentId === environmentId);
   const insets = useSafeAreaInsets();
-  if (!environment) return null;
+  const enabled = environment?.serverConfig?.settings.voiceConnection.enabled ?? false;
+  if (!enabled && (selected !== null || open)) {
+    setSelected(null);
+    setOpen(false);
+  }
+  if (!environment || !enabled) return null;
   return (
     <View
       pointerEvents="box-none"
@@ -239,7 +245,11 @@ function VoiceSession(props: {
         onPress={() => props.setOpen(!props.open)}
         className="mt-2 size-12 self-end items-center justify-center rounded-full bg-primary"
       >
-        <SymbolView name="mic" size={22} tintColorClassName="accent-primary-foreground" />
+        <Image
+          source={T3_CODE_BRAND_MARK_SOURCE}
+          accessibilityIgnoresInvertColors
+          style={{ width: 48, height: 48, borderRadius: 24 }}
+        />
       </Pressable>
     </>
   );
