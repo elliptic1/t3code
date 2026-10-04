@@ -7,16 +7,17 @@ import * as Option from "effect/Option";
 import type * as Electron from "electron";
 import { beforeEach, vi } from "vite-plus/test";
 
-const { buildFromTemplateMock, createFromNamedImageMock, setApplicationMenuMock } = vi.hoisted(
-  () => ({
+const { sendActionMock, buildFromTemplateMock, createFromNamedImageMock, setApplicationMenuMock } =
+  vi.hoisted(() => ({
+    sendActionMock: vi.fn(),
     buildFromTemplateMock: vi.fn(),
     createFromNamedImageMock: vi.fn(),
     setApplicationMenuMock: vi.fn(),
-  }),
-);
+  }));
 
 vi.mock("electron", () => ({
   Menu: {
+    sendActionToFirstResponder: sendActionMock,
     buildFromTemplate: buildFromTemplateMock,
     setApplicationMenu: setApplicationMenuMock,
   },
@@ -253,5 +254,25 @@ describe("ElectronMenu", () => {
         assert.strictEqual(error.cause, cause);
       }
     }).pipe(Effect.provide(TestLayer)),
+  );
+});
+
+describe("system dictation", () => {
+  it.effect.each(["darwin", "linux", "win32"] as const)(
+    "only invokes native Dictation on macOS (%s)",
+    (platform) =>
+      Effect.gen(function* () {
+        sendActionMock.mockClear();
+        const menu = yield* ElectronMenu.ElectronMenu;
+        assert.equal(yield* menu.startDictation, platform === "darwin");
+        assert.deepEqual(
+          sendActionMock.mock.calls,
+          platform === "darwin" ? [["startDictation:"]] : [],
+        );
+      }).pipe(
+        Effect.provide(
+          ElectronMenu.layer.pipe(Layer.provide(Layer.succeed(HostProcessPlatform, platform))),
+        ),
+      ),
   );
 });

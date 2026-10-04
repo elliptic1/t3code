@@ -86,6 +86,7 @@ import type { ComposerDraftContextRecords } from "./composerContextPresentation"
 
 export interface ComposerPromptEditorHandle {
   focus: () => void;
+  focusPreservingSelection: () => void;
   focusAt: (cursor: number) => void;
   focusAtEnd: () => void;
   readSelectionRange: () => { start: number; end: number };
@@ -1234,6 +1235,9 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
     () => ({
       focus: () => {
         focusAt(snapshotRef.current.cursor);
+      },
+      focusPreservingSelection: () => {
+        editor?.view.focus();
       },
       focusAt,
       focusAtEnd: () => {
