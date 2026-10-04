@@ -15,6 +15,7 @@ export interface ChatCanvasPreview {
   readonly width: number | null;
   readonly position: PreviewMiniPlayerPosition | null;
   readonly source: PreviewMiniPlayerSize;
+  readonly headerHeight?: number;
   readonly lastInteraction?: PreviewMiniPlayerState["lastInteraction"];
 }
 
@@ -83,6 +84,7 @@ export function resolveChatCanvasLayout({
           width: frame.width,
           position: frame,
           source: preview.source,
+          headerHeight: preview.headerHeight ?? 0,
           container: {
             ...container,
             height: Math.max(GAP * 2 + 1, container.height - composerHeight * lift),

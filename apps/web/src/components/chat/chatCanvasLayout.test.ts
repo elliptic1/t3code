@@ -23,6 +23,24 @@ const expectClear = (result: ReturnType<typeof resolve>) => {
 };
 
 describe("chat canvas layout", () => {
+  it("preserves the browser header while lifting a resized preview above the composer", () => {
+    for (const width of [480, 800, 1100]) {
+      const result = resolve(1344, {
+        ...preview,
+        width,
+        headerHeight: 36,
+        lastInteraction: "resize",
+        position: { x: 1332 - width, y: 888 - Math.round(width / 1.6) - 36 },
+      });
+      const frame = result.frame!;
+      expect(frame.height).toBe(Math.round(frame.width / 1.6) + 36);
+      expect(frame.y + frame.height).toBeLessThanOrEqual(888);
+      if (frame.x < result.chat.left + result.chat.width + 12) {
+        expect(frame.y + frame.height).toBeLessThanOrEqual(708);
+      }
+    }
+  });
+
   it("lifts a growing preview above the composer without snapping at the chat boundary", () => {
     let previous: ReturnType<typeof resolve> | undefined;
     for (let width = 480; width <= 1100; width++) {
