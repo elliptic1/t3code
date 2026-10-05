@@ -406,7 +406,15 @@ const config: ExpoConfig = {
         recordAudioAndroid: false,
       },
     ],
-    ["expo-image-picker", { photosPermission: false, microphonePermission: false }],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: false,
+        // `false` here blocks RECORD_AUDIO for every package on Android, which
+        // leaves voice conversations with no microphone permission to request.
+        microphonePermission: "Allow T3 Code to hear you during voice conversations.",
+      },
+    ],
     [
       "expo-splash-screen",
       {
