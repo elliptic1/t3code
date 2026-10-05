@@ -1,9 +1,10 @@
 import { VoiceButton } from "./VoiceButton";
 import { useEffect, useRef, useState } from "react";
-import { AppState, Pressable, ScrollView, View } from "react-native";
+import { AppState, Platform, Pressable, ScrollView, View } from "react-native";
 import { useNavigation, type NavigationState } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { randomUUID } from "expo-crypto";
+import Constants from "expo-constants";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { AppText as Text } from "../../components/AppText";
 import { Image } from "expo-image";
@@ -11,6 +12,7 @@ import { T3_CODE_BRAND_MARK_SOURCE } from "../../components/brandAssets";
 import { useEnvironments } from "../../state/environments";
 import { useThreadShells } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { createVoiceActions, createVoiceSessionCommand, voiceResult } from "./actions";
 import type { VoiceConnection } from "./connection";
 
@@ -71,7 +73,7 @@ function VoiceSession(props: {
   const [connected, setConnected] = useState(false);
   const [muted, setMuted] = useState(false);
   const [status, setStatus] = useState("Ready");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; details: string } | null>(null);
   const [lines, setLines] = useState<Array<{ id: string; speaker: string; text: string }>>([]);
   const focused = useRef(props.focusedThread);
   useEffect(() => {
@@ -135,11 +137,24 @@ function VoiceSession(props: {
     setStatus("Connecting");
     setError(null);
     setLines([]);
-    const fail = (message: string) => {
-      if (session.current === owner) {
-        stopRef.current();
-        setError(message);
-      }
+    let transport = "";
+    // Details are what "Copy details" puts on the clipboard for a bug report.
+    const fail = (message: string, cause?: unknown) => {
+      if (session.current !== owner) return;
+      stopRef.current();
+      setError({
+        message,
+        details: [
+          `T3 Code voice conversation error: ${message}`,
+          `Environment: ${props.label}`,
+          transport && `Connection: ${transport}`,
+          `App: ${Constants.expoConfig?.version ?? "unknown"} on ${Platform.OS} ${Platform.Version}`,
+          `Time: ${new Date().toISOString()}`,
+          cause instanceof Error && cause.stack,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
     };
     const timeout = setTimeout(
       () => fail("Voice connection timed out. Check your connection settings."),
@@ -149,6 +164,7 @@ function VoiceSession(props: {
       const connection = voiceResult(
         await createSession({ environmentId: props.environmentId, input: {} }),
       );
+      transport = `${connection.protocol} over ${connection.transport}, ${connection.endpoint}, model ${connection.model || "default"}`;
       owner.abort.signal.throwIfAborted();
       const { connectNativeVoice } = await import("./nativeSession");
       owner.connection = await connectNativeVoice({
@@ -174,7 +190,7 @@ function VoiceSession(props: {
       if (owner.abort.signal.aborted) await owner.connection.close();
       else setConnected(true);
     } catch (cause) {
-      fail(cause instanceof Error ? cause.message : "Could not start voice conversation.");
+      fail(cause instanceof Error ? cause.message : "Could not start voice conversation.", cause);
     } finally {
       clearTimeout(timeout);
     }
@@ -192,9 +208,15 @@ function VoiceSession(props: {
             {muted ? "Microphone muted" : status}
           </Text>
           {error ? (
-            <Text accessibilityRole="alert" className="mb-2 text-sm text-danger-foreground">
-              {error}
-            </Text>
+            <View className="mb-2">
+              <Text accessibilityRole="alert" className="text-sm text-danger-foreground">
+                {error.message}
+              </Text>
+              <VoiceButton
+                label="Copy details"
+                onPress={() => copyTextWithHaptic(error.details, { target: "error details" })}
+              />
+            </View>
           ) : null}
           <ScrollView style={{ maxHeight: 180 }} accessibilityLabel="Conversation transcript">
             {lines.map((line) => (
