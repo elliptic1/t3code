@@ -56,10 +56,12 @@ class Socket extends EventTarget {
   send = vi.fn();
   close = vi.fn();
   constructor(
-    readonly url: URL,
+    readonly url: string,
     readonly protocols: string[],
   ) {
     super();
+    // The native socket rejects anything but a string URL.
+    if (typeof url !== "string") throw new TypeError("WebSocket URL must be a string");
     onCreated(this);
   }
   event(value: unknown) {

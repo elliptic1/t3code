@@ -60,7 +60,8 @@ export async function connectPcmSocket(input: {
       : connection.protocol === "xai"
         ? [`xai-client-secret.${connection.clientSecret}`]
         : ["realtime", `openai-insecure-api-key.${connection.clientSecret}`];
-    socket = new WebSocket(url, protocols);
+    // React Native's socket takes a string and throws on a URL object.
+    socket = new WebSocket(url.href, protocols);
     const callbackResult = recorder.onAudioReady(
       { sampleRate: 24000, bufferLength: 2400, channelCount: 1 },
       ({ buffer, numFrames }) => {
