@@ -3,7 +3,7 @@ import type {
   PreparedVoiceTranscription,
   VoiceInputControllerDependencies,
 } from "@t3tools/client-runtime/voice-input";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { resetVoiceInputGlobalsForTests } from "../../../../../packages/client-runtime/src/voice-input/controller";
 
 import {
