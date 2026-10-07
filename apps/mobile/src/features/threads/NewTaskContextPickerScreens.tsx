@@ -1,7 +1,8 @@
 import { MaterialListRow } from "../../components/MaterialListRow";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { shouldCheckoutNewTaskBranch } from "./new-task-context-presentation";
 import type { VcsRef } from "@t3tools/client-runtime/state/vcs";
-import { type EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/contracts";
+import { AuthSourceControlWriteScope, resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { LegendList } from "@legendapp/list/react-native";
 import {
   isAtomCommandInterrupted,
@@ -30,7 +31,7 @@ import { ThemedSwitch } from "../../components/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import { useServerConfigs } from "../../state/entities";
-import { projectEnvironment } from "../../state/projects";
+import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { vcsEnvironment } from "../../state/vcs";
 import {
@@ -206,36 +207,6 @@ export function NewTaskEnvironmentPickerRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const serverConfigs = useServerConfigs();
-  const openScratch = useAtomCommand(projectEnvironment.openScratch, {
-    reportFailure: false,
-  });
-  const [movingToEnvironmentId, setMovingToEnvironmentId] = useState<EnvironmentId | null>(null);
-
-  // A thread without a project moves to the other machine's own Scratch
-  // project, which is created there first if it does not exist yet.
-  async function moveScratchDraft(environmentId: EnvironmentId): Promise<void> {
-    setMovingToEnvironmentId(environmentId);
-    try {
-      const result = await openScratch({ environmentId, input: {} });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          Alert.alert(
-            "Could not switch machine",
-            error instanceof Error
-              ? error.message
-              : "The folder for threads without a project could not be created.",
-          );
-        }
-        return;
-      }
-      flow.setProject(result.value);
-      navigation.goBack();
-    } finally {
-      setMovingToEnvironmentId(null);
-    }
-  }
-
   return (
     <View className="flex-1 bg-sheet" collapsable={false}>
       <NativeStackScreenOptions
@@ -275,18 +246,12 @@ export function NewTaskEnvironmentPickerRouteScreen() {
                   />
                 }
                 isLast={index === flow.environments.length - 1}
-                disabled={movingToEnvironmentId !== null}
+                disabled={flow.switchingToEnvironmentId !== null}
                 onPress={() => {
                   void Haptics.selectionAsync();
-                  if (flow.isScratchDraft) {
-                    if (environment.environmentId !== flow.selectedEnvironmentId) {
-                      void moveScratchDraft(environment.environmentId);
-                      return;
-                    }
-                  } else {
-                    flow.selectEnvironment(environment.environmentId);
-                  }
-                  navigation.goBack();
+                  void flow.switchEnvironment(environment.environmentId).then((switched) => {
+                    if (switched) navigation.goBack();
+                  });
                 }}
                 selected={flow.selectedEnvironmentId === environment.environmentId}
                 title={environment.environmentLabel}
@@ -301,6 +266,10 @@ export function NewTaskEnvironmentPickerRouteScreen() {
 
 export function NewTaskBranchPickerRouteScreen() {
   const flow = useNewTaskFlow();
+  const canWriteSourceControl = useEnvironmentScope(
+    flow.selectedProject?.environmentId ?? null,
+    AuthSourceControlWriteScope,
+  );
   const navigation = useNavigation();
   const switchRef = useAtomCommand(vcsEnvironment.switchRef, { reportFailure: false });
   const [switchingBranchName, setSwitchingBranchName] = useState<string | null>(null);
@@ -328,7 +297,12 @@ export function NewTaskBranchPickerRouteScreen() {
 
   const selectBranch = useCallback(
     async (branch: VcsRef) => {
-      if (selectingBranchNameRef.current !== null) {
+      const needsCheckout = shouldCheckoutNewTaskBranch({
+        branchIsCurrent: branch.current,
+        branchWorktreePath: branch.worktreePath,
+        workspaceMode: flow.workspaceMode,
+      });
+      if (selectingBranchNameRef.current !== null || (needsCheckout && !canWriteSourceControl)) {
         return;
       }
       selectingBranchNameRef.current = branch.name;
@@ -373,6 +347,7 @@ export function NewTaskBranchPickerRouteScreen() {
       }
     },
     [
+      canWriteSourceControl,
       flow.selectBranch,
       flow.selectedProject,
       flow.setBranchQuery,
