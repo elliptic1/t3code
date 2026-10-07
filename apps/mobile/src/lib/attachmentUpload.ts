@@ -13,13 +13,16 @@ import type {
   EnvironmentId,
   UploadChatImageAttachment,
 } from "@t3tools/contracts";
-import { PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import { appAtomRegistry } from "../state/atom-registry";
 import { assetEnvironment } from "../state/assets";
 import { attachmentEnvironment } from "../state/attachments";
-import { environmentSession } from "../state/session";
+import { readEnvironmentScope } from "../state/session";
 import { resolveOwnedComposerAttachmentFileUri } from "./composerAttachmentFiles";
 import { retainComposerAttachmentFileForPreview } from "./composerAttachmentPreviewRetention";
 import {
@@ -109,6 +112,9 @@ export async function releasePendingAttachmentUploads(
   attachmentIds: ReadonlyArray<string>,
 ): Promise<void> {
   const deleteOnce = async (attachmentId: string): Promise<boolean> => {
+    if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
+      throw new Error("This connection cannot delete pending attachments.");
+    }
     const result = await runAtomCommand(
       appAtomRegistry,
       attachmentEnvironment.remove,
@@ -255,6 +261,7 @@ async function composerImageAttachmentDataUrl(
 }
 
 async function uploadFileBytes(
+  environmentId: EnvironmentId,
   attachment: DraftComposerAttachment,
   url: string,
   signal: AbortSignal,
@@ -262,6 +269,9 @@ async function uploadFileBytes(
 ): Promise<void> {
   const { File, Paths, UploadType } = await import("expo-file-system");
   if (signal.aborted) throw new Error("Upload cancelled.");
+  if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
+    throw new Error("This connection cannot upload attachments.");
+  }
   // Legacy image drafts persisted inline bytes and stage them in a temp cache
   // file for the native uploader. Everything else uploads its owned copy.
   const fileUri = attachment.fileUri;
@@ -349,6 +359,13 @@ export async function prepareTurnAttachments(input: {
     }
   }
 
+  const requireUploadAccess = () => {
+    if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
+      throw new Error("This connection cannot upload attachments.");
+    }
+  };
+  requireUploadAccess();
+
   const uploadedAttachments: UploadedMobileAttachment[] = [];
   const pendingAttachmentIds: string[] = [];
   const createdAttachmentIds: string[] = [];
@@ -358,6 +375,7 @@ export async function prepareTurnAttachments(input: {
   try {
     for (const attachment of input.attachments) {
       if (controller.signal.aborted) throw new Error("Upload cancelled.");
+      requireUploadAccess();
       if (attachment.type === "image" && !input.supportsImageUploads) {
         uploadedAttachments.push(...(await toUploadChatImageAttachments([attachment])));
         continue;
@@ -386,6 +404,7 @@ export async function prepareTurnAttachments(input: {
         // "missing": the pending upload expired, upload the bytes again.
       }
 
+      requireUploadAccess();
       const result = await runAttachmentUploadCycle({
         registry: appAtomRegistry,
         createUploadUrl: attachmentEnvironment.createUploadUrl,
@@ -393,11 +412,13 @@ export async function prepareTurnAttachments(input: {
         environmentId,
         upload: attachmentUploadInput(attachment),
         // Read the live supervisor at transfer time. The UI projection can still
-        // contain its initial None when no mounted view consumes the connection.
+        // contain its initial None when no mounted view consumes the connection,
+        // and the environment may have reconnected on a new base URL.
         resolveUploadUrl: async (relativeUrl) => {
+          requireUploadAccess();
           const result = await runAtomCommand(
             appAtomRegistry,
-            environmentSession.readPreparedConnection,
+            attachmentEnvironment.readPreparedConnection,
             { environmentId, input: undefined },
             { reportFailure: false },
           );
@@ -408,6 +429,7 @@ export async function prepareTurnAttachments(input: {
         },
         transport: (url) => ({
           done: uploadFileBytes(
+            environmentId,
             attachment,
             url,
             controller.signal,

@@ -6,10 +6,14 @@ import {
   type AttachmentDeleteInput,
   type EnvironmentId,
 } from "@t3tools/contracts";
-import type { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import * as Effect from "effect/Effect";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import type { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
+  createEnvironmentCommand,
   createEnvironmentRpcCommand,
   executeAtomQuery,
   runAtomCommand,
@@ -33,6 +37,15 @@ export function createAttachmentEnvironmentAtoms<R, E>(
     remove: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:attachments:delete",
       tag: WS_METHODS.attachmentsDelete,
+    }),
+    // Uploads run imperatively and must read the supervisor, not a possibly
+    // unmounted UI projection of the connection.
+    readPreparedConnection: createEnvironmentCommand(runtime, {
+      label: "environment-command:attachments:read-prepared-connection",
+      execute: (_input: void) =>
+        EnvironmentSupervisor.pipe(
+          Effect.flatMap((supervisor) => SubscriptionRef.get(supervisor.prepared)),
+        ),
     }),
   };
 }
