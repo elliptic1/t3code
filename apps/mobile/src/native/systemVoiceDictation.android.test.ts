@@ -45,4 +45,15 @@ describe("Android system dictation", () => {
     expect(await getSystemVoiceDictation()!.recognize(controller.signal)).toBeNull();
     expect(native.recognize).not.toHaveBeenCalled();
   });
+  it("propagates recognition failures instead of reporting cancellation", async () => {
+    const error = new Error("Speech recognition failed (result code 4).");
+    native.recognize.mockRejectedValue(error);
+    await expect(getSystemVoiceDictation()!.recognize(new AbortController().signal)).rejects.toBe(
+      error,
+    );
+  });
+  it("returns null when the native dialog is cancelled", async () => {
+    native.recognize.mockResolvedValue(null);
+    expect(await getSystemVoiceDictation()!.recognize(new AbortController().signal)).toBeNull();
+  });
 });

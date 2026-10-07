@@ -59,10 +59,17 @@ class T3DictationModule : Module() {
         val promise = pending
         pending = null
         owner = null
-        val transcript = if (result.resultCode == Activity.RESULT_OK) {
-          result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() ?: ""
-        } else null
-        promise?.resolve(transcript)
+        when (result.resultCode) {
+          Activity.RESULT_OK -> promise?.resolve(
+            result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() ?: ""
+          )
+          Activity.RESULT_CANCELED -> promise?.resolve(null)
+          else -> promise?.reject(
+            "ERR_DICTATION_RECOGNITION",
+            "Speech recognition failed (result code ${result.resultCode}).",
+            null
+          )
+        }
       }
     }
 
