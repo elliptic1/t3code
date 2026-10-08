@@ -7,8 +7,7 @@ import { randomUUID } from "expo-crypto";
 import Constants from "expo-constants";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { AppText as Text } from "../../components/AppText";
-import { Image } from "expo-image";
-import { T3_CODE_BRAND_MARK_SOURCE } from "../../components/brandAssets";
+import { T3Wordmark } from "../../components/T3Wordmark";
 import { useEnvironments } from "../../state/environments";
 import { useThreadShells } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -269,13 +268,13 @@ function VoiceSession(props: {
         style={{ elevation: 12 }}
       >
         {/* Clipped inner layer: iOS drops the shadow of a view that clips its own content. */}
-        <View className="size-15 items-center justify-center overflow-hidden rounded-full border border-white/20">
-          {/* Oversized so the icon's rounded-square edge falls outside the circle. */}
-          <Image
-            source={T3_CODE_BRAND_MARK_SOURCE}
-            accessibilityIgnoresInvertColors
-            style={{ width: 68, height: 68 }}
-          />
+        <View
+          className="size-15 items-center justify-center overflow-hidden rounded-full border border-white/20"
+          style={{
+            experimental_backgroundImage: "linear-gradient(to bottom, #2b2b30 0%, #000 100%)",
+          }}
+        >
+          <T3Wordmark height={18} color="#f4f4f5" />
           <View
             pointerEvents="none"
             className="absolute top-0 right-0 left-0 h-1/2 rounded-t-full"
