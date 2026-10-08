@@ -406,6 +406,14 @@
     "./voice-conversation/session": {
       "types": "./src/voice-conversation/session.ts",
       "default": "./src/voice-conversation/session.ts"
+    },
+    "./mcp-apps": {
+      "types": "./src/mcpApps/host.ts",
+      "default": "./src/mcpApps/host.ts"
+    },
+    "./state/mcp-apps": {
+      "types": "./src/state/mcpApps.ts",
+      "default": "./src/state/mcpApps.ts"
     }
   },
   "scripts": {
