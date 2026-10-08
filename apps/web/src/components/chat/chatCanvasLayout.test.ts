@@ -23,6 +23,24 @@ const expectClear = (result: ReturnType<typeof resolve>) => {
 };
 
 describe("chat canvas layout", () => {
+  it("preserves the browser header while lifting a resized preview above the composer", () => {
+    for (const width of [480, 800, 1100]) {
+      const result = resolve(1344, {
+        ...preview,
+        width,
+        headerHeight: 36,
+        lastInteraction: "resize",
+        position: { x: 1332 - width, y: 888 - Math.round(width / 1.6) - 36 },
+      });
+      const frame = result.frame!;
+      expect(frame.height).toBe(Math.round(frame.width / 1.6) + 36);
+      expect(frame.y + frame.height).toBeLessThanOrEqual(888);
+      if (frame.x < result.chat.left + result.chat.width + 12) {
+        expect(frame.y + frame.height).toBeLessThanOrEqual(708);
+      }
+    }
+  });
+
   it("lifts a growing preview above the composer without snapping at the chat boundary", () => {
     let previous: ReturnType<typeof resolve> | undefined;
     for (let width = 480; width <= 1100; width++) {
@@ -293,5 +311,50 @@ describe("workspace card beside chat", () => {
       overlapsChat: false,
       overlapsDetailsCard: false,
     });
+  });
+});
+
+describe("floating browser overlays", () => {
+  it("keeps the prompt in place while dragging and resizing over it", () => {
+    for (const width of [500, 900, 1400]) {
+      for (const lastInteraction of ["drag", "resize"] as const) {
+        const baseline = resolve(width, null);
+        const result = resolve(width, {
+          ...preview,
+          overlay: true,
+          headerHeight: 36,
+          lastInteraction,
+          position: { x: 20, y: 650 },
+        });
+        expect(result.chat).toEqual(baseline.chat);
+        expect(result.frame).toEqual({ x: 20, y: 650, width: 320, height: 236 });
+        expect(result.frame!.y + result.frame!.height).toBeGreaterThan(900 - 180);
+      }
+    }
+  });
+
+  it("constrains an overlay only to the canvas edges", () => {
+    const result = resolve(900, {
+      ...preview,
+      overlay: true,
+      headerHeight: 36,
+      position: { x: -100, y: 1000 },
+    });
+    expect(result.frame).toEqual({ x: 12, y: 652, width: 320, height: 236 });
+    expect(result.chat).toEqual(resolve(900, null).chat);
+  });
+
+  it("leaves the workspace card and its chat lane unchanged", () => {
+    const options = {
+      container: { width: 1400, height: 900 },
+      detailsCard: { left: 1000, right: 1380, bottom: 400 },
+    };
+    const result = resolveChatCanvasLayout({
+      ...options,
+      preview: { ...preview, overlay: true, position: { x: 1020, y: 20 } },
+    });
+    expect(result.frame).toMatchObject({ x: 1020, y: 20 });
+    expect(result.chat).toEqual(resolveChatCanvasLayout({ ...options, preview: null }).chat);
+    expect(result.overlapsDetailsCard).toBe(false);
   });
 });

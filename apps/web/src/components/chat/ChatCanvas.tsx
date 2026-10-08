@@ -53,7 +53,9 @@ export function ChatCanvas({
       current.position?.x === next.position?.x &&
       current.position?.y === next.position?.y &&
       current.source.width === next.source.width &&
-      current.source.height === next.source.height
+      current.source.height === next.source.height &&
+      current.headerHeight === next.headerHeight &&
+      current.overlay === next.overlay
         ? current
         : next,
     );
