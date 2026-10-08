@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PreparedVoiceTranscription } from "@t3tools/client-runtime/voice-input";
+import type {
+  PreparedVoiceTranscription,
+  VoiceInputControllerDependencies,
+} from "@t3tools/client-runtime/voice-input";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { resetVoiceInputGlobalsForTests } from "../../../../../packages/client-runtime/src/voice-input/controller";
 
@@ -18,7 +21,7 @@ function createTarget(
   return createVoiceInputTarget(ownerKey, readText, commit, selection, () => () => {});
 }
 
-function createSession() {
+function createSession(overrides: Partial<VoiceInputControllerDependencies> = {}) {
   const recorder = {
     uri: "file:///voice.m4a",
     prepareToRecordAsync: vi.fn(async () => {}),
@@ -37,12 +40,34 @@ function createSession() {
     releaseRecording: vi.fn(async () => {}),
     deleteRecording: vi.fn(),
     onStateChange: vi.fn(),
+    ...overrides,
   });
   return { session, recorder, prepare };
 }
 
 describe("global voice input", () => {
   beforeEach(() => resetVoiceInputGlobalsForTests());
+
+  it("keeps system dictation bound to its starting draft across navigation", async () => {
+    let resolve!: (text: string) => void;
+    const result = new Promise<string>((done) => {
+      resolve = done;
+    });
+    const { session, recorder } = createSession({
+      getSystemDictation: () => ({ locale: "en-US", recognize: () => result }),
+    });
+    const original = vi.fn();
+    const other = vi.fn();
+    const pending = session.start(
+      createTarget("first", () => "hello world", original, { start: 6, end: 11 }),
+    );
+    await session.start(createTarget("second", () => "other draft", other, { start: 0, end: 0 }));
+    resolve("spoken text");
+    await pending;
+    expect(original).toHaveBeenCalledWith("hello spoken text", { start: 17, end: 17 });
+    expect(other).not.toHaveBeenCalled();
+    expect(recorder.record).not.toHaveBeenCalled();
+  });
 
   it.each([
     { selection: { start: 6, end: 11 }, expected: "hello spoken text", cursor: 17 },
