@@ -9,7 +9,8 @@ const mocks = vi.hoisted(() => ({
   createUploadUrl: Symbol("create-upload-url"),
   executeAtomQuery: vi.fn(),
   removeUpload: Symbol("remove-upload"),
-  preparedConnection: Symbol("prepared-connection"),
+  readPreparedConnection: Symbol("read-prepared-connection"),
+  connectionResult: vi.fn(),
   runAtomCommand: vi.fn(),
   readAtom: vi.fn(),
   upload: vi.fn(),
@@ -45,14 +46,12 @@ vi.mock("../state/attachments", () => ({
   attachmentEnvironment: {
     createUploadUrl: mocks.createUploadUrl,
     remove: mocks.removeUpload,
+    readPreparedConnection: mocks.readPreparedConnection,
   },
 }));
 
 vi.mock("../state/session", () => ({
   readEnvironmentScope: () => mocks.canOperate,
-  environmentSession: {
-    preparedConnectionValueAtom: () => mocks.preparedConnection,
-  },
 }));
 
 // Cuts the expo-crypto -> react-native import chain out of the test graph.
@@ -209,7 +208,12 @@ describe("prepareTurnAttachments", () => {
     mocks.deleteFile.mockReset();
     mocks.readBase64.mockReset();
     mocks.readBase64.mockResolvedValue("YWJj");
-    mocks.readAtom.mockReturnValue(Option.some({ httpBaseUrl: "https://environment.example/" }));
+    mocks.readAtom.mockReturnValue(Option.none());
+    mocks.connectionResult.mockReset();
+    mocks.connectionResult.mockResolvedValue({
+      _tag: "Success",
+      value: Option.some({ httpBaseUrl: "https://environment.example/" }),
+    });
     mocks.runAtomCommand.mockImplementation(async (_registry: unknown, command: unknown) =>
       command === mocks.createUploadUrl
         ? {
@@ -220,7 +224,9 @@ describe("prepareTurnAttachments", () => {
               expiresAt: 1,
             },
           }
-        : { _tag: "Success", value: undefined },
+        : command === mocks.readPreparedConnection
+          ? mocks.connectionResult()
+          : { _tag: "Success", value: undefined },
     );
     mocks.upload.mockResolvedValue({ status: 204, body: "", headers: {} });
   });
@@ -474,10 +480,22 @@ describe("prepareTurnAttachments", () => {
     });
   });
 
+  it("uploads while the UI connection projection is unmounted", async () => {
+    const prepared = await prepareTurnAttachments({
+      environmentId,
+      attachments: [fileBackedImage, documentPickedImage],
+      supportsImageUploads: true,
+    });
+
+    expect(prepared.status).toBe("ready");
+    expect(mocks.upload).toHaveBeenCalledTimes(2);
+  });
+
   it("uses the current connection when an environment reconnects during URL creation", async () => {
-    mocks.readAtom
-      .mockReturnValueOnce(Option.some({ httpBaseUrl: "https://old-environment.example/" }))
-      .mockReturnValueOnce(Option.some({ httpBaseUrl: "https://new-environment.example/" }));
+    mocks.connectionResult.mockResolvedValue({
+      _tag: "Success",
+      value: Option.some({ httpBaseUrl: "https://new-environment.example/" }),
+    });
 
     await prepareTurnAttachments({ environmentId, attachments: [file] });
 
@@ -486,6 +504,33 @@ describe("prepareTurnAttachments", () => {
       "https://new-environment.example/api/attachments/upload/signed",
       expect.anything(),
     );
+  });
+
+  it("releases the minted upload if the environment disconnects before transfer", async () => {
+    mocks.connectionResult.mockResolvedValue({ _tag: "Success", value: Option.none() });
+
+    await expect(prepareTurnAttachments({ environmentId, attachments: [file] })).rejects.toThrow(
+      "The environment is not connected.",
+    );
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(removeCallsFor(MINTED_ID)).toBe(1);
+  });
+
+  it("cancels while resolving the connection without transferring bytes", async () => {
+    const controller = new AbortController();
+    mocks.connectionResult.mockImplementation(async () => {
+      controller.abort();
+      return {
+        _tag: "Success",
+        value: Option.some({ httpBaseUrl: "https://environment.example/" }),
+      };
+    });
+
+    await expect(
+      prepareTurnAttachments({ environmentId, attachments: [file], signal: controller.signal }),
+    ).resolves.toEqual({ status: "abandoned" });
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(removeCallsFor(MINTED_ID)).toBe(1);
   });
 
   it("uploads a restored draft file from the current iOS document container", async () => {
