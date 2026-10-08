@@ -265,14 +265,26 @@ function VoiceSession(props: {
         accessibilityRole="button"
         accessibilityLabel={running ? "Show voice conversation" : "Talk to T3"}
         onPress={() => props.setOpen(!props.open)}
-        className="mt-3 size-15 self-end items-center justify-center rounded-full border-2 border-white/25 bg-primary shadow-lg shadow-black/30 active:opacity-80"
+        className="mt-3 size-15 self-end rounded-full bg-black shadow-xl shadow-black/50 active:opacity-85"
+        style={{ elevation: 12 }}
       >
-        {/* The app icon is a rounded square; keep its shape and let the blue ring show around it. */}
-        <Image
-          source={T3_CODE_BRAND_MARK_SOURCE}
-          accessibilityIgnoresInvertColors
-          style={{ width: 34, height: 34, borderRadius: 8 }}
-        />
+        {/* Clipped inner layer: iOS drops the shadow of a view that clips its own content. */}
+        <View className="size-15 items-center justify-center overflow-hidden rounded-full border border-white/20">
+          {/* Oversized so the icon's rounded-square edge falls outside the circle. */}
+          <Image
+            source={T3_CODE_BRAND_MARK_SOURCE}
+            accessibilityIgnoresInvertColors
+            style={{ width: 68, height: 68 }}
+          />
+          <View
+            pointerEvents="none"
+            className="absolute top-0 right-0 left-0 h-1/2 rounded-t-full"
+            style={{
+              experimental_backgroundImage:
+                "linear-gradient(to bottom, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 100%)",
+            }}
+          />
+        </View>
       </Pressable>
     </>
   );
