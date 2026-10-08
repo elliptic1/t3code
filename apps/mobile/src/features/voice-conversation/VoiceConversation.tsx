@@ -39,8 +39,8 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
       pointerEvents="box-none"
       style={{
         position: "absolute",
-        right: 16,
-        bottom: Math.max(insets.bottom, 12) + 60,
+        right: 28,
+        bottom: Math.max(insets.bottom, 12) + 88,
         maxWidth: "90%",
       }}
     >
@@ -265,12 +265,13 @@ function VoiceSession(props: {
         accessibilityRole="button"
         accessibilityLabel={running ? "Show voice conversation" : "Talk to T3"}
         onPress={() => props.setOpen(!props.open)}
-        className="mt-2 size-12 self-end items-center justify-center rounded-full bg-primary"
+        className="mt-3 size-15 self-end items-center justify-center rounded-full border-2 border-white/25 bg-primary shadow-lg shadow-black/30 active:opacity-80"
       >
+        {/* The app icon is a rounded square; keep its shape and let the blue ring show around it. */}
         <Image
           source={T3_CODE_BRAND_MARK_SOURCE}
           accessibilityIgnoresInvertColors
-          style={{ width: 48, height: 48, borderRadius: 24 }}
+          style={{ width: 34, height: 34, borderRadius: 8 }}
         />
       </Pressable>
     </>
