@@ -21,6 +21,12 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as CatalogStore from "./catalog-store";
 
+let T3WearDataLayer: { setPairing: (url: string, token: string) => Promise<void>; clearPairing: () => Promise<void> } | null = null;
+try {
+  const { requireNativeModule } = require("expo-modules-core");
+  T3WearDataLayer = requireNativeModule("T3WearDataLayer");
+} catch {};
+
 function targetPersistenceError(
   operation:
     | "list-targets"
@@ -50,15 +56,39 @@ export const connectionStorageLayer = Layer.effectContext(
         Effect.mapError((error) => targetPersistenceError("list-disabled-targets", error)),
       ),
     });
+    function mirrorToWear(registration: {
+      readonly _tag: string;
+      readonly profile?: { readonly httpBaseUrl: string };
+      readonly credential?: { readonly token: string };
+    }) {
+      if (
+        T3WearDataLayer &&
+        registration._tag === "BearerConnectionRegistration" &&
+        registration.profile &&
+        registration.credential
+      ) {
+        T3WearDataLayer.setPairing(
+          registration.profile.httpBaseUrl,
+          registration.credential.token,
+        ).catch(() => {});
+      }
+    }
+
     const registrationStore = ConnectionRegistrationStore.of({
       register: (registration) =>
         catalog
           .update((document) => registerConnectionInCatalog(document, registration))
-          .pipe(Effect.mapError((error) => targetPersistenceError("register-connection", error))),
+          .pipe(
+            Effect.tap(() => Effect.sync(() => mirrorToWear(registration as Parameters<typeof mirrorToWear>[0]))),
+            Effect.mapError((error) => targetPersistenceError("register-connection", error)),
+          ),
       remove: (target) =>
         catalog
           .update((document) => removeConnectionFromCatalog(document, target))
-          .pipe(Effect.mapError((error) => targetPersistenceError("remove-connection", error))),
+          .pipe(
+            Effect.tap(() => Effect.sync(() => T3WearDataLayer?.clearPairing().catch(() => {}))),
+            Effect.mapError((error) => targetPersistenceError("remove-connection", error)),
+          ),
       setEnabled: (environmentId, enabled) =>
         catalog
           .update((document) => setConnectionEnabledInCatalog(document, environmentId, enabled))
