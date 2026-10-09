@@ -1281,6 +1281,17 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      // A message sent from the regular composer is also a response to any
+      // async needs-input prompt. Resolve it in the same command so the shell
+      // stops showing the stale question as soon as the message lands.
+      const answeredAsyncQuestions = Array.from(openRequests(targetThread).entries())
+        .filter(
+          ([, activity]) =>
+            activity.kind === "user-input.requested" &&
+            Predicate.isObject(activity.payload) &&
+            activity.payload.responseMode === "message",
+        )
+        .map(([requestId, activity]) => ({ requestId, activity }));
       const sourceProposedPlan = command.sourceProposedPlan;
       const sourceThread = sourceProposedPlan
         ? yield* requireThread({
@@ -1354,6 +1365,30 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       // A snooze clears the same way — sending a message to a snoozed
       // thread is the user re-engaging, so the return ticket is spent.
       const lifecycleResetEvents: Array<Omit<OrchestrationEvent, "sequence">> = [];
+      for (const { requestId, activity } of answeredAsyncQuestions) {
+        lifecycleResetEvents.push({
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+            metadata: { requestId },
+          })),
+          type: "thread.activity-appended",
+          payload: {
+            threadId: command.threadId,
+            activity: {
+              id: EventId.make(`composer-answer:${requestId}:${command.commandId}`),
+              kind: "user-input.resolved",
+              summary: "User input submitted",
+              tone: "info",
+              turnId: activity.turnId,
+              createdAt: command.createdAt,
+              payload: { requestId, responseMode: "message" },
+            },
+          },
+        });
+      }
       if (targetThread.settledOverride !== null) {
         lifecycleResetEvents.push({
           ...(yield* withEventBase({
