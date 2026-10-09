@@ -207,8 +207,10 @@ requires a secure page; use HTTPS/WSS endpoints and allow the app's origin in yo
 voice server's CORS configuration.
 On iOS and Android, use **Talk to T3** to start the same conversation. Configure the
 connection under **Settings → Voice conversation** for the connected environment.
-Voice ends when you put the mobile app in the background or another app interrupts
-audio. Finish dictation before starting a conversation. For a local voice server,
+Voice ends if another app interrupts audio, or if you put the iOS app in the
+background. Finish dictation before starting a conversation. On Android, an active
+conversation continues when you lock the screen or switch apps. Tap the voice
+notification to return to T3 Code and end the conversation. For a local voice server,
 use an address reachable from the phone; `localhost` refers to the phone itself.
 
 ## Voice input on iPhone

@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+import { startVoiceBackgroundSession } from "./backgroundSession";
 import { randomUUID } from "expo-crypto";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import {
@@ -15,6 +17,7 @@ export async function connectNativeVoice(
   if (!token) throw new Error("Finish dictation before starting a voice conversation.");
   let connection: VoiceConnection | undefined;
   let releaseAudio = async () => {};
+  let releaseBackground = async () => {};
   let preparing = true;
   let opened = false;
   let closing: Promise<void> | undefined;
@@ -28,7 +31,11 @@ export async function connectNativeVoice(
         try {
           await releaseAudio();
         } finally {
-          releaseVoiceInputSession(token);
+          try {
+            await releaseBackground();
+          } finally {
+            releaseVoiceInputSession(token);
+          }
         }
       }
     })();
@@ -43,6 +50,8 @@ export async function connectNativeVoice(
     if ((await AudioManager.requestRecordingPermissions()) !== "Granted")
       throw new Error("Microphone access is required. Enable it in your device settings.");
     input.signal.throwIfAborted();
+    releaseBackground = await startVoiceBackgroundSession();
+    input.signal.throwIfAborted();
     releaseAudio = () => AudioManager.setAudioSessionActivity(false);
     AudioManager.setAudioSessionOptions({
       iosCategory: "playAndRecord",
@@ -53,7 +62,7 @@ export async function connectNativeVoice(
     await AudioManager.setAudioSessionActivity(true);
     input.signal.throwIfAborted();
     const tag = `voice-conversation:${randomUUID()}`;
-    const awake = activateKeepAwakeAsync(tag);
+    const awake = Platform.OS === "android" ? Promise.resolve() : activateKeepAwakeAsync(tag);
     void awake.catch(() => {});
     AudioManager.observeAudioInterruptions("gainTransientExclusive");
     const interruption = AudioManager.addSystemEventListener("interruption", ({ type }) => {
@@ -65,7 +74,8 @@ export async function connectNativeVoice(
       try {
         await AudioManager.setAudioSessionActivity(false);
       } finally {
-        await awake.then(() => deactivateKeepAwake(tag)).catch(() => {});
+        if (Platform.OS !== "android")
+          await awake.then(() => deactivateKeepAwake(tag)).catch(() => {});
       }
     };
     const { connectVoice } = await import("./connection");

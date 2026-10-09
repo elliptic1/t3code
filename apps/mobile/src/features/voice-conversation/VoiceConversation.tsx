@@ -96,7 +96,8 @@ function VoiceSession(props: {
   });
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "background") stopRef.current();
+      // Android keeps active conversations in a microphone foreground service.
+      if (state === "background" && Platform.OS !== "android") stopRef.current();
     });
     return () => {
       subscription.remove();

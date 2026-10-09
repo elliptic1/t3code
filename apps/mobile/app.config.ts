@@ -332,6 +332,7 @@ const config: ExpoConfig = {
           "android.permission.RECORD_AUDIO",
           "android.permission.MODIFY_AUDIO_SETTINGS",
         ],
+        // t3-voice-session owns the service for both WebRTC and PCM conversations.
         androidForegroundService: false,
       },
     ],
