@@ -356,6 +356,29 @@ export const probeRemoteEditors = DesktopIpc.makeIpcMethod({
   }),
 });
 
+export const startDictation = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.START_DICTATION_CHANNEL,
+  payload: Schema.Undefined,
+  result: Schema.Boolean,
+  handler: Effect.fn("desktop.ipc.window.startDictation")(function* (_input, event) {
+    const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const window = yield* electronWindow.main;
+    // Native actions target the application's first responder, never a background window
+    // or the embedded browser that happened to take focus after the renderer request.
+    if (
+      event === undefined ||
+      Option.isNone(window) ||
+      window.value.isDestroyed() ||
+      !window.value.isFocused() ||
+      window.value.webContents.id !== event.sender.id ||
+      Electron.webContents.getFocusedWebContents() !== window.value.webContents
+    )
+      return false;
+    const menu = yield* ElectronMenu.ElectronMenu;
+    return yield* menu.startDictation;
+  }),
+});
+
 export const pasteAsText = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PASTE_AS_TEXT_CHANNEL,
   payload: Schema.Undefined,

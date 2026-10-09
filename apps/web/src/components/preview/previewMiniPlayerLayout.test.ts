@@ -89,6 +89,30 @@ describe("resolveDeviceMiniPlayerCornerRadius", () => {
 });
 
 describe("resolvePreviewMiniPlayerFrame", () => {
+  it("reserves a header without changing the page aspect ratio", () => {
+    expect(
+      resolvePreviewMiniPlayerFrame({
+        width: 480,
+        position: { x: 100, y: 80 },
+        source,
+        container,
+        headerHeight: 36,
+      }),
+    ).toEqual({ x: 100, y: 80, width: 480, height: 336 });
+  });
+
+  it("includes the header when fitting above the composer", () => {
+    const frame = resolvePreviewMiniPlayerFrame({
+      width: 800,
+      position: { x: 100, y: 80 },
+      source,
+      container,
+      obstacles: tallComposer,
+      headerHeight: 36,
+    });
+    expect(frame).toEqual({ x: 100, y: gap, width: 544, height: 376 });
+  });
+
   it("opens at the source aspect ratio in the top-right corner", () => {
     expect(
       resolvePreviewMiniPlayerFrame({ width: null, position: null, source, container }),
@@ -161,6 +185,36 @@ describe("resolvePreviewMiniPlayerFrame", () => {
 
 describe("resizePreviewMiniPlayer", () => {
   const start = { x: 300, y: 200, width: 320, height: 200 };
+
+  it.each(["north", "east", "southeast"] as const)(
+    "does not jump on a zero-distance %s resize with a header",
+    (direction) => {
+      const browser = { ...start, height: 236 };
+      expect(
+        resizePreviewMiniPlayer({
+          start: browser,
+          direction,
+          delta: { x: 0, y: 0 },
+          source,
+          container,
+          headerHeight: 36,
+        }),
+      ).toEqual(browser);
+    },
+  );
+
+  it("keeps the header fixed and the bottom anchored when resizing upward", () => {
+    expect(
+      resizePreviewMiniPlayer({
+        start: { ...start, height: 236 },
+        direction: "north",
+        delta: { x: 0, y: -100 },
+        source,
+        container,
+        headerHeight: 36,
+      }),
+    ).toEqual({ x: 300, y: 100, width: 480, height: 336 });
+  });
 
   it("keeps the aspect ratio when dragging the right edge", () => {
     expect(

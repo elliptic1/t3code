@@ -15,6 +15,8 @@ export interface ChatCanvasPreview {
   readonly width: number | null;
   readonly position: PreviewMiniPlayerPosition | null;
   readonly source: PreviewMiniPlayerSize;
+  readonly headerHeight?: number;
+  readonly overlay?: boolean;
   readonly lastInteraction?: PreviewMiniPlayerState["lastInteraction"];
 }
 
@@ -63,6 +65,16 @@ export function resolveChatCanvasLayout({
   let overlapsChat = false;
   if (preview && container.width > 0 && container.height > 0) {
     frame = resolvePreviewMiniPlayerFrame({ ...preview, container });
+    // Floating browsers sit above the canvas without reserving space or folding
+    // the workspace card. Only the canvas edges constrain their position.
+    if (preview.overlay) {
+      return {
+        chat,
+        frame,
+        overlapsChat: frame.x < chat.left + chat.width && frame.x + frame.width > chat.left,
+        overlapsDetailsCard: false,
+      };
+    }
     // Dragging stops at a readable chat lane on the left. Resizing can still
     // consume that space when the container requires message overlap.
     const minimumPreviewX =
@@ -83,6 +95,7 @@ export function resolveChatCanvasLayout({
           width: frame.width,
           position: frame,
           source: preview.source,
+          headerHeight: preview.headerHeight ?? 0,
           container: {
             ...container,
             height: Math.max(GAP * 2 + 1, container.height - composerHeight * lift),

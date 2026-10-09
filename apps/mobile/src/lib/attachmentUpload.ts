@@ -22,7 +22,7 @@ import * as Option from "effect/Option";
 import { appAtomRegistry } from "../state/atom-registry";
 import { assetEnvironment } from "../state/assets";
 import { attachmentEnvironment } from "../state/attachments";
-import { environmentSession, readEnvironmentScope } from "../state/session";
+import { readEnvironmentScope } from "../state/session";
 import { resolveOwnedComposerAttachmentFileUri } from "./composerAttachmentFiles";
 import { retainComposerAttachmentFileForPreview } from "./composerAttachmentPreviewRetention";
 import {
@@ -366,13 +366,6 @@ export async function prepareTurnAttachments(input: {
   };
   requireUploadAccess();
 
-  const connection = appAtomRegistry.get(
-    environmentSession.preparedConnectionValueAtom(environmentId),
-  );
-  if (Option.isNone(connection)) {
-    throw new Error("The environment is not connected.");
-  }
-
   const uploadedAttachments: UploadedMobileAttachment[] = [];
   const pendingAttachmentIds: string[] = [];
   const createdAttachmentIds: string[] = [];
@@ -418,16 +411,21 @@ export async function prepareTurnAttachments(input: {
         remove: attachmentEnvironment.remove,
         environmentId,
         upload: attachmentUploadInput(attachment),
-        // Read the connection at transfer time: the environment may have
-        // reconnected on a new base URL since this cycle started.
-        resolveUploadUrl: (relativeUrl) => {
+        // Read the live supervisor at transfer time. The UI projection can still
+        // contain its initial None when no mounted view consumes the connection,
+        // and the environment may have reconnected on a new base URL.
+        resolveUploadUrl: async (relativeUrl) => {
           requireUploadAccess();
-          const currentConnection = appAtomRegistry.get(
-            environmentSession.preparedConnectionValueAtom(environmentId),
+          const result = await runAtomCommand(
+            appAtomRegistry,
+            attachmentEnvironment.readPreparedConnection,
+            { environmentId, input: undefined },
+            { reportFailure: false },
           );
-          return Option.isNone(currentConnection)
+          if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+          return Option.isNone(result.value)
             ? null
-            : resolveAssetUrl(currentConnection.value.httpBaseUrl, relativeUrl);
+            : resolveAssetUrl(result.value.value.httpBaseUrl, relativeUrl);
         },
         transport: (url) => ({
           done: uploadFileBytes(

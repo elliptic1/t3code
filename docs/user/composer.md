@@ -29,6 +29,20 @@ at the end, leave the block. **Backspace** at the start of a code block turns it
 back into plain lines. Choose the language in a code block's corner to change
 it. Very large code blocks are shown without syntax highlighting.
 
+## Dictate a draft
+
+Use the microphone beside Send on macOS desktop, supported iPhones and iPads,
+or Android devices with a speech-recognition app installed. Dictation inserts
+text at the cursor or replaces your selection; review the draft and press Send
+when ready. You can dictate into a message that already contains text.
+
+On macOS, enable Dictation in System Settings → Keyboard. Stop using the system
+Dictation controls. On iOS, finish with the checkmark or cancel the recording;
+on-device transcription requires a supported device with iOS 26 or later.
+Android opens the installed speech-recognition app's dialog; finish or cancel
+there. Language support, offline availability, and audio processing on Android
+depend on that app.
+
 ## Attach files
 
 Attach up to 100 files per message. Each image can be up to 10 MiB, with at most
