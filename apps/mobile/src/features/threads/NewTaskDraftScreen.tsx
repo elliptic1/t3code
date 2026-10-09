@@ -54,7 +54,7 @@ import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
-import { composerStripAttachments } from "../../lib/composerImages";
+import { composerStripAttachments, type ComposerMediaSource } from "../../lib/composerImages";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import {
   composerAttachmentUploadBlockReason,
@@ -1034,13 +1034,14 @@ export function NewTaskDraftScreen(props: {
   });
   const showBranchLoading = flow.branchesLoading && flow.availableBranches.length === 0;
 
-  async function handlePickMedia(): Promise<void> {
+  async function handlePickMedia(source?: ComposerMediaSource): Promise<void> {
     if (isComposerInteractionLocked || voiceInput.isBusy) {
       return;
     }
     const capabilities = selectedEnvironmentServerConfig?.environment.capabilities;
     const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
     const result = await pickComposerMedia({
+      source,
       existingCount:
         flow.draftKey && insertion
           ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)

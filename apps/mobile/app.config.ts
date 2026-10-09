@@ -405,7 +405,8 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
+        cameraPermission:
+          "Allow T3 Code to access your camera to take photos or scan pairing QR codes.",
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
@@ -415,6 +416,8 @@ const config: ExpoConfig = {
       "expo-image-picker",
       {
         photosPermission: false,
+        cameraPermission:
+          "Allow T3 Code to access your camera to take photos or scan pairing QR codes.",
         // `false` here blocks RECORD_AUDIO for every package on Android, which
         // leaves voice conversations with no microphone permission to request.
         microphonePermission: "Allow T3 Code to hear you during voice conversations.",

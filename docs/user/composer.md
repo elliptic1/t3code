@@ -58,8 +58,9 @@ before an upload finishes requires you to attach that file again.
 
 You can drag or paste images into the web or desktop composer. HEIC and HEIF
 photos are converted to JPEG there and when selected from the mobile photo
-library; photos over the image limit are also resized to fit. On mobile, you can
-also send files to T3 Code through another app's system share sheet.
+library; photos over the image limit are also resized to fit. On mobile, choose
+**Take Photo** from the composer's **+** menu to capture and attach a photo. You
+can also send files to T3 Code through another app's system share sheet.
 
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 

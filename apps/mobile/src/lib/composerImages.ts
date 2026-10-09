@@ -381,11 +381,18 @@ async function renderPhotoAsJpeg(uri: string): Promise<{ base64: string; uri: st
   }
 }
 
-async function loadImagePicker() {
+export type ComposerMediaSource = "library" | "camera";
+
+async function loadImagePicker(source: ComposerMediaSource = "library") {
   try {
     return await import("expo-image-picker");
   } catch (error) {
-    throw new Error("The photo library is unavailable right now.", { cause: error });
+    throw new Error(
+      source === "camera"
+        ? "The camera is unavailable right now."
+        : "The photo library is unavailable right now.",
+      { cause: error },
+    );
   }
 }
 
@@ -412,6 +419,7 @@ export async function pickComposerImages(input: { readonly existingCount: number
 export async function pickComposerMedia(input: {
   readonly existingCount: number;
   readonly maxVideoBytes?: number;
+  readonly source?: ComposerMediaSource;
 }): Promise<{
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly error: string | null;
@@ -426,7 +434,7 @@ export async function pickComposerMedia(input: {
 
   let imagePicker: Awaited<ReturnType<typeof loadImagePicker>>;
   try {
-    imagePicker = await loadImagePicker();
+    imagePicker = await loadImagePicker(input.source);
   } catch (error) {
     return {
       attachments: [],
@@ -439,21 +447,43 @@ export async function pickComposerMedia(input: {
   const endHandoff = beginForegroundHandoff();
   let result: Awaited<ReturnType<typeof imagePicker.launchImageLibraryAsync>>;
   try {
-    result = await imagePicker.launchImageLibraryAsync({
-      mediaTypes: input.maxVideoBytes === undefined ? ["images"] : ["images", "videos"],
-      allowsMultipleSelection: true,
-      selectionLimit: remainingSlots,
-      // Bytes stay in the picker's file until we know how much of them we need. Asking for
-      // base64 here made iOS decode and re-encode every camera photo at full resolution and
-      // hand JS a 10 MB+ string, which stalled the composer for seconds.
-      base64: false,
-      quality: 1,
-      shouldDownloadFromNetwork: true,
-    });
+    if (input.source === "camera") {
+      const permission = await imagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        return {
+          attachments: [],
+          error: permission.canAskAgain
+            ? "Camera access is needed to take a photo."
+            : "Allow camera access in your device settings to take a photo.",
+        };
+      }
+      result = await imagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        base64: false,
+        quality: 1,
+      });
+    } else {
+      result = await imagePicker.launchImageLibraryAsync({
+        mediaTypes: input.maxVideoBytes === undefined ? ["images"] : ["images", "videos"],
+        allowsMultipleSelection: true,
+        selectionLimit: remainingSlots,
+        // Bytes stay in the picker's file until we know how much of them we need. Asking for
+        // base64 here made iOS decode and re-encode every camera photo at full resolution and
+        // hand JS a 10 MB+ string, which stalled the composer for seconds.
+        base64: false,
+        quality: 1,
+        shouldDownloadFromNetwork: true,
+      });
+    }
   } catch (error) {
     return {
       attachments: [],
-      error: error instanceof Error ? error.message : "Could not open the photo library.",
+      error:
+        error instanceof Error
+          ? error.message
+          : input.source === "camera"
+            ? "Could not open the camera."
+            : "Could not open the photo library.",
     };
   } finally {
     endHandoff();

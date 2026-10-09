@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { PROVIDER_SEND_TURN_MAX_IMAGE_BYTES } from "@t3tools/contracts";
+import {
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+} from "@t3tools/contracts";
 import type { ImagePickerAsset } from "expo-image-picker";
 
 const mocks = vi.hoisted(() => ({
   documentUri: "file:///documents",
   pickFile: vi.fn(),
   pickMedia: vi.fn(),
+  takePhoto: vi.fn(),
+  requestCameraPermission: vi.fn(),
   copy: vi.fn(),
   delete: vi.fn(),
   open: vi.fn(),
@@ -80,7 +85,11 @@ vi.mock("expo-file-system", () => {
   };
 });
 
-vi.mock("expo-image-picker", () => ({ launchImageLibraryAsync: mocks.pickMedia }));
+vi.mock("expo-image-picker", () => ({
+  launchImageLibraryAsync: mocks.pickMedia,
+  launchCameraAsync: mocks.takePhoto,
+  requestCameraPermissionsAsync: mocks.requestCameraPermission,
+}));
 vi.mock("expo-document-picker", () => ({ getDocumentAsync: mocks.pickFile }));
 vi.mock("expo-image-manipulator", () => ({
   SaveFormat: { JPEG: "jpeg", PNG: "png", WEBP: "webp" },
@@ -103,12 +112,103 @@ describe("composer file attachments", () => {
     mocks.documentUri = "file:///documents";
     mocks.pickFile.mockReset();
     mocks.pickMedia.mockReset();
+    mocks.takePhoto.mockReset();
+    mocks.requestCameraPermission.mockReset();
     mocks.copy.mockReset();
     mocks.delete.mockReset();
     mocks.open.mockReset();
     mocks.size.mockReset();
     mocks.readBase64.mockReset();
     mocks.size.mockImplementation((uri: string) => (uri.startsWith("content:") ? null : 42));
+  });
+
+  describe("camera attachments", () => {
+    it("attaches a captured photo through the image pipeline and protects the foreground handoff", async () => {
+      mocks.requestCameraPermission.mockImplementation(async () => {
+        expect(isForegroundHandoffActive()).toBe(true);
+        return { granted: true };
+      });
+      mocks.takePhoto.mockImplementation(async () => {
+        expect(isForegroundHandoffActive()).toBe(true);
+        return {
+          canceled: false,
+          assets: [
+            {
+              uri: "file:///camera/photo.jpg",
+              type: "image",
+              mimeType: "image/jpeg",
+              fileName: null,
+              width: 100,
+              height: 100,
+            },
+          ],
+        };
+      });
+      mocks.readBase64.mockResolvedValue("YWJj");
+
+      const result = await pickComposerMedia({ existingCount: 0, source: "camera" });
+
+      expect(result.error).toBeNull();
+      expect(result.attachments).toEqual([
+        expect.objectContaining({
+          type: "image",
+          mimeType: "image/jpeg",
+          dataUrl: "data:image/jpeg;base64,YWJj",
+          previewUri: "file:///camera/photo.jpg",
+        }),
+      ]);
+      expect(mocks.pickMedia).not.toHaveBeenCalled();
+      expect(isForegroundHandoffActive()).toBe(false);
+    });
+
+    it.each([true, false])("handles denied camera access (canAskAgain=%s)", async (canAskAgain) => {
+      mocks.requestCameraPermission.mockResolvedValue({ granted: false, canAskAgain });
+
+      const result = await pickComposerMedia({ existingCount: 0, source: "camera" });
+
+      expect(result).toEqual({
+        attachments: [],
+        error: canAskAgain
+          ? "Camera access is needed to take a photo."
+          : "Allow camera access in your device settings to take a photo.",
+      });
+      expect(mocks.takePhoto).not.toHaveBeenCalled();
+      expect(isForegroundHandoffActive()).toBe(false);
+    });
+
+    it("leaves the draft unchanged when the camera is canceled", async () => {
+      mocks.requestCameraPermission.mockResolvedValue({ granted: true });
+      mocks.takePhoto.mockResolvedValue({ canceled: true, assets: null });
+
+      await expect(pickComposerMedia({ existingCount: 0, source: "camera" })).resolves.toEqual({
+        attachments: [],
+        error: null,
+      });
+      expect(isForegroundHandoffActive()).toBe(false);
+    });
+
+    it("releases the foreground handoff when opening the camera fails", async () => {
+      mocks.requestCameraPermission.mockResolvedValue({ granted: true });
+      mocks.takePhoto.mockRejectedValue(new Error("Camera unavailable."));
+
+      await expect(pickComposerMedia({ existingCount: 0, source: "camera" })).resolves.toEqual({
+        attachments: [],
+        error: "Camera unavailable.",
+      });
+      expect(isForegroundHandoffActive()).toBe(false);
+    });
+
+    it("does not open the camera when the draft has reached its attachment limit", async () => {
+      const result = await pickComposerMedia({
+        existingCount: PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+        source: "camera",
+      });
+
+      expect(result.attachments).toEqual([]);
+      expect(result.error).toContain(`up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} attachments`);
+      expect(mocks.requestCameraPermission).not.toHaveBeenCalled();
+      expect(mocks.takePhoto).not.toHaveBeenCalled();
+    });
   });
 
   describe("photo library image conversion", () => {

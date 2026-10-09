@@ -1,0 +1,110 @@
+diff --git a/android/src/debug/java/expo/modules/devmenu/fab/FloatingActionButtonContent.kt b/android/src/debug/java/expo/modules/devmenu/fab/FloatingActionButtonContent.kt
+--- a/android/src/debug/java/expo/modules/devmenu/fab/FloatingActionButtonContent.kt
++++ b/android/src/debug/java/expo/modules/devmenu/fab/FloatingActionButtonContent.kt
+@@ -5,7 +5,6 @@
+ import androidx.compose.animation.fadeOut
+ import androidx.compose.animation.scaleOut
+ import androidx.compose.foundation.background
+-import androidx.compose.foundation.border
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.Column
+ import androidx.compose.foundation.layout.padding
+@@ -52,7 +51,7 @@
+ 
+   val idleAlpha by animateFloatAsState(
+     targetValue = if (isIdle) {
+-      0.5f
++      0.85f
+     } else {
+       1f
+     },
+@@ -61,7 +60,7 @@
+ 
+   val idleSaturation by animateFloatAsState(
+     targetValue = if (isIdle) {
+-      0f
++      0.85f
+     } else {
+       1f
+     },
+@@ -90,21 +89,19 @@
+       contentAlignment = Alignment.Center,
+       modifier = Modifier
+         .shadow(
+-          elevation = 8.dp,
++          elevation = 12.dp,
+           shape = CircleShape,
+           ambientColor = Color.Black.copy(alpha = 0.4f),
+           spotColor = Color.Black.copy(alpha = 0.4f)
+         )
+-        .size(52.dp)
+-        .border(4.dp, FabBlue.copy(alpha = 0.3f), CircleShape)
+-        .padding(4.dp)
++        .size(64.dp)
+         .background(FabBlue, CircleShape)
+     ) {
+       UnstyledIcon(
+-        painter = painterResource(R.drawable.gear_fill),
++        painter = painterResource(R.drawable.t3_dev_menu_logo),
+         contentDescription = "Tools",
+         tint = Color.White,
+-        modifier = Modifier.size(26.dp)
++        modifier = Modifier.size(32.dp)
+       )
+     }
+ 
+diff --git a/android/src/debug/java/expo/modules/devmenu/fab/FabState.kt b/android/src/debug/java/expo/modules/devmenu/fab/FabState.kt
+--- a/android/src/debug/java/expo/modules/devmenu/fab/FabState.kt
++++ b/android/src/debug/java/expo/modules/devmenu/fab/FabState.kt
+@@ -73,7 +73,7 @@
+         y = (savedY * fabAreaBounds.y).coerceIn(0f, fabAreaBounds.y)
+       )
+     } else {
+-      Offset(fabAreaBounds.x, 0f)
++      Offset(fabAreaBounds.x, fabAreaBounds.y)
+     }
+   }
+ 
+diff --git a/android/src/debug/java/expo/modules/devmenu/fab/MovableFloatingActionButton.kt b/android/src/debug/java/expo/modules/devmenu/fab/MovableFloatingActionButton.kt
+--- a/android/src/debug/java/expo/modules/devmenu/fab/MovableFloatingActionButton.kt
++++ b/android/src/debug/java/expo/modules/devmenu/fab/MovableFloatingActionButton.kt
+@@ -38,9 +38,9 @@
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+ 
+-private val FabDefaultSize = DpSize(52.dp, 94.dp)
+-private val FabContentSize = DpSize(52.dp, 52.dp)
+-private val Margin = 16.dp
++private val FabDefaultSize = DpSize(64.dp, 106.dp)
++private val FabContentSize = DpSize(64.dp, 64.dp)
++private val Margin = 24.dp
+ private const val ClickDragTolerance = 40f
+ 
+ /**
+@@ -81,9 +81,10 @@
+       Offset(fabPressableSizeWithMargin.width.toPx(), fabPressableSizeWithMargin.height.toPx())
+     }
+ 
++    // Leave the home new-task button and bottom controls reachable beneath the overlay.
+     val bounds = Offset(
+       x = constraints.maxWidth - fabPressableSizeWithMarginPx.x,
+-      y = constraints.maxHeight - fabPressableSizeWithMarginPx.y
++      y = constraints.maxHeight - totalFabSizePx.y - with(LocalDensity.current) { 96.dp.toPx() }
+     )
+ 
+     val halfFab = Offset(totalFabSizePx.x / 2f, totalFabSizePx.y / 2f)
+diff --git a/android/src/debug/res/drawable/t3_dev_menu_logo.xml b/android/src/debug/res/drawable/t3_dev_menu_logo.xml
+new file mode 100644
+--- /dev/null
++++ b/android/src/debug/res/drawable/t3_dev_menu_logo.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="32dp"
++    android:height="19.31dp"
++    android:viewportWidth="94.3941"
++    android:viewportHeight="56.96">
++  <group android:translateX="-15.5309" android:translateY="-37">
++    <path android:fillColor="#FFFFFFFF" android:pathData="M33.4509 93V47.56H15.5309V37H64.3309V47.56H46.4109V93H33.4509ZM86.7253 93.96C82.832 93.96 78.9653 93.4533 75.1253 92.44C71.2853 91.3733 68.032 89.88 65.3653 87.96L70.4053 78.04C72.5386 79.5867 75.0186 80.8133 77.8453 81.72C80.672 82.6267 83.5253 83.08 86.4053 83.08C89.6586 83.08 92.2186 82.44 94.0853 81.16C95.952 79.88 96.8853 78.12 96.8853 75.88C96.8853 73.7467 96.0586 72.0667 94.4053 70.84C92.752 69.6133 90.0853 69 86.4053 69H80.4853V60.44L96.0853 42.76L97.5253 47.4H68.1653V37H107.365V45.4L91.8453 63.08L85.2853 59.32H89.0453C95.9253 59.32 101.125 60.8667 104.645 63.96C108.165 67.0533 109.925 71.0267 109.925 75.88C109.925 79.0267 109.099 81.9867 107.445 84.76C105.792 87.48 103.259 89.6933 99.8453 91.4C96.432 93.1067 92.0586 93.96 86.7253 93.96Z" />
++  </group>
++</vector>
