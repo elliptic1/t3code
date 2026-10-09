@@ -13,7 +13,11 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   awake: vi.fn(),
   sleep: vi.fn(),
+  backgroundStart: vi.fn(),
+  backgroundStop: vi.fn(),
 }));
+vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
+vi.mock("./backgroundSession", () => ({ startVoiceBackgroundSession: mocks.backgroundStart }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "session" }));
 vi.mock("expo-keep-awake", () => ({
   activateKeepAwakeAsync: mocks.awake,
@@ -42,6 +46,8 @@ function input(abort = new AbortController()) {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.permission.mockResolvedValue("Granted");
+  mocks.backgroundStart.mockResolvedValue(mocks.backgroundStop);
+  mocks.backgroundStop.mockResolvedValue(undefined);
   mocks.activity.mockResolvedValue(undefined);
   mocks.awake.mockResolvedValue(undefined);
   mocks.close.mockResolvedValue(undefined);
@@ -54,6 +60,8 @@ describe("native audio session ownership", () => {
     await session.close();
     expect(mocks.activity).toHaveBeenLastCalledWith(false);
     expect(mocks.remove).toHaveBeenCalledOnce();
+    expect(mocks.backgroundStop).toHaveBeenCalledOnce();
+    expect(mocks.awake).not.toHaveBeenCalled();
     const next = acquireVoiceInputSession();
     expect(next).not.toBeNull();
     releaseVoiceInputSession(next);
@@ -117,4 +125,47 @@ describe("native audio session ownership", () => {
     expect(next).not.toBeNull();
     releaseVoiceInputSession(next);
   });
+});
+
+it("releases the service when connecting fails", async () => {
+  mocks.connect.mockRejectedValue(new Error("offline"));
+  await expect(connectNativeVoice(input())).rejects.toThrow("offline");
+  expect(mocks.backgroundStop).toHaveBeenCalledOnce();
+});
+
+it("releases the service even when transport teardown fails", async () => {
+  const session = await connectNativeVoice(input());
+  mocks.close.mockRejectedValue(new Error("teardown"));
+  await expect(session.close()).rejects.toThrow("teardown");
+  expect(mocks.backgroundStop).toHaveBeenCalledOnce();
+  const next = acquireVoiceInputSession();
+  expect(next).not.toBeNull();
+  releaseVoiceInputSession(next);
+});
+
+it("cancellation during service startup releases it before allowing another session", async () => {
+  let finish!: (release: () => Promise<void>) => void;
+  let started!: () => void;
+  const starting = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  mocks.backgroundStart.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+        started();
+      }),
+  );
+  const abort = new AbortController();
+  const pending = connectNativeVoice(input(abort));
+  await starting;
+  abort.abort();
+  expect(acquireVoiceInputSession()).toBeNull();
+  finish(mocks.backgroundStop);
+  await expect(pending).rejects.toThrow();
+  expect(mocks.backgroundStop).toHaveBeenCalledOnce();
+  expect(mocks.connect).not.toHaveBeenCalled();
+  const next = acquireVoiceInputSession();
+  expect(next).not.toBeNull();
+  releaseVoiceInputSession(next);
 });
