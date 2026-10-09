@@ -255,7 +255,7 @@ export class VoiceInputController {
           if (this.isCurrent(operationToken))
             this.setError("Could not start system dictation.", "retry");
         } finally {
-          releaseSession(this.sessionToken);
+          releaseVoiceInputSession(this.sessionToken);
           this.sessionToken = null;
           this.transcriptionAbortController = null;
         }
