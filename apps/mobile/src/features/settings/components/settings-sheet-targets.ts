@@ -5,6 +5,7 @@ export type SettingsSheetTarget =
   | "SettingsAbout"
   | "SettingsArchive"
   | "SettingsAppearance"
+  | "SettingsVoice"
   | "SettingsOrganization"
   | "SettingsProjectOverview"
   | "SettingsEnvironmentNewThreads"

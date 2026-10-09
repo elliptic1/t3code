@@ -1,3 +1,4 @@
+import { createVoiceSession } from "./voice/session.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
@@ -2386,6 +2387,10 @@ const layerWsRpc = (
             const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
             return { keybindings: keybindingsConfig, issues: [] };
           }),
+        [WS_METHODS.serverCreateVoiceSession]: () =>
+          serverSettings.getSettings.pipe(
+            Effect.flatMap((settings) => createVoiceSession(settings.voiceConnection)),
+          ),
         [WS_METHODS.serverGetSettings]: (_input) =>
           serverSettings.getSettings.pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
         [WS_METHODS.serverUpdateSettings]: ({ patch, providerInstanceMutation }) =>

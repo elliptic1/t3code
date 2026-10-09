@@ -1308,6 +1308,8 @@ export function renderMacPasskeyEntitlements(
     <array>
 ${associatedDomains}
     </array>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
@@ -2721,6 +2723,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
       extendInfo: {
+        NSMicrophoneUsageDescription:
+          "T3 Code uses your microphone for voice conversations with your configured voice provider.",
         NSScreenCaptureUsageDescription:
           "T3 Code captures the active window when you use the window capture shortcut.",
       },

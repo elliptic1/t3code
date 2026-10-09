@@ -54,6 +54,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverCommitDesktopUpdate]: "server",
   [WS_METHODS.serverUpsertKeybinding]: "server",
   [WS_METHODS.serverRemoveKeybinding]: "server",
+  [WS_METHODS.serverCreateVoiceSession]: "server",
   [WS_METHODS.serverGetSettings]: "server",
   [WS_METHODS.serverUpdateSettings]: "server",
   [WS_METHODS.serverSearchAcpRegistry]: "server",

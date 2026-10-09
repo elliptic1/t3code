@@ -316,6 +316,25 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    [
+      "@config-plugins/react-native-webrtc",
+      {
+        microphonePermission: "Allow T3 Code to hear you during voice conversations.",
+      },
+    ],
+    [
+      "react-native-audio-api",
+      {
+        iosMicrophonePermission: "Allow T3 Code to hear you during voice conversations.",
+        iosBackgroundMode: false,
+        disableFFmpeg: true,
+        androidPermissions: [
+          "android.permission.RECORD_AUDIO",
+          "android.permission.MODIFY_AUDIO_SETTINGS",
+        ],
+        androidForegroundService: false,
+      },
+    ],
     "expo-asset",
     [
       "expo-font",
@@ -392,7 +411,15 @@ const config: ExpoConfig = {
         recordAudioAndroid: false,
       },
     ],
-    ["expo-image-picker", { photosPermission: false, microphonePermission: false }],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: false,
+        // `false` here blocks RECORD_AUDIO for every package on Android, which
+        // leaves voice conversations with no microphone permission to request.
+        microphonePermission: "Allow T3 Code to hear you during voice conversations.",
+      },
+    ],
     [
       "expo-splash-screen",
       {

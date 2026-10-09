@@ -158,6 +158,10 @@ function SettingsIndexSections() {
         ) : null}
       </SettingsSection>
 
+      <SettingsSection title="Voice">
+        <SettingsRow icon="mic" label="Voice conversation" target="SettingsVoice" />
+      </SettingsSection>
+
       <SettingsSection title="Automations">
         <SettingsRow icon="clock" label="Scheduled tasks" target="SettingsScheduledTasks" />
       </SettingsSection>

@@ -1903,3 +1903,35 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 });
+
+it.effect(
+  "stores voice credentials securely, preserves redacted edits, and removes cleared keys",
+  () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const secrets = yield* ServerSecretStore.ServerSecretStore;
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const voiceConnection = {
+        ...DEFAULT_SERVER_SETTINGS.voiceConnection,
+        enabled: true,
+        apiKey: "voice-secret",
+      };
+      const saved = yield* service.updateSettings({ voiceConnection });
+      assert.equal(saved.voiceConnection.apiKey, "voice-secret");
+      assert.isTrue(Option.isSome(yield* secrets.get("voice-connection-api-key")));
+      const redacted = ServerSettingsModule.redactServerSettingsForClient(saved).voiceConnection;
+      assert.notEqual(redacted.apiKey, "voice-secret");
+      const updated = yield* service.updateSettings({
+        voiceConnection: { ...redacted, voice: "custom" },
+      });
+      assert.equal(updated.voiceConnection.apiKey, "voice-secret");
+      const contents = yield* fs.readFileString(config.settingsPath);
+      assert.notInclude(contents, "voice-secret");
+      yield* service.updateSettings({ voiceConnection: { ...redacted, apiKey: "" } });
+      assert.isTrue(Option.isNone(yield* secrets.get("voice-connection-api-key")));
+      assert.equal((yield* service.getSettings).voiceConnection.apiKey, "");
+    }).pipe(
+      Effect.provide(layerServerSettingsWithSecrets().pipe(Layer.provideMerge(NodeServices.layer))),
+    ),
+);

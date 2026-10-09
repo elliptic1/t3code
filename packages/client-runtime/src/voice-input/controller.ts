@@ -121,7 +121,7 @@ export function resolveTranscriptCommit(
   };
 }
 
-type VoiceInputSession = {
+export type VoiceInputSession = {
   abandoned: boolean;
   readonly released: Promise<void>;
   readonly release: () => void;
@@ -130,7 +130,7 @@ type VoiceInputSession = {
 let activeSession: VoiceInputSession | null = null;
 let activeTranscriptionOperation: Promise<unknown> | null = null;
 
-function acquireSession(): VoiceInputSession | null {
+export function acquireVoiceInputSession(): VoiceInputSession | null {
   if (activeSession) return null;
   const { promise, resolve } = Promise.withResolvers<void>();
   const token = { abandoned: false, released: promise, release: resolve };
@@ -138,7 +138,7 @@ function acquireSession(): VoiceInputSession | null {
   return token;
 }
 
-function releaseSession(token: VoiceInputSession | null): void {
+export function releaseVoiceInputSession(token: VoiceInputSession | null): void {
   if (token && activeSession === token) {
     activeSession = null;
     token.release();
@@ -224,7 +224,7 @@ export class VoiceInputController {
         await previousSession.released;
         if (!this.isCurrent(operationToken)) return;
       }
-      sessionToken = acquireSession();
+      sessionToken = acquireVoiceInputSession();
       if (!sessionToken) {
         this.setError("Another voice recording is already active.", "retry");
         return;
@@ -468,7 +468,7 @@ export class VoiceInputController {
     }
     this.ownedRecordingUris.clear();
     await this.releaseAudioSession();
-    releaseSession(this.sessionToken);
+    releaseVoiceInputSession(this.sessionToken);
     this.sessionToken = null;
     this.capturedDraft = null;
     this.transcription = null;

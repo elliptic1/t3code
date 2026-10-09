@@ -1,3 +1,5 @@
+import { VoiceConversation } from "./features/voice-conversation/VoiceConversation";
+import { SettingsVoiceRouteScreen } from "./features/settings/SettingsVoiceRouteScreen";
 import {
   createV5StackNavigator as createNativeStackNavigator,
   createV5SheetStackNavigator,
@@ -272,6 +274,11 @@ const SettingsContentStack = createV5SheetStackNavigator({
       options: {
         title: "Archived Threads",
       },
+    }),
+    SettingsVoice: createNativeStackScreen({
+      screen: SettingsVoiceRouteScreen,
+      linking: "voice",
+      options: { title: "Voice conversation" },
     }),
     SettingsAppearance: createNativeStackScreen({
       screen: SettingsAppearanceRouteScreen,
@@ -628,6 +635,7 @@ function RootStackLayout(props: {
         >
           {props.children}
           <HardwareKeyboardCommandOverlay />
+          <VoiceConversation state={props.state} />
         </AdaptiveWorkspaceLayout>
       </ExistingThreadSettingsRouteProvider>
     </HardwareKeyboardCommandProvider>

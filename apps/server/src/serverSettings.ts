@@ -217,7 +217,17 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
       Object.entries(settings.github.tokens).map(([host, token]) => [host, redactSecret(token)]),
     ),
   };
-  return { ...settings, providerInstances, usageLimitSources, bitbucket, github };
+  return {
+    ...settings,
+    providerInstances,
+    usageLimitSources,
+    bitbucket,
+    github,
+    voiceConnection: {
+      ...settings.voiceConnection,
+      apiKey: redactSecret(settings.voiceConnection.apiKey),
+    },
+  };
 }
 
 export function applyProviderInstanceMutation(
@@ -531,6 +541,7 @@ function fallbackTextGenerationProvider(settings: ServerSettings): ServerSetting
 
 // Values under these keys are compared as a whole — never stripped field-by-field.
 const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+  "voiceConnection",
   "backgroundActivity",
   "automaticGitFetchInterval",
   "providerHealthRefreshInterval",
@@ -933,6 +944,17 @@ const make = Effect.gen(function* () {
           managementKey: Option.isSome(secret) ? textDecoder.decode(secret.value) : "",
         };
       }
+      const voiceConnection = { ...settings.voiceConnection };
+      if (voiceConnection.apiKey === SECRET_REDACTED) {
+        const secret = yield* secretStore
+          .get("voice-connection-api-key")
+          .pipe(
+            Effect.mapError(
+              (cause) => new ServerSettingsError({ settingsPath, operation: "read-secret", cause }),
+            ),
+          );
+        voiceConnection.apiKey = Option.isSome(secret) ? textDecoder.decode(secret.value) : "";
+      }
       const bitbucket = { ...settings.bitbucket };
       for (const field of BITBUCKET_SECRET_FIELDS) {
         if (bitbucket[field] !== SECRET_REDACTED) continue;
@@ -962,6 +984,7 @@ const make = Effect.gen(function* () {
       }
       return {
         ...settings,
+        voiceConnection,
         providerInstances: providerInstances as ServerSettings["providerInstances"],
         usageLimitSources: usageLimitSources as ServerSettings["usageLimitSources"],
         bitbucket,
@@ -1107,6 +1130,18 @@ const make = Effect.gen(function* () {
         });
       }
 
+      const voiceConnection = { ...next.voiceConnection };
+      let voiceKey = voiceConnection.apiKey;
+      if (voiceKey === SECRET_REDACTED) {
+        voiceKey = current.voiceConnection.apiKey;
+      }
+      if (voiceKey !== SECRET_REDACTED) {
+        const secretName = "voice-connection-api-key";
+        if (voiceKey.length === 0)
+          changes.push({ kind: "remove", secretName, operation: "remove-secret" });
+        else changes.push({ kind: "write", secretName, value: textEncoder.encode(voiceKey) });
+        voiceConnection.apiKey = voiceKey.length === 0 ? "" : SECRET_REDACTED;
+      }
       const bitbucket = { ...next.bitbucket };
       for (const field of BITBUCKET_SECRET_FIELDS) {
         let value = bitbucket[field];
@@ -1162,6 +1197,7 @@ const make = Effect.gen(function* () {
       return {
         settings: {
           ...next,
+          voiceConnection,
           providerInstances: providerInstances as ServerSettings["providerInstances"],
           usageLimitSources: usageLimitSources as ServerSettings["usageLimitSources"],
           bitbucket,

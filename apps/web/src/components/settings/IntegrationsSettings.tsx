@@ -1,3 +1,4 @@
+import { VoiceSettings } from "./VoiceSettings";
 import { DeviceHostUpdates } from "../device/DeviceHostUpdates";
 import { DeviceToolVersions } from "../device/DeviceToolVersions";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
@@ -1546,6 +1547,7 @@ export function IntegrationsSettingsPanel() {
           previewDefaults
         )}
       </SettingsSection>
+      <VoiceSettings />
       <DeviceIntegrationSettings />
     </SettingsPageContainer>
   );
