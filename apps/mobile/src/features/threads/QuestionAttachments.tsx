@@ -119,7 +119,7 @@ export function QuestionAttachments(props: {
     props.question.id,
   );
   const attachments = drafts[key]?.attachments ?? [];
-  const pick = async (kind: "media" | "files") => {
+  const pick = async (kind: "media" | "camera" | "files") => {
     const scope = pickerScope.current;
     changeQuestionAttachmentPreparation(key, 1);
     try {
@@ -131,6 +131,7 @@ export function QuestionAttachments(props: {
               maxBytes: capabilities?.fileAttachments?.maxUploadBytes,
             })
           : await pickComposerMedia({
+              source: kind === "camera" ? "camera" : "library",
               existingCount,
               maxVideoBytes: capabilities?.fileAttachments?.maxUploadBytes,
             });
@@ -158,7 +159,7 @@ export function QuestionAttachments(props: {
         <ComposerAttachmentButton
           disabled={props.disabled}
           supportsFiles={Boolean(capabilities?.fileAttachments)}
-          onPickMedia={() => pick("media")}
+          onPickMedia={(source) => pick(source === "camera" ? "camera" : "media")}
           onPickFiles={() => pick("files")}
         />
       ) : null}
