@@ -23,11 +23,19 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
   const [open, setOpen] = useState(false);
   const route = state.routes[state.index];
   const params = route?.params as { environmentId?: EnvironmentId; threadId?: string } | undefined;
-  const available = environments.filter((entry) => entry.connection.phase === "connected");
-  const environmentId = selected ?? params?.environmentId ?? available[0]?.environmentId;
-  const environment = available.find((entry) => entry.environmentId === environmentId);
+  // Voice is app-wide: any connected environment with voice turned on can host the session,
+  // so an environment without it (the open thread's, or the first in the list) must not hide it.
+  const available = environments.filter(
+    (entry) =>
+      entry.connection.phase === "connected" &&
+      (entry.serverConfig?.settings.voiceConnection.enabled ?? false),
+  );
+  const environment =
+    available.find((entry) => entry.environmentId === (selected ?? params?.environmentId)) ??
+    (selected === null ? available[0] : undefined);
+  const environmentId = environment?.environmentId;
   const insets = useSafeAreaInsets();
-  const enabled = environment?.serverConfig?.settings.voiceConnection.enabled ?? false;
+  const enabled = environment !== undefined;
   if (!enabled && (selected !== null || open)) {
     setSelected(null);
     setOpen(false);
