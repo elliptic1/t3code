@@ -6,10 +6,14 @@ import {
   type AttachmentDeleteInput,
   type EnvironmentId,
 } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
+  createEnvironmentCommand,
   createEnvironmentRpcCommand,
   executeAtomQuery,
   runAtomCommand,
@@ -33,6 +37,15 @@ export function createAttachmentEnvironmentAtoms<R, E>(
     remove: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:attachments:delete",
       tag: WS_METHODS.attachmentsDelete,
+    }),
+    // Uploads run imperatively and must read the supervisor, not a possibly
+    // unmounted UI projection of the connection.
+    readPreparedConnection: createEnvironmentCommand(runtime, {
+      label: "environment-command:attachments:read-prepared-connection",
+      execute: (_input: void) =>
+        EnvironmentSupervisor.pipe(
+          Effect.flatMap((supervisor) => SubscriptionRef.get(supervisor.prepared)),
+        ),
     }),
   };
 }
@@ -156,7 +169,7 @@ export async function runAttachmentUploadCycle<E, RE>(input: {
   readonly remove: AttachmentRemoveCommand<RE>;
   readonly environmentId: EnvironmentId;
   readonly upload: AttachmentCreateUploadUrlInput;
-  readonly resolveUploadUrl: (relativeUrl: string) => string | null;
+  readonly resolveUploadUrl: (relativeUrl: string) => string | null | Promise<string | null>;
   readonly transport: (url: string) => AttachmentByteUpload;
   /** Observe the minted id (for cancellation bookkeeping) before bytes move. */
   readonly onMinted?: (attachmentId: string) => "continue" | "cancel";
@@ -187,7 +200,13 @@ export async function runAttachmentUploadCycle<E, RE>(input: {
     return { status: "cancelled", attachmentId };
   }
 
-  const url = input.resolveUploadUrl(minted.value.relativeUrl);
+  let url: string | null;
+  try {
+    const resolved = input.resolveUploadUrl(minted.value.relativeUrl);
+    url = typeof resolved === "string" || resolved === null ? resolved : await resolved;
+  } catch (error) {
+    return { status: "failed", step: "resolve-url", attachmentId, error };
+  }
   if (!url) {
     return {
       status: "failed",
