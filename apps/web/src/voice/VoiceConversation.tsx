@@ -10,11 +10,11 @@ import { readThreadShell, useActiveEnvironmentId, useThreadShells } from "../sta
 import { usePrimaryEnvironmentId, useEnvironment } from "../state/environments";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "../components/ui/button";
-import { T3Wordmark } from "../components/T3Wordmark";
 import { useEnvironmentSettings } from "../hooks/useSettings";
 import { createVoiceActions, createVoiceSessionCommand, voiceResult } from "./actions";
 import { createBrowserSpeech } from "./browserSpeech";
 import { connectVoice, type VoiceConnection } from "./connection";
+import { useVoiceConversationStore } from "./voiceConversationStore";
 
 export function VoiceConversation() {
   const activeId = useActiveEnvironmentId();
@@ -50,8 +50,10 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     abort: AbortController;
     connection?: VoiceConnection | undefined;
   } | null>(null);
-  const [open, setOpen] = useState(false);
-  const [running, setRunning] = useState(false);
+  const open = useVoiceConversationStore((state) => state.open);
+  const setOpen = useVoiceConversationStore((state) => state.setOpen);
+  const running = useVoiceConversationStore((state) => state.running);
+  const setRunning = useVoiceConversationStore((state) => state.setRunning);
   const [connected, setConnected] = useState(false);
   const [muted, setMuted] = useState(false);
   const [status, setStatus] = useState("Ready");
@@ -68,14 +70,16 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     setMuted(false);
     setStatus("Ended");
   };
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // The composer offers "Talk to T3" only while this session can take it.
+    useVoiceConversationStore.getState().setAvailable(true);
+    return () => {
       session.current?.abort.abort();
       session.current?.connection?.close();
       session.current = null;
-    },
-    [],
-  );
+      useVoiceConversationStore.getState().setAvailable(false);
+    };
+  }, []);
   useEffect(() => {
     const next = new Map<string, string>();
     for (const thread of shells) {
@@ -183,105 +187,88 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
       clearTimeout(timeout);
     }
   };
-  if (!environmentId) return null;
+  if (!environmentId || !open) return null;
   return (
-    <div className="fixed right-4 bottom-20 z-40 flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2">
-      {open ? (
-        <section
-          aria-label="Voice conversation"
-          className="w-80 rounded-xl border bg-popover p-4 text-popover-foreground shadow-lg"
+    // Opened from the composer's "Talk to T3" button; sits above the composer's Send row.
+    <section
+      aria-label="Voice conversation"
+      className="fixed right-4 bottom-36 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-4 text-popover-foreground shadow-lg"
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="font-medium">Talk to T3</h2>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Voice settings"
+          onClick={() => {
+            void navigate({ to: "/settings/integrations" });
+          }}
         >
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium">Talk to T3</h2>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Voice settings"
-              onClick={() => {
-                void navigate({ to: "/settings/integrations" });
-              }}
-            >
-              <Settings className="size-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {environment?.label ?? "Connected environment"}
-          </p>
-          <p role="status" className="my-2 text-sm">
-            {muted ? "Microphone muted" : status}
-          </p>
-          {error ? (
-            <p role="alert" className="mb-2 text-sm text-destructive">
-              {error} Voice setup is in Settings → Integrations.
-            </p>
-          ) : null}
-          {transcript.length ? (
-            <div
-              className="mb-3 max-h-52 overflow-y-auto text-sm"
-              aria-label="Conversation transcript"
-            >
-              {transcript.map((line) => (
-                <p key={line.id} className="mb-2">
-                  <strong>{line.speaker}: </strong>
-                  {line.text}
-                </p>
-              ))}
-            </div>
-          ) : (
-            <p className="mb-3 text-xs text-muted-foreground">
-              Ask about your projects, start a thread, or tell an agent what to do.{" "}
-              {mode === "agent"
-                ? "Your browser transcribes your speech, and a coding agent answers from its own thread."
-                : "Your configured provider receives the audio and requested context."}
-            </p>
-          )}
-          <div className="flex gap-2">
-            {running ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    session.current?.connection?.mute(!muted);
-                    setMuted(!muted);
-                  }}
-                  disabled={!connected}
-                >
-                  {muted ? <Mic className="size-4" /> : <MicOff className="size-4" />}
-                  {muted ? "Unmute" : "Mute"}
-                </Button>
-                <Button size="sm" variant="destructive" onClick={stop}>
-                  <PhoneOff className="size-4" />
-                  End
-                </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => {
-                  void start();
-                }}
-              >
-                Start conversation
-              </Button>
-            )}
-            {!running ? (
-              <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-                Close
-              </Button>
-            ) : null}
-          </div>
-        </section>
+          <Settings className="size-4" />
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {environment?.label ?? "Connected environment"}
+      </p>
+      <p role="status" className="my-2 text-sm">
+        {muted ? "Microphone muted" : status}
+      </p>
+      {error ? (
+        <p role="alert" className="mb-2 text-sm text-destructive">
+          {error} Voice setup is in Settings → Integrations.
+        </p>
       ) : null}
-      <button
-        type="button"
-        className="flex size-12 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground shadow-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        aria-expanded={open}
-        aria-label={running ? "Show voice conversation" : "Talk to T3"}
-        onClick={() => setOpen(!open)}
-      >
-        <T3Wordmark aria-hidden="true" className="h-5 w-7" />
-      </button>
-    </div>
+      {transcript.length ? (
+        <div className="mb-3 max-h-52 overflow-y-auto text-sm" aria-label="Conversation transcript">
+          {transcript.map((line) => (
+            <p key={line.id} className="mb-2">
+              <strong>{line.speaker}: </strong>
+              {line.text}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Ask about your projects, start a thread, or tell an agent what to do.{" "}
+          {mode === "agent"
+            ? "Your browser transcribes your speech, and a coding agent answers from its own thread."
+            : "Your configured provider receives the audio and requested context."}
+        </p>
+      )}
+      <div className="flex gap-2">
+        {running ? (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                session.current?.connection?.mute(!muted);
+                setMuted(!muted);
+              }}
+              disabled={!connected}
+            >
+              {muted ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+              {muted ? "Unmute" : "Mute"}
+            </Button>
+            <Button size="sm" variant="destructive" onClick={stop}>
+              <PhoneOff className="size-4" />
+              End
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            onClick={() => {
+              void start();
+            }}
+          >
+            Start conversation
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          {running ? "Hide" : "Close"}
+        </Button>
+      </div>
+    </section>
   );
 }

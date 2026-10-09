@@ -170,7 +170,8 @@ and use **Attach again** or remove the missing file before sending.
 
 In **Settings → Integrations → Voice conversation**, select an OpenAI, Grok, or
 local/custom preset, configure its model and credentials, and enable **Talk to T3**.
-Use the app's microphone button to start a conversation. You can create projects,
+On web and desktop, open the conversation with the **Talk to T3** button beside the
+composer's microphone, then choose **Start conversation**. You can create projects,
 open or message threads, settle or unsettle them, archive or restore them, ask for
 progress, and interrupt an agent. New errors and requests for attention are announced
 while connected. Existing agent permissions still apply; approvals stay in the UI.

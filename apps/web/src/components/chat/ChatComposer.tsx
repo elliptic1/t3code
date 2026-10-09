@@ -1141,6 +1141,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { readEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { ComposerVoiceConversationButton } from "../../voice/ComposerVoiceConversationButton";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
@@ -1429,6 +1430,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           <TooltipPopup>Start dictation</TooltipPopup>
         </Tooltip>
       ) : null}
+      <ComposerVoiceConversationButton />
       <ComposerPrimaryActions
         compact={props.compact}
         canOperateThread={props.canOperateThread}
