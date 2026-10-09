@@ -1224,6 +1224,8 @@ export interface DesktopBridge {
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   /** Present when the desktop shell can perform an ordered plain-text paste. */
   pasteAsText?: () => Promise<void>;
+  /** Present only on macOS desktop; invokes system Dictation in the focused editor. */
+  startDictation?: () => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   onSnapShotEvent?: (listener: (event: DesktopSnapShotEvent) => void) => () => void;
   /**

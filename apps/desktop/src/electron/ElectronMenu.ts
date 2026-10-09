@@ -50,6 +50,7 @@ export class ElectronMenuOperationError extends Schema.TaggedError<ElectronMenuO
 export class ElectronMenu extends Context.Service<
   ElectronMenu,
   {
+    readonly startDictation: Effect.Effect<boolean>;
     readonly setApplicationMenu: (
       template: readonly Electron.MenuItemConstructorOptions[],
     ) => Effect.Effect<void>;
@@ -190,6 +191,11 @@ export const make = Effect.gen(function* () {
   };
 
   return ElectronMenu.of({
+    startDictation: Effect.sync(() => {
+      if (platform !== "darwin") return false;
+      Electron.Menu.sendActionToFirstResponder("startDictation:");
+      return true;
+    }),
     setApplicationMenu: (template) =>
       Effect.try({
         try: () => {

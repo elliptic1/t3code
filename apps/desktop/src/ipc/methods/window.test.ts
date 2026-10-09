@@ -22,6 +22,7 @@ vi.mock("electron", () => ({
 import * as DesktopBackendConfiguration from "../../backend/DesktopBackendConfiguration.ts";
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
+import * as ElectronMenu from "../../electron/ElectronMenu.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
@@ -29,6 +30,7 @@ import {
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
   pasteAsText,
+  startDictation,
   pickProjectFavicon,
   probeRemoteEditors,
 } from "./window.ts";
@@ -344,3 +346,36 @@ it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
       assert.include(editors, "webstorm");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+describe("startDictation", () => {
+  it.effect("requires the requesting main renderer to still own native focus", () => {
+    const start = vi.fn(() => true);
+    const isFocused = vi.fn(() => true);
+    const isDestroyed = vi.fn(() => false);
+    const window = {
+      webContents: { id: 42 },
+      isFocused,
+      isDestroyed,
+    } as unknown as Electron.BrowserWindow;
+    return Effect.gen(function* () {
+      focusedWebContents.mockReturnValue(window.webContents);
+      assert.isTrue(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 99 } }));
+      assert.isFalse(yield* startDictation.handler(undefined));
+      focusedWebContents.mockReturnValue({ id: 7 });
+      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      focusedWebContents.mockReturnValue(window.webContents);
+      isFocused.mockReturnValue(false);
+      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      isFocused.mockReturnValue(true);
+      isDestroyed.mockReturnValue(true);
+      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      assert.equal(start.mock.calls.length, 1);
+    }).pipe(
+      Effect.provide([
+        Layer.mock(ElectronWindow.ElectronWindow)({ main: Effect.succeedSome(window) }),
+        Layer.mock(ElectronMenu.ElectronMenu)({ startDictation: Effect.sync(start) }),
+      ]),
+    );
+  });
+});

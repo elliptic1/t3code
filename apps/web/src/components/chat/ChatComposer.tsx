@@ -1084,6 +1084,7 @@ import {
   BotIcon,
   CircleAlertIcon,
   PaperclipIcon,
+  MicIcon,
   PencilRulerIcon,
   PlayIcon,
   ShieldIcon,
@@ -1356,6 +1357,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
+  onStartDictation?: (() => void) | undefined;
+  dictationDisabled: boolean;
   canOperateThread: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   reserveContextWindowMeter: boolean;
@@ -1406,6 +1409,26 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         />
       ) : props.reserveContextWindowMeter ? (
         <ContextWindowMeterPlaceholder />
+      ) : null}
+      {props.onStartDictation ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={props.dictationDisabled}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={props.onStartDictation}
+                aria-label="Start dictation"
+              />
+            }
+          >
+            <MicIcon />
+          </TooltipTrigger>
+          <TooltipPopup>Start dictation</TooltipPopup>
+        </Tooltip>
       ) : null}
       <ComposerPrimaryActions
         compact={props.compact}
@@ -2447,6 +2470,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Refs
   // ------------------------------------------------------------------
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
+  const startDictation = useCallback(() => {
+    const editor = composerEditorRef.current;
+    const start = window.desktopBridge?.startDictation;
+    if (!editor || !start) return;
+    editor.focusPreservingSelection();
+    const reportFailure = () => {
+      toastManager.add({ type: "error", title: "Could not start dictation" });
+    };
+    void start().then((started) => {
+      if (!started) reportFailure();
+    }, reportFailure);
+  }, []);
+
   const pasteAsTextShortcutUntilRef = useRef(0);
   const pastedTextFileNamesRef = useRef<{ targetKey: string; names: Set<string> }>({
     targetKey: "",
@@ -7619,6 +7655,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     </>
                   ) : null}
                   <ComposerFooterPrimaryActions
+                    onStartDictation={
+                      window.desktopBridge?.startDictation ? startDictation : undefined
+                    }
+                    dictationDisabled={
+                      isConnecting ||
+                      isComposerApprovalState ||
+                      projectSelectionRequired ||
+                      isChoiceOnlyPendingQuestion ||
+                      activePendingIsResponding
+                    }
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
                     activeContextWindow={
