@@ -271,7 +271,7 @@ describe("system dictation", () => {
         );
       }).pipe(
         Effect.provide(
-          ElectronMenu.layer.pipe(Layer.provide(Layer.succeed(HostProcessPlatform, platform))),
+          ElectronMenu.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform))),
         ),
       ),
   );

@@ -295,6 +295,7 @@ import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isEditableFocused } from "../lib/editableFocus";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { endsWithYesNoQuestion } from "@t3tools/shared/yesNoQuestion";
 import { resolveChatShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
@@ -1812,6 +1813,9 @@ export default function ChatView(props: ChatViewProps) {
     const draft = store.getComposerDraft(composerDraftTarget);
     return draft ? composerDraftHasUserContent({ ...draft, prompt: "" }) : false;
   });
+  const composerPromptIsEmpty = useComposerDraftStore(
+    (store) => (store.getComposerDraft(composerDraftTarget)?.prompt ?? "").trim().length === 0,
+  );
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
@@ -8771,6 +8775,24 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  // One-tap answers when the agent's last message asks a yes/no question.
+  const lastTimelineMessage = timelineMessages.at(-1);
+  const offerYesNoReplies =
+    canOperateThread &&
+    isServerThread &&
+    !isWorking &&
+    activePendingApproval === null &&
+    activePendingUserInput === null &&
+    composerPromptIsEmpty &&
+    !composerHasNonPromptContent &&
+    lastTimelineMessage?.role === "assistant" &&
+    !lastTimelineMessage.streaming &&
+    endsWithYesNoQuestion(lastTimelineMessage.text);
+  const sendYesNoReply = (text: "Yes" | "No") => {
+    promptRef.current = text;
+    setComposerDraftPrompt(composerDraftTarget, text);
+    void onSend();
+  };
   const onSend = async (
     e?: { preventDefault: () => void },
     dispatchMode: ComposerDispatchMode = "auto",
@@ -11618,6 +11640,20 @@ export default function ChatView(props: ChatViewProps) {
                                   : null
                               }
                             />
+                          ) : null}
+                          {offerYesNoReplies ? (
+                            <div className="flex justify-end gap-2 px-1 pb-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => sendYesNoReply("No")}
+                              >
+                                No
+                              </Button>
+                              <Button size="sm" onClick={() => sendYesNoReply("Yes")}>
+                                Yes
+                              </Button>
+                            </div>
                           ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer

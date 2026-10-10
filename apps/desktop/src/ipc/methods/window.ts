@@ -362,17 +362,17 @@ export const startDictation = DesktopIpc.makeIpcMethod({
   handler: Effect.fn("desktop.ipc.window.startDictation")(function* (_input, event) {
     const electronWindow = yield* ElectronWindow.ElectronWindow;
     const window = yield* electronWindow.main;
-    // Native actions target the application's first responder, never a background window
-    // or the embedded browser that happened to take focus after the renderer request.
     if (
       event === undefined ||
       Option.isNone(window) ||
       window.value.isDestroyed() ||
       !window.value.isFocused() ||
-      window.value.webContents.id !== event.sender.id ||
-      Electron.webContents.getFocusedWebContents() !== window.value.webContents
+      window.value.webContents.id !== event.sender.id
     )
       return false;
+    // Native actions target the application's first responder. A preview `<webview>` keeps
+    // reporting focus after the composer takes it back, so claim it rather than check for it.
+    window.value.webContents.focus();
     const menu = yield* ElectronMenu.ElectronMenu;
     return yield* menu.startDictation;
   }),

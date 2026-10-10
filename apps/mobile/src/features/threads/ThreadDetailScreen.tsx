@@ -1,6 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
+import { YesNoReplies } from "./YesNoReplies";
+import { endsWithYesNoQuestion } from "@t3tools/shared/yesNoQuestion";
 import { useNavigation } from "@react-navigation/native";
 import type { WorktreeSetupCardProps } from "./worktree-setup-card";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
@@ -1041,6 +1043,22 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     ],
   );
 
+  const lastFeedMessage = selectedThreadFeed.findLast((entry) => entry.type === "message")?.message;
+  const offerYesNoReplies =
+    props.canOperateThread &&
+    !props.activeThreadBusy &&
+    props.selectedThreadQueueCount === 0 &&
+    props.queuedRunEdit === null &&
+    props.draftMessage.trim().length === 0 &&
+    props.draftAttachments.length === 0 &&
+    lastFeedMessage?.role === "assistant" &&
+    !lastFeedMessage.streaming &&
+    endsWithYesNoQuestion(lastFeedMessage.text);
+  const handleYesNoReply = (text: "Yes" | "No") => {
+    props.onChangeDraftMessage(text);
+    void handleSendMessage();
+  };
+
   const handleEditPendingMessage = useCallback(async (message: QueuedThreadMessage) => {
     try {
       if (
@@ -1419,6 +1437,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     </View>
                   ) : (
                     <>
+                      {offerYesNoReplies ? <YesNoReplies onReply={handleYesNoReply} /> : null}
                       <ThreadComposer
                         canOperateThread={props.canOperateThread}
                         reportedModelSelection={reportedModelSelection}

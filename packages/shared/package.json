@@ -307,6 +307,10 @@
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"
     },
+    "./yesNoQuestion": {
+      "types": "./src/yesNoQuestion.ts",
+      "import": "./src/yesNoQuestion.ts"
+    },
     "./nodeRuntime": {
       "types": "./src/nodeRuntime.ts",
       "import": "./src/nodeRuntime.ts"

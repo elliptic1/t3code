@@ -348,23 +348,23 @@ it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
 );
 
 describe("startDictation", () => {
-  it.effect("requires the requesting main renderer to still own native focus", () => {
+  it.effect("takes native focus for the requesting main renderer", () => {
     const start = vi.fn(() => true);
     const isFocused = vi.fn(() => true);
     const isDestroyed = vi.fn(() => false);
+    const focus = vi.fn();
     const window = {
-      webContents: { id: 42 },
+      webContents: { id: 42, focus },
       isFocused,
       isDestroyed,
     } as unknown as Electron.BrowserWindow;
     return Effect.gen(function* () {
-      focusedWebContents.mockReturnValue(window.webContents);
+      // A preview webview that still reports focus must not block dictation in the composer.
+      focusedWebContents.mockReturnValue({ id: 7 });
       assert.isTrue(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      assert.equal(focus.mock.calls.length, 1);
       assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 99 } }));
       assert.isFalse(yield* startDictation.handler(undefined));
-      focusedWebContents.mockReturnValue({ id: 7 });
-      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
-      focusedWebContents.mockReturnValue(window.webContents);
       isFocused.mockReturnValue(false);
       assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
       isFocused.mockReturnValue(true);
