@@ -727,6 +727,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "NSLocalNetworkUsageDescription",
         "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
       );
+      assert.propertyVal(
+        macInfo,
+        "NSMicrophoneUsageDescription",
+        "T3 Code uses your microphone for voice conversations with your configured voice provider.",
+      );
       for (const config of [linux, win]) {
         assert.deepStrictEqual(config.electronLanguages, DESKTOP_ELECTRON_LANGUAGES);
       }
