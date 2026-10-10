@@ -318,7 +318,12 @@ import {
   ProviderConsumeResetCreditResult,
 } from "./providerUsageLimits.ts";
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
-import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
+import {
+  StorageCleanupReport,
+  ServerSettings,
+  ServerSettingsError,
+  ServerSettingsPatch,
+} from "./settings.ts";
 import {
   ScheduledTaskDeleteInput,
   ScheduledTaskDeleteResult,
@@ -469,6 +474,8 @@ export const WS_METHODS = {
   serverCommitDesktopUpdate: "server.commitDesktopUpdate",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
+  serverRunStorageCleanup: "server.runStorageCleanup",
+  serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetSettings: "server.getSettings",
   serverCreateVoiceSession: "server.createVoiceSession",
   serverUpdateSettings: "server.updateSettings",
@@ -736,6 +743,18 @@ const WsServerCreateVoiceSessionRpc = Rpc.make(WS_METHODS.serverCreateVoiceSessi
   payload: Schema.Struct({}),
   success: VoiceSessionConnection,
   error: Schema.Union([VoiceSessionError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+const WsServerRunStorageCleanupRpc = Rpc.make(WS_METHODS.serverRunStorageCleanup, {
+  payload: Schema.Struct({}),
+  success: StorageCleanupReport,
+  error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+const WsServerGetStorageCleanupReportRpc = Rpc.make(WS_METHODS.serverGetStorageCleanupReport, {
+  payload: Schema.Struct({}),
+  success: Schema.NullOr(StorageCleanupReport),
+  stream: true,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsServerGetSettingsRpc = Rpc.make(WS_METHODS.serverGetSettings, {
@@ -1842,6 +1861,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpsertKeybindingRpc,
   WsServerRemoveKeybindingRpc,
   WsServerCreateVoiceSessionRpc,
+  WsServerRunStorageCleanupRpc,
+  WsServerGetStorageCleanupReportRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
   WsServerDiscoverSourceControlRpc,
