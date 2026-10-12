@@ -74,6 +74,8 @@ private const val KEY_TOKEN = "token"
 private const val KEY_LABEL = "label"
 private const val INPUT_RESULT_KEY = "t3_input_key"
 private const val PAIRING_PATH = "/t3code/pairing"
+// Data Layer URIs use the `wear` scheme; an empty host matches the item from any node.
+private val PAIRING_URI: Uri = Uri.Builder().scheme("wear").path(PAIRING_PATH).build()
 
 class MainActivity : ComponentActivity() {
     private var pairingLink: String? = null
@@ -175,8 +177,8 @@ private fun readPhonePairing(context: Context, onFound: (String, String, String)
             }
         }
     }
-    Wearable.getDataClient(context).addListener(listener, Uri.parse("wearable:///t3code/pairing"), DataClient.FILTER_PREFIX)
-    Wearable.getDataClient(context).getDataItems(Uri.parse("wearable:///t3code/pairing"))
+    Wearable.getDataClient(context).addListener(listener, PAIRING_URI, DataClient.FILTER_PREFIX)
+    Wearable.getDataClient(context).getDataItems(PAIRING_URI)
         .addOnSuccessListener { items ->
             for (item in items) {
                 val dm = DataMapItem.fromDataItem(item).dataMap
@@ -377,7 +379,6 @@ private fun ThreadScreen(
     var title by rememberSaveable { mutableStateOf("") }
     var items by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
     var status by remember { mutableStateOf(ThreadStatus.Idle) }
-    var settings by remember { mutableStateOf<TurnSettings?>(null) }
     var earlierCursor by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var draft by rememberSaveable { mutableStateOf<String?>(null) }
@@ -397,7 +398,6 @@ private fun ThreadScreen(
             title = d.title
             items = timeline(d.messages, d.activities)
             status = d.status
-            settings = d.settings
             earlierCursor = d.earlierCursor
             error = null
         } catch (e: Exception) {
@@ -410,14 +410,16 @@ private fun ThreadScreen(
     }, load = load)
 
     fun send(text: String) {
-        val s = settings ?: return
         sending = true
         scope.launch {
             try {
-                api.send(threadId, text, s)
+                api.send(threadId, text, busy = status == ThreadStatus.Working)
                 draft = null; status = ThreadStatus.Working; sending = false
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: SessionExpired) {
+                sending = false
+                onExpired()
             } catch (e: Exception) {
                 sending = false
                 error = "Not sent: ${e.message ?: "failed"}"

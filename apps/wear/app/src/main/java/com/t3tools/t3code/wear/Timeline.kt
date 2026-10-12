@@ -2,16 +2,14 @@ package com.t3tools.t3code.wear
 
 enum class ThreadStatus { NeedsYou, Working, Idle }
 
-fun threadStatus(
-    turnState: String?,
-    sessionStatus: String?,
-    activeTurnId: String?,
-    needsInput: Boolean,
-): ThreadStatus {
-    if (needsInput) return ThreadStatus.NeedsYou
-    val working = turnState == "running" ||
-        (sessionStatus == "running" && activeTurnId != null)
-    return if (working) ThreadStatus.Working else ThreadStatus.Idle
+// Run statuses of orchestration protocol 2 during which the agent is still doing work.
+private val WORKING_RUN_STATUSES = setOf("preparing", "queued", "starting", "running")
+
+/** `runStatus` is the thread's latest run status (or the shell's `status`), null when it never ran. */
+fun threadStatus(runStatus: String?, needsInput: Boolean): ThreadStatus = when {
+    needsInput || runStatus == "waiting" -> ThreadStatus.NeedsYou
+    runStatus in WORKING_RUN_STATUSES -> ThreadStatus.Working
+    else -> ThreadStatus.Idle
 }
 
 data class ThreadRow(

@@ -22,36 +22,35 @@ class T3WearDataLayerModule : Module() {
   private val dataClient: DataClient
     get() = Wearable.getDataClient(context)
 
+  // Data Layer URIs use the `wear` scheme; an empty host means this node for deletes.
+  private val pairingUri: android.net.Uri =
+    android.net.Uri.Builder().scheme("wear").path(PATH_PAIRING).build()
+
   override fun definition() = ModuleDefinition {
     Name("T3WearDataLayer")
 
     // Write (or update) the pairing on the Data Layer so the watch can read it.
-    AsyncFunction("setPairing") { baseUrl: String, accessToken: String ->
+    AsyncFunction("setPairing") { baseUrl: String, accessToken: String, promise: expo.modules.kotlin.Promise ->
       val putReq = PutDataMapRequest.create(PATH_PAIRING).apply {
         dataMap.putString(KEY_BASE_URL, baseUrl)
         dataMap.putString(KEY_ACCESS_TOKEN, accessToken)
       }
-      // awaitCompletion ensures the write has synced to connected nodes before resolving.
-      dataClient.putDataItem(putReq.asPutDataRequest())
-        .addOnSuccessListener { }
-        .addOnFailureListener { error(it) }
+      // Urgent: the default lets Play services batch the sync for up to half an hour.
+      dataClient.putDataItem(putReq.asPutDataRequest().setUrgent())
+        .addOnSuccessListener { promise.resolve(null) }
+        .addOnFailureListener { promise.reject("WEAR_WRITE_FAILED", it.message, it) }
     }
 
     // Remove the pairing from the Data Layer (on unpair/sign-out).
-    AsyncFunction("clearPairing") {
-      dataClient.getDataItems()
-        .addOnSuccessListener { items ->
-          for (item in items) {
-            if (item.uri.path == PATH_PAIRING) {
-              dataClient.deleteDataItems(item.uri)
-            }
-          }
-        }
+    AsyncFunction("clearPairing") { promise: expo.modules.kotlin.Promise ->
+      dataClient.deleteDataItems(pairingUri)
+        .addOnSuccessListener { promise.resolve(null) }
+        .addOnFailureListener { promise.reject("WEAR_CLEAR_FAILED", it.message, it) }
     }
 
     // Read the currently mirrored pairing (used for diagnostics/verification).
     AsyncFunction("getPairing") { promise: expo.modules.kotlin.Promise ->
-      dataClient.getDataItems(android.net.Uri.parse(URI_PAIRING))
+      dataClient.getDataItems(pairingUri)
         .addOnSuccessListener { items ->
           val item = items.firstOrNull() ?: run { promise.resolve(null); return@addOnSuccessListener }
           val dm = DataMapItem.fromDataItem(item).dataMap
@@ -68,7 +67,6 @@ class T3WearDataLayerModule : Module() {
 
   private companion object {
     const val PATH_PAIRING = "/t3code/pairing"
-    const val URI_PAIRING = "wearable:///t3code/pairing"
     const val KEY_BASE_URL = "baseUrl"
     const val KEY_ACCESS_TOKEN = "accessToken"
   }

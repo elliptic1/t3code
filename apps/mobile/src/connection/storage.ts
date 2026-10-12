@@ -10,7 +10,6 @@ import {
 } from "@t3tools/client-runtime/platform";
 import { TokenStore } from "@t3tools/client-runtime/authorization";
 import {
-  type ConnectionRegistration,
   ConnectionTransientError,
   CredentialStore,
   ProfileStore,
@@ -68,22 +67,32 @@ export const layer = Layer.effectContext(
         Effect.mapError((error) => targetPersistenceError("list-disabled-targets", error)),
       ),
     });
-    // Mirrors the phone's pairing to the paired Wear OS watch so the watch app signs in on its own.
-    function mirrorToWear(registration: ConnectionRegistration) {
-      if (T3WearDataLayer && registration._tag === "BearerConnectionRegistration") {
-        T3WearDataLayer.setPairing(
-          registration.profile.httpBaseUrl,
-          registration.credential.token,
-        ).catch(() => {});
-      }
-    }
+    // Keeps the paired Wear OS watch signed in to the first saved token connection, so the
+    // watch app pairs on its own. Runs at startup too: pairings saved before this existed
+    // (or before the watch app was installed) still need to reach the watch.
+    const syncWear = catalog.read.pipe(
+      Effect.map((document) => {
+        if (!T3WearDataLayer) return;
+        for (const profile of document.profiles) {
+          if (profile._tag !== "BearerConnectionProfile") continue;
+          const token = document.credentials.find(
+            (entry) => entry.connectionId === profile.connectionId,
+          )?.credential.token;
+          if (token)
+            return void T3WearDataLayer.setPairing(profile.httpBaseUrl, token).catch(() => {});
+        }
+        void T3WearDataLayer.clearPairing().catch(() => {});
+      }),
+      Effect.ignore,
+    );
+    yield* syncWear;
 
     const registrationStore = Persistence.ConnectionRegistrationStore.of({
       register: (registration, routes) =>
         catalog
           .update((document) => registerConnectionInCatalog(document, registration, routes))
           .pipe(
-            Effect.tap(() => Effect.sync(() => mirrorToWear(registration))),
+            Effect.tap(() => syncWear),
             Effect.mapError((error) => targetPersistenceError("register-connection", error)),
           ),
       setRoutes: (environmentId, routes) =>
@@ -94,7 +103,7 @@ export const layer = Layer.effectContext(
         catalog
           .update((document) => removeConnectionFromCatalog(document, environmentId))
           .pipe(
-            Effect.tap(() => Effect.sync(() => T3WearDataLayer?.clearPairing().catch(() => {}))),
+            Effect.tap(() => syncWear),
             Effect.mapError((error) => targetPersistenceError("remove-connection", error)),
           ),
       setEnabled: (environmentId, enabled) =>
