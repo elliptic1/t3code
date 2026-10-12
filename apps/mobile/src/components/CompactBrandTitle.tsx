@@ -27,7 +27,7 @@ export function CompactBrandTitle(
   } = {},
 ) {
   const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
-  const buildLabel = formatMobileBuildLabel(Constants.expoConfig?.extra?.buildDate);
+  const buildLabel = formatMobileBuildLabel(Constants.expoConfig?.extra?.buildTimestamp);
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
 
