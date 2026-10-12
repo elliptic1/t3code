@@ -9,6 +9,12 @@ const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
+// Local-calendar build day, shown under the brand title so a fork build is recognisable.
+// Development builds only: `extra` feeds the fingerprint, which must stay stable elsewhere.
+const BUILD_DATE =
+  APP_VARIANT === "development"
+    ? new Date().toLocaleDateString("en-CA") // YYYY-MM-DD in the build machine's timezone
+    : null;
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
@@ -501,6 +507,7 @@ const config: ExpoConfig = {
   ],
   extra: {
     appVariant: APP_VARIANT,
+    buildDate: BUILD_DATE,
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
