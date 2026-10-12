@@ -68,10 +68,12 @@ import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
 
-private const val PREFS = "t3wear"
-private const val KEY_BASE = "baseUrl"
-private const val KEY_TOKEN = "token"
-private const val KEY_LABEL = "label"
+internal const val PREFS = "t3wear"
+internal const val KEY_BASE = "baseUrl"
+internal const val KEY_TOKEN = "token"
+internal const val KEY_LABEL = "label"
+// Set by the complication tap to open that thread straight away.
+internal const val EXTRA_THREAD_ID = "threadId"
 private const val INPUT_RESULT_KEY = "t3_input_key"
 private const val PAIRING_PATH = "/t3code/pairing"
 // Data Layer URIs use the `wear` scheme; an empty host matches the item from any node.
@@ -79,26 +81,29 @@ private val PAIRING_URI: Uri = Uri.Builder().scheme("wear").path(PAIRING_PATH).b
 
 class MainActivity : ComponentActivity() {
     private var pairingLink: String? = null
+    private var openThreadId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pairingLink = intent.dataString
+        openThreadId = intent.getStringExtra(EXTRA_THREAD_ID)
         setContent {
             MaterialTheme {
-                WearApp(getSharedPreferences(PREFS, Context.MODE_PRIVATE), pairingLink)
+                WearApp(getSharedPreferences(PREFS, Context.MODE_PRIVATE), pairingLink, openThreadId)
             }
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        pairingLink = intent.dataString
+        // recreate() re-reads the activity's own intent, which is still the launching one.
+        setIntent(intent)
         recreate()
     }
 }
 
 @Composable
-private fun WearApp(prefs: SharedPreferences, pairingLink: String?) {
+private fun WearApp(prefs: SharedPreferences, pairingLink: String?, openThreadId: String?) {
     var baseUrl by rememberSaveable { mutableStateOf(prefs.getString(KEY_BASE, null)) }
     var token by rememberSaveable { mutableStateOf(prefs.getString(KEY_TOKEN, null)) }
     var label by rememberSaveable { mutableStateOf(prefs.getString(KEY_LABEL, null)) }
@@ -140,6 +145,9 @@ private fun WearApp(prefs: SharedPreferences, pairingLink: String?) {
             )
         } else {
             val nav = rememberSwipeDismissableNavController()
+            LaunchedEffect(openThreadId) {
+                if (openThreadId != null) nav.navigate("thread/${URLEncoder.encode(openThreadId, "UTF-8")}")
+            }
             SwipeDismissableNavHost(navController = nav, startDestination = "sessions") {
                 composable("sessions") {
                     SessionsScreen(
@@ -299,9 +307,19 @@ private fun SessionsScreen(
     var refreshKey by remember { mutableIntStateOf(0) }
     var confirmUnpair by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    var pushedCount by rememberSaveable { mutableIntStateOf(-1) }
+
     val load: suspend () -> Unit = {
         try {
-            rows = api.threads(); error = null
+            val loaded = api.threads()
+            rows = loaded; error = null
+            // Complications refresh every few minutes; this makes a change show up right away.
+            val waiting = attention(loaded).count
+            if (waiting != pushedCount) {
+                pushedCount = waiting
+                requestAttentionComplicationUpdate(context)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

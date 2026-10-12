@@ -23,6 +23,14 @@ data class ThreadRow(
 fun sortRows(rows: List<ThreadRow>): List<ThreadRow> =
     rows.sortedByDescending { it.lastActivityAt }
 
+/** Threads waiting on the user: how many, and the most recently active one. */
+data class Attention(val count: Int, val first: ThreadRow?)
+
+fun attention(rows: List<ThreadRow>): Attention {
+    val waiting = sortRows(rows.filter { it.status == ThreadStatus.NeedsYou })
+    return Attention(waiting.size, waiting.firstOrNull())
+}
+
 data class Activity(val id: String, val summary: String, val createdAt: String)
 
 sealed interface ChatItem {

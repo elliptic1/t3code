@@ -76,6 +76,21 @@ class TimelineTest {
     }
 
     @Test
+    fun attentionCountsOnlyThreadsWaitingOnYou() {
+        val rows = listOf(
+            ThreadRow("a", "A", "p", ThreadStatus.NeedsYou, "2026-01-02T00:00:00Z"),
+            ThreadRow("b", "B", "p", ThreadStatus.Working, "2026-01-05T00:00:00Z"),
+            ThreadRow("c", "C", "p", ThreadStatus.NeedsYou, "2026-01-03T00:00:00Z"),
+            ThreadRow("d", "D", "p", ThreadStatus.Idle, "2026-01-04T00:00:00Z"),
+        )
+        val result = attention(rows)
+        assertEquals(2, result.count)
+        assertEquals("c", result.first?.id)
+        assertEquals(0, attention(rows.filter { it.status != ThreadStatus.NeedsYou }).count)
+        assertEquals(null, attention(emptyList()).first)
+    }
+
+    @Test
     fun sortRowsNewestFirst() {
         val rows = listOf(
             ThreadRow("a", "A", "p", ThreadStatus.Idle, "2026-01-02T00:00:00Z"),
