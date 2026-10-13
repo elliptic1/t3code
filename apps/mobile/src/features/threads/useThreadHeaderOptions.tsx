@@ -16,6 +16,8 @@ type NativeHeaderItems = ReadonlyArray<Record<string, unknown>>;
 
 export function useThreadHeaderOptions(props: {
   readonly title: string;
+  readonly settled?: boolean;
+  readonly onToggleSettled?: () => void;
   readonly subtitle: string;
   readonly headerColor: string;
   readonly usesNativeHeaderGlass: boolean;
@@ -139,6 +141,35 @@ export function useThreadHeaderOptions(props: {
     [navigation, threadCenterHeaderItems, layout.usesSplitView, panes.primarySidebarVisible],
   );
 
+  const threadActionItems = useMemo<NativeHeaderItems>(
+    () =>
+      props.onToggleSettled
+        ? [
+            withNativeGlassHeaderItem({
+              type: "menu" as const,
+              identifier: "thread-right-actions",
+              accessibilityLabel: "Thread actions",
+              icon: { name: "ellipsis", type: "sfSymbol" as const },
+              menu: {
+                title: "Thread actions",
+                items: [
+                  {
+                    type: "action" as const,
+                    label: props.settled ? "Move out of settled" : "Settle thread",
+                    icon: {
+                      name: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
+                      type: "sfSymbol" as const,
+                    },
+                    onPress: props.onToggleSettled,
+                  },
+                ],
+              },
+            }),
+          ]
+        : [],
+    [props.settled, props.onToggleSettled],
+  );
+
   const options: AppNativeStackNavigationOptions = {
     headerShown: true,
     headerTitle: props.title,
@@ -161,12 +192,14 @@ export function useThreadHeaderOptions(props: {
     // Search lives in the persistent sidebar, so the split header keeps
     // the git controls on the RIGHT (no center items — center space is
     // reserved for future breadcrumbs/status).
-    unstable_headerRightItems: () =>
-      usesDuoHeader
+    unstable_headerRightItems: () => [
+      ...(usesDuoHeader
         ? duoRightHeaderItems
         : layout.usesSplitView
           ? threadCenterHeaderItems
-          : compactRightHeaderItems,
+          : compactRightHeaderItems),
+      ...threadActionItems,
+    ],
     unstable_headerToolbarItems: () => [],
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
@@ -183,6 +216,7 @@ export function useThreadHeaderOptions(props: {
       threadCenterHeaderItems,
       compactRightHeaderItems,
       duoRightHeaderItems,
+      threadActionItems,
       usesDuoHeader,
       environmentId,
       threadId,

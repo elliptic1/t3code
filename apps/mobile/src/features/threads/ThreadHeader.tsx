@@ -59,8 +59,17 @@ export function ThreadHeader(
         onPress: onMergeBack,
       });
     }
+    if (props.onToggleSettled) {
+      actions.push({
+        accessibilityLabel: props.settled ? "Move out of settled" : "Settle thread",
+        icon: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
+        onPress: props.onToggleSettled,
+      });
+    }
     return actions;
   }, [
+    props.settled,
+    props.onToggleSettled,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
