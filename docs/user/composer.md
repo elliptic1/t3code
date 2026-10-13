@@ -176,6 +176,8 @@ open or message threads, settle or unsettle them, archive or restore them, ask f
 progress, and interrupt an agent. New errors and requests for attention are announced
 while connected. Existing agent permissions still apply; approvals stay in the UI.
 
+Ask the voice assistant to remember a role or preference, such as “Act as the COO of my company.” She saves it for future sessions in the connected environment. You can ask her to change or forget it, or review and edit **Saved instructions** in Voice conversation settings. These instructions are shared across devices connected to that environment.
+
 A conversation controls the environment shown in its panel. On web and desktop,
 switching environments ends it; on mobile, end the conversation before switching.
 Mute pauses microphone input; **End** closes the connection and releases the microphone.

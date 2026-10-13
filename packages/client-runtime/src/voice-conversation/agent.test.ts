@@ -8,7 +8,11 @@ import {
 import type { VoiceAction } from "./tools.ts";
 
 /** A fake application: one thread whose agent answers each sent message. */
-function harness(options: { existingThread?: boolean; utterances: string[] }) {
+function harness(options: {
+  existingThread?: boolean;
+  utterances: string[];
+  instructions?: string;
+}) {
   const abort = new AbortController();
   const messages: Array<{ role: string; text: string }> = [];
   const spoken: string[] = [];
@@ -17,6 +21,8 @@ function harness(options: { existingThread?: boolean; utterances: string[] }) {
   const execute = vi.fn(async (action: VoiceAction): Promise<unknown> => {
     actions.push(action);
     switch (action.action) {
+      case "get_voice_settings":
+        return { instructions: options.instructions ?? "" };
       case "list_threads":
         return {
           active: options.existingThread
@@ -76,6 +82,18 @@ function harness(options: { existingThread?: boolean; utterances: string[] }) {
 }
 
 describe("voice agent conversation", () => {
+  it("loads saved preferences when restarting an existing voice thread", async () => {
+    const run = harness({
+      existingThread: true,
+      utterances: ["Hello"],
+      instructions: "Act as my COO.",
+    });
+    await run.finished;
+    expect(run.errors).toEqual([]);
+    const sent = run.actions.find((action) => action.action === "send_message");
+    expect(sent?.action === "send_message" && sent.message).toContain("Act as my COO.");
+    expect(run.actions.some((action) => action.action === "create_thread")).toBe(false);
+  });
   it("creates its thread in the focused project and speaks only the agent's final reply", async () => {
     const run = harness({ utterances: ["start a thread", "", "settle it"] });
     await run.finished;

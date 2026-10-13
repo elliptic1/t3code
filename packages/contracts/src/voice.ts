@@ -58,6 +58,7 @@ export const VOICE_CONNECTION_PRESETS = {
 } as const satisfies Record<string, VoiceConnectionSettings>;
 
 export const VoiceSessionConnection = Schema.Struct({
+  instructions: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   protocol: VoiceConnectionSettings.fields.protocol,
   transport: VoiceConnectionSettings.fields.transport,
   endpoint: Schema.String,

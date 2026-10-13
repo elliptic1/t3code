@@ -2,6 +2,35 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { createVoiceToolRunner } from "./tools.ts";
 
 describe("voice tool dispatch", () => {
+  it("can save and clear preferences, and rejects oversized instructions", async () => {
+    const execute = vi.fn(async () => ({}));
+    const run = createVoiceToolRunner(execute);
+    for (const [call_id, instructions] of [
+      ["save", "Act as my COO."],
+      ["clear", ""],
+    ]) {
+      expect(
+        JSON.parse(
+          await run({
+            call_id: call_id!,
+            name: "update_voice_settings",
+            arguments: JSON.stringify({ instructions }),
+          }),
+        ).ok,
+      ).toBe(true);
+      expect(execute).toHaveBeenLastCalledWith({ action: "update_voice_settings", instructions });
+    }
+    const output = JSON.parse(
+      await run({
+        call_id: "large",
+        name: "update_voice_settings",
+        arguments: JSON.stringify({ instructions: "x".repeat(16001) }),
+      }),
+    );
+    expect(output.ok).toBe(false);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
   it("executes a duplicated mutation once, even while the first call is pending", async () => {
     let finish!: (value: unknown) => void;
     const execute = vi.fn(

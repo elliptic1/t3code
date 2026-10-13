@@ -99,6 +99,32 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
   });
 
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it.effect(
+    "persists, reloads, and clears saved voice instructions without changing the connection",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const service = yield* ServerSettingsModule.ServerSettingsService;
+        const before = yield* service.getSettings;
+        assert.equal(before.voiceInstructions, "");
+        yield* service.updateSettings({ voiceInstructions: "Act as my company's COO." });
+        const persisted = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.equal(persisted.voiceInstructions, "Act as my company's COO.");
+        assert.deepEqual(persisted.voiceConnection, before.voiceConnection);
+        const reloaded = yield* service.getSettings;
+        assert.equal(reloaded.voiceInstructions, persisted.voiceInstructions);
+        yield* service.updateSettings({ voiceInstructions: "" });
+        const cleared = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.equal(cleared.voiceInstructions, "");
+        assert.deepEqual(cleared.voiceConnection, before.voiceConnection);
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("serializes concurrent model preference edits without cancelling duplicate adds", () =>
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;

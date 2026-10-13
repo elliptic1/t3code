@@ -2400,7 +2400,9 @@ const layerWsRpc = (
           }),
         [WS_METHODS.serverCreateVoiceSession]: () =>
           serverSettings.getSettings.pipe(
-            Effect.flatMap((settings) => createVoiceSession(settings.voiceConnection)),
+            Effect.flatMap((settings) =>
+              createVoiceSession(settings.voiceConnection, fetch, settings.voiceInstructions),
+            ),
           ),
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,

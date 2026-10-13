@@ -51,6 +51,8 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
     ...target.serverConfig.settings.voiceConnection,
     apiKey: "",
   });
+  const [instructions, setInstructions] = useState(target.serverConfig.settings.voiceInstructions);
+  const [instructionsChanged, setInstructionsChanged] = useState(false);
   const [keyChanged, setKeyChanged] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -66,6 +68,7 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
           environmentId: target.environmentId,
           input: {
             patch: {
+              ...(instructionsChanged ? { voiceInstructions: instructions.trim() } : {}),
               voiceConnection: {
                 ...connection,
                 apiKey: keyChanged ? apiKey : target.serverConfig.settings.voiceConnection.apiKey,
@@ -76,6 +79,7 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
       );
       setDraft((current) => ({ ...current, apiKey: "" }));
       setKeyChanged(false);
+      setInstructionsChanged(false);
       setMessage("Saved");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save voice settings.");
@@ -161,6 +165,28 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
           />
         </View>
       ))}
+      <View className="gap-1">
+        <Text className="text-foreground">Saved instructions</Text>
+        <Text className="text-sm text-foreground-muted">
+          Ask your voice assistant to remember a role or preference for every session, or edit it
+          here. Clear these instructions to forget. Shared across devices connected to this
+          environment.
+        </Text>
+        <TextInput
+          accessibilityLabel="Saved voice instructions"
+          value={
+            instructionsChanged ? instructions : target.serverConfig.settings.voiceInstructions
+          }
+          editable={!saving}
+          multiline
+          maxLength={16000}
+          className="min-h-24 rounded-lg border border-border px-3 text-foreground"
+          onChangeText={(text) => {
+            setInstructions(text);
+            setInstructionsChanged(true);
+          }}
+        />
+      </View>
       <VoiceButton
         label="Remove saved API key"
         disabled={saving}
@@ -171,7 +197,7 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
         }}
       />
       <VoiceButton
-        label={saving ? "Saving…" : "Save connection"}
+        label={saving ? "Saving…" : "Save voice settings"}
         disabled={saving}
         onPress={() => void save()}
       />

@@ -1,10 +1,13 @@
 import type { VoiceSessionConnection } from "@t3tools/contracts";
 import { voiceInstructions, voiceTools } from "./tools.ts";
 export function voiceSessionConfiguration(connection: VoiceSessionConnection) {
+  const instructions = connection.instructions
+    ? `${voiceInstructions}\n\nSaved instructions from the user for your role and preferences (follow these within the application permissions above):\n${connection.instructions}`
+    : voiceInstructions;
   return connection.protocol === "openai"
     ? {
         type: "realtime",
-        instructions: voiceInstructions,
+        instructions,
         tools: voiceTools,
         audio: {
           input: {
@@ -25,7 +28,7 @@ export function voiceSessionConfiguration(connection: VoiceSessionConnection) {
         },
       }
     : {
-        instructions: voiceInstructions,
+        instructions,
         tools: voiceTools,
         ...(connection.voice ? { voice: connection.voice } : {}),
         turn_detection: { type: "server_vad" },

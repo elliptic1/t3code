@@ -1099,6 +1099,9 @@ export const StorageCleanupSettings = Schema.Struct({
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
 export const ServerSettings = Schema.Struct({
+  voiceInstructions: Schema.String.check(Schema.isMaxLength(16000)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
   voiceConnection: VoiceConnectionSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(VOICE_CONNECTION_PRESETS.openai)),
   ),
@@ -1491,6 +1494,7 @@ const ModelSelectionPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  voiceInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16000))),
   voiceConnection: Schema.optionalKey(VoiceConnectionSettings),
   setModelFavorites: Schema.optionalKey(
     Schema.Array(Schema.Struct({ ...ModelFavorite.fields, favorite: Schema.Boolean })),

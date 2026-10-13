@@ -86,6 +86,21 @@ export function createVoiceActionBindings<R, ER>(deps: {
     return async (action: VoiceAction): Promise<unknown> => {
       const projects = readProjects().filter((project) => project.environmentId === environmentId);
       switch (action.action) {
+        case "get_voice_settings": {
+          const settings = appAtomRegistry.get(serverEnvironment.settingsValueAtom(environmentId));
+          if (!settings) throw new Error("Environment settings are not loaded.");
+          return { instructions: settings.voiceInstructions };
+        }
+        case "update_voice_settings": {
+          const settings = voiceResult(
+            await runAtomCommand(appAtomRegistry, serverEnvironment.updateSettings, {
+              environmentId,
+              input: { patch: { voiceInstructions: action.instructions } },
+            }),
+          );
+          return { instructions: settings.voiceInstructions };
+        }
+
         case "get_context":
           return { environmentId, currentThreadId: focusedThread() };
         case "list_projects":
