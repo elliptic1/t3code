@@ -51,6 +51,7 @@ import { uuidv4 } from "../../lib/uuid";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useSelectedThreadDetailState } from "../../state/use-thread-detail";
 import { useThreadSelection } from "../../state/use-thread-selection";
+import { useThreadListActions } from "../home/useThreadListActions";
 import { GitActionProgressOverlay } from "./GitActionProgressOverlay";
 import {
   buildTerminalMenuSessions,
@@ -291,6 +292,19 @@ function ThreadRouteContent(
   );
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
+  const returnToList = useWorkspaceListNavigation("threads");
+  const { settleThread, unsettleThread } = useThreadListActions();
+  const threadSettled = selectedThread?.settledOverride === "settled";
+  const handleToggleSettled = useCallback(() => {
+    if (!selectedThread) return;
+    if (threadSettled) {
+      void unsettleThread(selectedThread);
+      return;
+    }
+    // Reveal the list before its existing dismissal animation settles the row.
+    returnToList();
+    void settleThread(selectedThread);
+  }, [returnToList, selectedThread, settleThread, threadSettled, unsettleThread]);
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composer = useThreadComposerState();
   const gitState = useSelectedThreadGitState();
@@ -1097,6 +1111,8 @@ function ThreadRouteContent(
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
         onReturnToThread={props.onReturnToThread}
+        settled={threadSettled}
+        onToggleSettled={canOperateThread ? handleToggleSettled : undefined}
       />
 
       {renderThreadRouteBody()}
