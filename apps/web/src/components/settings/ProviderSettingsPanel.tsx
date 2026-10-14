@@ -1247,6 +1247,7 @@ export function EnvironmentProviderSettings({
         sources={settings.usageLimitSources}
         cursorKeychainUsageEnabled={settings.cursorKeychainUsageEnabled}
         usageResetRemindersEnabled={settings.usageResetRemindersEnabled}
+        usageResetReminderNtfyUrl={settings.usageResetReminderNtfyUrl}
         readOnly={readOnly}
       />
 

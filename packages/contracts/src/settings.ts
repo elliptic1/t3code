@@ -1098,6 +1098,26 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+const UsageResetReminderNtfyUrl = TrimmedString.check(
+  Schema.makeFilter((value) => {
+    if (value === "") return true;
+    try {
+      const url = new URL(value);
+      return (
+        (["http:", "https:"].includes(url.protocol) &&
+          url.pathname !== "/" &&
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !url.hash) ||
+        "Enter an HTTP or HTTPS ntfy topic URL."
+      );
+    } catch {
+      return "Enter an HTTP or HTTPS ntfy topic URL.";
+    }
+  }),
+);
+
 export const ServerSettings = Schema.Struct({
   voiceInstructions: Schema.String.check(Schema.isMaxLength(16000)).pipe(
     Schema.withDecodingDefault(Effect.succeed("")),
@@ -1333,6 +1353,10 @@ export const ServerSettings = Schema.Struct({
   // this build cannot decode round-trip untouched, as provider instances do.
   usageLimitSources: Schema.Record(UsageLimitSourceId, UsageLimitSourceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  /** Optional direct ntfy topic; an empty URL uses T3 Connect delivery. */
+  usageResetReminderNtfyUrl: UsageResetReminderNtfyUrl.pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
   ),
   /** Sends phone reminders before short subscription allowances reset. */
   usageResetRemindersEnabled: Schema.Boolean.pipe(
@@ -1645,6 +1669,7 @@ export const ServerSettingsPatch = Schema.Struct({
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
   ),
+  usageResetReminderNtfyUrl: Schema.optionalKey(UsageResetReminderNtfyUrl),
   usageResetRemindersEnabled: Schema.optionalKey(Schema.Boolean),
   cursorKeychainUsageEnabled: Schema.optionalKey(Schema.Boolean),
   /** Each entry replaces one model's rates; `null` restores automatic pricing. */

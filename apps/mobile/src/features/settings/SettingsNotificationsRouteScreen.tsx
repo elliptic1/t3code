@@ -1,3 +1,4 @@
+import { MaterialButton } from "../../components/MaterialButton";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
@@ -11,10 +12,10 @@ import { useNavigation } from "@react-navigation/native";
 import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Alert, AppState, Linking, Platform } from "react-native";
+import { Alert, AppState, Linking, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppTextInput, AppText as Text } from "../../components/AppText";
 import {
   isAtomCommandInterrupted,
   reportAtomCommandResult,
@@ -533,24 +534,54 @@ function UsageResetReminderSetting({ environment }: { readonly environment: Sett
     label: "update usage reset reminders",
   });
   const [pending, setPending] = useState(false);
+  const [ntfyDraft, setNtfyDraft] = useState<string | null>(null);
   return (
-    <SettingsSwitchRow
-      icon="clock"
-      label={`Usage reset reminders · ${environment.label}`}
-      subtitle={
-        supportsUsageResetReminders()
-          ? "One hour before Claude or Codex resets, with usage and remaining allowance. Requires Device Notifications and a T3 Connect link."
-          : "Install a newer app build to receive usage reset reminders."
-      }
-      value={environment.serverConfig.settings.usageResetRemindersEnabled ?? false}
-      disabled={!permission || pending}
-      onValueChange={(enabled) => {
-        setPending(true);
-        void update({
-          environmentId: environment.environmentId,
-          input: { patch: { usageResetRemindersEnabled: enabled } },
-        }).finally(() => setPending(false));
-      }}
-    />
+    <>
+      <SettingsSwitchRow
+        icon="clock"
+        label={`Usage reset reminders · ${environment.label}`}
+        subtitle={
+          environment.serverConfig.settings.usageResetReminderNtfyUrl
+            ? "Sent to your ntfy topic before Claude or Codex resets. Subscribe in the ntfy app."
+            : supportsUsageResetReminders()
+              ? "Sent before Claude or Codex resets. Add an ntfy topic below, or enable Device Notifications with a T3 Connect link."
+              : "Add an ntfy topic below, or install a newer build for T3 Connect notifications."
+        }
+        value={environment.serverConfig.settings.usageResetRemindersEnabled ?? false}
+        disabled={!permission || pending}
+        onValueChange={(enabled) => {
+          setPending(true);
+          void update({
+            environmentId: environment.environmentId,
+            input: { patch: { usageResetRemindersEnabled: enabled } },
+          }).finally(() => setPending(false));
+        }}
+      />
+      <View className="gap-2 p-4">
+        <Text className="text-foreground">ntfy topic URL</Text>
+        <AppTextInput
+          accessibilityLabel={`ntfy topic URL for ${environment.label}`}
+          placeholder="https://ntfy.sh/your-topic"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          value={ntfyDraft ?? environment.serverConfig.settings.usageResetReminderNtfyUrl}
+          onChangeText={setNtfyDraft}
+          editable={permission && !pending}
+          className="min-h-11 rounded-lg border border-border px-3 text-foreground"
+        />
+        <MaterialButton
+          label="Save topic"
+          disabled={ntfyDraft === null || !permission || pending}
+          onPress={() => {
+            setPending(true);
+            void update({
+              environmentId: environment.environmentId,
+              input: { patch: { usageResetReminderNtfyUrl: (ntfyDraft ?? "").trim() } },
+            }).finally(() => setPending(false));
+          }}
+        />
+      </View>
+    </>
   );
 }

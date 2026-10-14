@@ -17,6 +17,7 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
+import { Input } from "../ui/input";
 import { AddUsageLimitSourceDialog } from "./AddUsageLimitSourceDialog";
 import { searchableSetting } from "./settingsSearch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
@@ -28,6 +29,7 @@ export function UsageProviderSettings({
   sources,
   cursorKeychainUsageEnabled,
   usageResetRemindersEnabled,
+  usageResetReminderNtfyUrl,
   readOnly,
 }: {
   readonly environmentId: EnvironmentId;
@@ -35,6 +37,7 @@ export function UsageProviderSettings({
   readonly sources: UnifiedSettings["usageLimitSources"];
   readonly cursorKeychainUsageEnabled: boolean;
   readonly usageResetRemindersEnabled: boolean;
+  readonly usageResetReminderNtfyUrl: string;
   readonly readOnly: boolean;
 }) {
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
@@ -49,6 +52,7 @@ export function UsageProviderSettings({
   const canUpdateReminders = useAtomValue(
     serverEnvironment.updateSettings.permissionAtom(environmentId),
   );
+  const [ntfyDraft, setNtfyDraft] = useState<string | null>(null);
   const [updatingReminders, setUpdatingReminders] = useState(false);
   const updateReminderSettings = useAtomCommand(serverEnvironment.updateSettings, {
     label: "update usage reset reminders",
@@ -87,7 +91,7 @@ export function UsageProviderSettings({
       >
         <SettingsRow
           title="Usage reset reminders"
-          description="Get a phone notification one hour before a Claude or Codex subscription window resets, showing usage and remaining allowance. Requires T3 Connect and Device Notifications."
+          description="Get a notification in the final hour before a Claude or Codex subscription window resets, showing usage and remaining allowance. Use your ntfy topic below, or T3 Connect with Device Notifications."
           control={
             <Switch
               aria-label="Usage reset reminders"
@@ -101,6 +105,42 @@ export function UsageProviderSettings({
                 }).finally(() => setUpdatingReminders(false));
               }}
             />
+          }
+        />
+        <SettingsRow
+          title="ntfy topic URL"
+          description="Subscribe to this topic in the ntfy app. Leave empty to use T3 Connect. Use an unguessable topic name on public servers."
+          control={
+            <div className="flex w-72 items-center gap-2">
+              <Input
+                aria-label="ntfy topic URL"
+                type="url"
+                placeholder="https://ntfy.sh/your-topic"
+                value={ntfyDraft ?? usageResetReminderNtfyUrl}
+                disabled={readOnly || !canUpdateReminders || updatingReminders}
+                onChange={(event) => setNtfyDraft(event.target.value)}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  ntfyDraft === null || readOnly || !canUpdateReminders || updatingReminders
+                }
+                onClick={() => {
+                  setUpdatingReminders(true);
+                  void updateReminderSettings({
+                    environmentId,
+                    input: {
+                      patch: {
+                        usageResetReminderNtfyUrl: (ntfyDraft ?? usageResetReminderNtfyUrl).trim(),
+                      },
+                    },
+                  }).finally(() => setUpdatingReminders(false));
+                }}
+              >
+                Save
+              </Button>
+            </div>
           }
         />
         {platform?.os === "darwin" ? (

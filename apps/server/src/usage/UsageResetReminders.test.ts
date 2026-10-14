@@ -9,6 +9,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import { FetchHttpClient } from "effect/http";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -113,67 +114,100 @@ describe("usage reset reminders", () => {
     ).toEqual([]);
   });
 
-  it.effect("sends once, persists across construction, and respects disabling", () =>
+  it.effect("does not acknowledge a failed ntfy publish", () =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const home = yield* fs.makeTempDirectoryScoped();
       const fetch = vi
         .spyOn(globalThis, "fetch")
-        .mockResolvedValue(
-          new Response('{"delivered":true}', { headers: { "content-type": "application/json" } }),
+        .mockResolvedValue(new Response("Unavailable", { status: 503 }));
+      const reminder = UsageResetReminders.dueUsageResetReminders([provider], 0)[0]!;
+      const result = yield* UsageResetReminders.publishNtfyUsageResetReminder(
+        "https://ntfy.test/topic",
+        reminder,
+        0,
+      ).pipe(Effect.provide(FetchHttpClient.layer), Effect.exit);
+      expect(result._tag).toBe("Failure");
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }),
+  );
+
+  it.effect.each(["relay", "ntfy"] as const)(
+    "sends once, persists, and respects disabling (%s)",
+    (transport) =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(0);
+        const fs = yield* FileSystem.FileSystem;
+        const home = yield* fs.makeTempDirectoryScoped();
+        const fetch = vi
+          .spyOn(globalThis, "fetch")
+          .mockResolvedValue(
+            new Response('{"delivered":true}', { headers: { "content-type": "application/json" } }),
+          );
+        let enabled = true;
+        const dependencies = Layer.mergeAll(
+          Layer.mock(Settings.ServerSettingsService, {
+            getSettings: Effect.sync(() => ({
+              ...DEFAULT_SERVER_SETTINGS,
+              usageResetRemindersEnabled: enabled,
+              usageResetReminderNtfyUrl: transport === "ntfy" ? "https://ntfy.test/topic" : "",
+            })),
+          }),
+          Layer.mock(ProviderRegistry.ProviderRegistry, {
+            getProviders: Effect.succeed([withWindow({ usedPercent: 90 })]),
+            refreshInstance: () => Effect.succeed([withWindow({ usedPercent: 90 })]),
+          }),
+          Layer.mock(ServerSecretStore.ServerSecretStore, {
+            get: (name) =>
+              Effect.succeed(
+                transport === "ntfy"
+                  ? Option.none()
+                  : Option.some(
+                      new TextEncoder().encode(
+                        name === RELAY_URL_SECRET ? "https://relay.test" : "test-credential",
+                      ),
+                    ),
+              ),
+          }),
+          Layer.mock(ServerEnvironment.ServerEnvironment, {
+            getEnvironmentId: Effect.succeed(EnvironmentId.make("test-environment")),
+          }),
+          ServerConfig.layerTest(process.cwd(), home),
         );
-      let enabled = true;
-      const dependencies = Layer.mergeAll(
-        Layer.mock(Settings.ServerSettingsService, {
-          getSettings: Effect.sync(() => ({
-            ...DEFAULT_SERVER_SETTINGS,
-            usageResetRemindersEnabled: enabled,
-          })),
-        }),
-        Layer.mock(ProviderRegistry.ProviderRegistry, {
-          getProviders: Effect.succeed([withWindow({ usedPercent: 90 })]),
-          refreshInstance: () => Effect.succeed([withWindow({ usedPercent: 90 })]),
-        }),
-        Layer.mock(ServerSecretStore.ServerSecretStore, {
-          get: (name) =>
-            Effect.succeed(
-              Option.some(
-                new TextEncoder().encode(
-                  name === RELAY_URL_SECRET ? "https://relay.test" : "test-credential",
-                ),
+        const layer = UsageResetReminders.layer.pipe(Layer.provide(dependencies));
+        const sweep = Effect.gen(function* () {
+          const service = yield* UsageResetReminders.UsageResetReminders;
+          yield* service.sweep;
+          yield* service.sweep;
+        });
+        yield* sweep.pipe(
+          Effect.provide(layer),
+          Effect.provideService(FetchHttpClient.Fetch, fetch),
+        );
+        expect(fetch).toHaveBeenCalledTimes(1);
+        yield* TestClock.adjust("1 minute");
+        yield* sweep.pipe(
+          Effect.provide(layer),
+          Effect.provideService(FetchHttpClient.Fetch, fetch),
+        );
+        expect(fetch).toHaveBeenCalledTimes(1);
+        enabled = false;
+        yield* sweep.pipe(
+          Effect.provide(layer),
+          Effect.provideService(FetchHttpClient.Fetch, fetch),
+        );
+        expect(fetch).toHaveBeenCalledTimes(1);
+        const config = yield* ServerConfig.ServerConfig.pipe(
+          Effect.provide(ServerConfig.layerTest(process.cwd(), home)),
+        );
+        const ledger = yield* fs
+          .readFileString(`${config.stateDir}/usage-reset-reminders.json`)
+          .pipe(
+            Effect.flatMap(
+              Schema.decodeEffect(
+                Schema.fromJsonString(Schema.Record(Schema.String, Schema.Number)),
               ),
             ),
-        }),
-        Layer.mock(ServerEnvironment.ServerEnvironment, {
-          getEnvironmentId: Effect.succeed(EnvironmentId.make("test-environment")),
-        }),
-        ServerConfig.layerTest(process.cwd(), home),
-      );
-      const layer = UsageResetReminders.layer.pipe(Layer.provide(dependencies));
-      const sweep = Effect.gen(function* () {
-        const service = yield* UsageResetReminders.UsageResetReminders;
-        yield* service.sweep;
-        yield* service.sweep;
-      });
-      yield* sweep.pipe(Effect.provide(layer));
-      expect(fetch).toHaveBeenCalledTimes(1);
-      yield* TestClock.adjust("1 minute");
-      yield* sweep.pipe(Effect.provide(layer));
-      expect(fetch).toHaveBeenCalledTimes(1);
-      enabled = false;
-      yield* sweep.pipe(Effect.provide(layer));
-      expect(fetch).toHaveBeenCalledTimes(1);
-      const config = yield* ServerConfig.ServerConfig.pipe(
-        Effect.provide(ServerConfig.layerTest(process.cwd(), home)),
-      );
-      const ledger = yield* fs
-        .readFileString(`${config.stateDir}/usage-reset-reminders.json`)
-        .pipe(
-          Effect.flatMap(
-            Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Number))),
-          ),
-        );
-      expect(Object.values(ledger)).toEqual([3_600_000]);
-    }).pipe(Effect.provide(NodeServices.layer)),
+          );
+        expect(Object.values(ledger)).toEqual([3_600_000]);
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

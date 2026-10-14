@@ -98,6 +98,29 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
     `;
   });
 
+it("private notification defaults enable ntfy for existing installs without a saved choice", () => {
+  const settings = ServerSettingsModule.applyUsageReminderBuildDefaults(
+    DEFAULT_SERVER_SETTINGS,
+    {},
+    "https://ntfy.mininews.app/T3Code",
+  );
+  assert.equal(settings.usageResetRemindersEnabled, true);
+  assert.equal(settings.usageResetReminderNtfyUrl, "https://ntfy.mininews.app/T3Code");
+});
+
+it("private notification defaults preserve an explicit opt-out and cleared topic", () => {
+  const settings = ServerSettingsModule.applyUsageReminderBuildDefaults(
+    DEFAULT_SERVER_SETTINGS,
+    {
+      usageResetRemindersEnabled: false,
+      usageResetReminderNtfyUrl: "",
+    },
+    "https://ntfy.mininews.app/T3Code",
+  );
+  assert.equal(settings.usageResetRemindersEnabled, false);
+  assert.equal(settings.usageResetReminderNtfyUrl, "");
+});
+
 it.layer(NodeServices.layer)("server settings", (it) => {
   it.effect(
     "persists, reloads, and clears saved voice instructions without changing the connection",

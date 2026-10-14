@@ -74,7 +74,33 @@ export {
 
 const encodeServerSettings = Schema.encodeEffect(ServerSettings);
 const encodeServerSettingsJson = Schema.encodeUnknownEffect(fromJsonStringPretty(ServerSettings));
+declare const __T3CODE_BUILD_USAGE_RESET_NTFY_URL__: string | undefined;
+const buildNtfyTopic =
+  typeof __T3CODE_BUILD_USAGE_RESET_NTFY_URL__ === "string"
+    ? __T3CODE_BUILD_USAGE_RESET_NTFY_URL__
+    : "";
+
+/** A private build may opt in on first launch; explicit saved choices always win. */
+export function applyUsageReminderBuildDefaults(
+  settings: ServerSettings,
+  saved: unknown,
+  topicUrl: string,
+) {
+  if (!topicUrl) return settings;
+  const overrides = typeof saved === "object" && saved !== null ? saved : {};
+  return {
+    ...settings,
+    usageResetRemindersEnabled: Object.hasOwn(overrides, "usageResetRemindersEnabled")
+      ? settings.usageResetRemindersEnabled
+      : true,
+    usageResetReminderNtfyUrl: Object.hasOwn(overrides, "usageResetReminderNtfyUrl")
+      ? settings.usageResetReminderNtfyUrl
+      : topicUrl,
+  };
+}
+
 const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
+const decodeSettingsJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -718,7 +744,7 @@ const make = Effect.gen(function* () {
     });
 
   const loadSettingsFromDisk = Effect.gen(function* () {
-    let settings = DEFAULT_SERVER_SETTINGS;
+    let settings = applyUsageReminderBuildDefaults(DEFAULT_SERVER_SETTINGS, {}, buildNtfyTopic);
     let legacyProviders: Readonly<Record<string, unknown>> | undefined;
     let legacySourceControl: Parameters<typeof migrateLegacySourceControlSettings>[1] = {};
     // A file that failed to decode must stay on disk for the user to repair;
@@ -749,7 +775,11 @@ const make = Effect.gen(function* () {
           });
         }
       } else {
-        settings = decoded.value;
+        settings = applyUsageReminderBuildDefaults(
+          decoded.value,
+          yield* decodeSettingsJson(raw).pipe(Effect.orDie),
+          buildNtfyTopic,
+        );
       }
     }
 
