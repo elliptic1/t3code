@@ -4,6 +4,7 @@ import { memo, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { APP_BUILD_TIMESTAMP, APP_BUILD_DATE_LABEL, APP_BUILD_DATE_TITLE } from "../../branding";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
@@ -65,9 +66,9 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           aria-label="Toggle main sidebar"
         />
       </div>
-      {/* One visible line: the pill wraps onto the clipped second line once it no longer fits.
+      {/* The brand and build date occupy two lines; excess stage pills stay clipped.
           The padding keeps the brand's focus ring inside the clip. */}
-      <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
+      <div className="relative z-10 flex h-10 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
         <SidebarBrand onBackdrop={backdropVariant !== null} />
         {pillLabel ? (
           <div className="ml-1 flex h-7 items-center">
@@ -115,7 +116,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
     <Link
       aria-label="Go to threads"
       className={cn(
-        "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
+        "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-9 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",
       )}
       to="/"
@@ -127,18 +128,39 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 
 function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   return (
-    // Center the visible capitals, without the font's ascender/descender space.
-    // Padding keeps ascenders and round-letter overshoot inside the truncation clip.
-    <span className="inline-flex min-w-0 items-baseline gap-1 text-sm font-medium tracking-tight">
-      <T3Wordmark aria-label="T3" className="h-[1cap] w-auto shrink-0" />
-      <span
-        className={cn(
-          "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
-          onBackdrop ? "text-white/70" : "text-muted-foreground",
-        )}
-      >
-        Code
+    <span className="flex flex-col items-start">
+      {/* Center the visible capitals, without the font's ascender/descender space.
+          Padding keeps ascenders and round-letter overshoot inside the truncation clip. */}
+      <span className="inline-flex min-w-0 items-baseline gap-1 text-sm leading-4 font-medium tracking-tight">
+        <T3Wordmark aria-label="T3" className="h-[1cap] w-auto shrink-0" />
+        <span
+          className={cn(
+            "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
+            onBackdrop ? "text-white/70" : "text-muted-foreground",
+          )}
+        >
+          Code
+        </span>
       </span>
+      {APP_BUILD_DATE_LABEL ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <time
+                dateTime={APP_BUILD_TIMESTAMP}
+                aria-label={`Built ${APP_BUILD_DATE_TITLE}`}
+                className={cn(
+                  "text-3xs leading-3 whitespace-nowrap",
+                  onBackdrop ? "text-white/70" : "text-muted-foreground",
+                )}
+              />
+            }
+          >
+            Built {APP_BUILD_DATE_LABEL}
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">Built {APP_BUILD_DATE_TITLE}</TooltipPopup>
+        </Tooltip>
+      ) : null}
     </span>
   );
 }

@@ -9,15 +9,8 @@ const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
-// Local build date and time ("YYYY-MM-DD HH:mm"), shown under the brand title so a fork
-// build is recognisable. Development builds only: `extra` feeds the fingerprint, which must
-// stay stable elsewhere.
-const BUILD_TIMESTAMP = (() => {
-  if (APP_VARIANT !== "development") return null;
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-})();
+// Embedded in the app manifest at build time, so relaunching keeps the same date.
+const BUILD_TIMESTAMP = new Date().toISOString();
 
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 const runtimeVersionPolicy =

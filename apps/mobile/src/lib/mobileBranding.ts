@@ -8,11 +8,22 @@ export function resolveMobileStageLabel(appVariant: unknown): MobileStageLabel {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "2026-10-11 21:05" -> "Built Oct 11, 2026 · 9:05 PM"; null when the build carries no valid stamp. */
+/** Display the embedded build instant in the device timezone; accept older local stamps too. */
 export function formatMobileBuildLabel(buildTimestamp: unknown): string | null {
   if (typeof buildTimestamp !== "string") return null;
   const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(buildTimestamp);
-  if (!match) return null;
+  if (!match) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(buildTimestamp)) return null;
+    const date = new Date(buildTimestamp);
+    if (Number.isNaN(date.getTime())) return null;
+    return `Built ${date.toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
+  }
   const month = MONTHS[Number(match[2]) - 1];
   const hour = Number(match[4]);
   const minute = Number(match[5]);

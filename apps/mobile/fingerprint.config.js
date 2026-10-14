@@ -16,5 +16,16 @@ if (!majorVersion) {
 module.exports = {
   // Hash the pinned Screens fork's native source, rather than only its version.
   nativeModuleSourceType: "files",
+  // The build label is JS metadata, not a change to the native runtime.
+  /**
+   * @param {{ type: string, id?: string }} source
+   * @param {string | Buffer | null} chunk
+   */
+  fileHookTransform(source, chunk) {
+    if (source.type !== "contents" || source.id !== "expoConfig" || chunk === null) return chunk;
+    const config = JSON.parse(chunk.toString());
+    if (config.extra) delete config.extra.buildTimestamp;
+    return JSON.stringify(config);
+  },
   extraSources: [{ type: "contents", id: "appMajorVersion", contents: majorVersion }],
 };
