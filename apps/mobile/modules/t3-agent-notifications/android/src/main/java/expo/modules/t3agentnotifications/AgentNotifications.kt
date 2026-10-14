@@ -129,7 +129,7 @@ object AgentNotifications {
       channels(context)
       val scheme = prefs.getString("scheme", "t3code") ?: "t3code"
       showAlert(context, prefs, scheme, data)
-      updateActivity(context, prefs, scheme, data, updatedAt)
+      if (data["type"] != "usage-reset") updateActivity(context, prefs, scheme, data, updatedAt)
     }
   }
 
@@ -141,6 +141,8 @@ object AgentNotifications {
   ) {
     // Queue retries carry the same alert id. Keep a bounded history even when
     // notification A is retried after notification B has already arrived.
+    val alertExpiresAt = data["alert_expires_at"]?.toLongOrNull()
+    if (alertExpiresAt != null && alertExpiresAt <= System.currentTimeMillis()) return
     val alertId = data["alert_id"]
     val seen = prefs.getString("seenAlertsOrdered", null)?.split('\n')
       ?: prefs.getStringSet("seenAlerts", emptySet()).orEmpty().toList()

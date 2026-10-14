@@ -27,12 +27,14 @@ export function UsageProviderSettings({
   environmentLabel,
   sources,
   cursorKeychainUsageEnabled,
+  usageResetRemindersEnabled,
   readOnly,
 }: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly sources: UnifiedSettings["usageLimitSources"];
   readonly cursorKeychainUsageEnabled: boolean;
+  readonly usageResetRemindersEnabled: boolean;
   readonly readOnly: boolean;
 }) {
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
@@ -44,6 +46,13 @@ export function UsageProviderSettings({
   });
   const platform = useAtomValue(serverEnvironment.configValueAtom(environmentId))?.environment
     .platform;
+  const canUpdateReminders = useAtomValue(
+    serverEnvironment.updateSettings.permissionAtom(environmentId),
+  );
+  const [updatingReminders, setUpdatingReminders] = useState(false);
+  const updateReminderSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "update usage reset reminders",
+  });
   const [adding, setAdding] = useState(false);
   const [updatingCursor, setUpdatingCursor] = useState(false);
   const entries = Object.entries(sources);
@@ -76,6 +85,24 @@ export function UsageProviderSettings({
           ) : null
         }
       >
+        <SettingsRow
+          title="Usage reset reminders"
+          description="Get a phone notification one hour before a Claude or Codex subscription window resets, showing usage and remaining allowance. Requires T3 Connect and Device Notifications."
+          control={
+            <Switch
+              aria-label="Usage reset reminders"
+              checked={usageResetRemindersEnabled}
+              disabled={readOnly || !canUpdateReminders || updatingReminders}
+              onCheckedChange={(enabled) => {
+                setUpdatingReminders(true);
+                void updateReminderSettings({
+                  environmentId,
+                  input: { patch: { usageResetRemindersEnabled: enabled } },
+                }).finally(() => setUpdatingReminders(false));
+              }}
+            />
+          }
+        />
         {platform?.os === "darwin" ? (
           <SettingsRow
             id="cursor-keychain-usage"

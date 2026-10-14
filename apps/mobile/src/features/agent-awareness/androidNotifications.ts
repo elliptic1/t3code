@@ -5,6 +5,7 @@ import { Linking, Platform } from "react-native";
 interface AndroidAgentNotifications {
   configure(deviceId: string, userId: string, scheme: string, ongoingEnabled: boolean): void;
   clear(): void;
+  supportsUsageResetReminders?(): boolean;
   setThreadOnScreen?(path: string | null): void;
   openLiveUpdateSettings?(): boolean;
   showShowcaseActivity?(scheme: string, data: Record<string, string>): void;
@@ -17,6 +18,10 @@ const native =
 
 export function supportsAndroidAgentNotifications(): boolean {
   return typeof native?.configure === "function" && typeof native?.clear === "function";
+}
+
+export function supportsAndroidUsageResetReminders(): boolean {
+  return native?.supportsUsageResetReminders?.() === true;
 }
 
 function appScheme(): string {

@@ -256,10 +256,14 @@ describe("ApnsClient", () => {
       environment: "sandbox",
     } satisfies ApnsCredentials;
     const failingHttpClient = HttpClient.make((request) =>
-      Effect.fail(
-        new HttpClientError.HttpClientError({
-          reason: new HttpClientError.TransportError({ request, cause: httpCause }),
-        }),
+      Effect.sync(() => expect(request.headers["apns-expiration"]).toBe("3600")).pipe(
+        Effect.andThen(
+          Effect.fail(
+            new HttpClientError.HttpClientError({
+              reason: new HttpClientError.TransportError({ request, cause: httpCause }),
+            }),
+          ),
+        ),
       ),
     );
     const layer = ApnsClient.layer.pipe(
@@ -277,6 +281,7 @@ describe("ApnsClient", () => {
           environmentId: "env",
           threadId: "thread",
           deepLink: "/threads/env/thread",
+          expiresAt: "1970-01-01T01:00:00.000Z",
         },
       });
       const error = yield* Effect.flip(

@@ -52,6 +52,7 @@ import * as FcmDeliveryQueueSender from "./agentActivity/FcmDeliveryQueueSender.
 import * as FcmDeliveries from "./agentActivity/FcmDeliveries.ts";
 import * as FcmDeliveryQueueConsumer from "./agentActivity/FcmDeliveryQueueConsumer.ts";
 import * as RelayConfiguration from "./Config.ts";
+import * as UsageResetReminderPublisher from "./agentActivity/UsageResetReminderPublisher.ts";
 import * as AgentActivityPublisher from "./agentActivity/AgentActivityPublisher.ts";
 import * as ApnsClient from "./agentActivity/ApnsClient.ts";
 import * as ApnsProviderTokens from "./agentActivity/ApnsProviderTokens.ts";
@@ -254,7 +255,9 @@ export const layer = Api.make(
 
     const layerRuntime = Layer.empty.pipe(
       Layer.provideMerge(MobileRegistrations.layer),
-      Layer.provideMerge(AgentActivityPublisher.layer),
+      Layer.provideMerge(
+        Layer.mergeAll(AgentActivityPublisher.layer, UsageResetReminderPublisher.layer),
+      ),
       Layer.provideMerge(EnvironmentConnector.layer),
       Layer.provideMerge(EnvironmentLinker.layer),
       Layer.provideMerge(

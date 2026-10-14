@@ -71,6 +71,7 @@ import * as HeldHooks from "../hooks/HeldHooks.ts";
 import * as HookInbox from "../hooks/HookInbox.ts";
 import * as LiveActivities from "../agentActivity/LiveActivities.ts";
 import * as RelayConfiguration from "../Config.ts";
+import * as UsageResetReminderPublisher from "../agentActivity/UsageResetReminderPublisher.ts";
 import * as AgentActivityPublisher from "../agentActivity/AgentActivityPublisher.ts";
 import * as EnvironmentConnector from "../environments/EnvironmentConnector.ts";
 import * as EnvironmentLinker from "../environments/EnvironmentLinker.ts";
@@ -1160,6 +1161,7 @@ export const layerServerApi = HttpApiBuilder.group(
   RelayApi,
   "server",
   Effect.fnUntraced(function* (handlers) {
+    const reminderPublisher = yield* UsageResetReminderPublisher.UsageResetReminderPublisher;
     const publisher = yield* AgentActivityPublisher.AgentActivityPublisher;
     const publishSignatures = yield* EnvironmentPublishSignatures.EnvironmentPublishSignatures;
     const heldHooks = yield* HeldHooks.HeldHooks;
@@ -1379,6 +1381,20 @@ export const layerServerApi = HttpApiBuilder.group(
           }),
           mapRelayCommonApiErrors("not_authorized"),
         ),
+      )
+      .handle(
+        "publishUsageResetReminder",
+        Effect.fn("relay.api.server.publishUsageResetReminder")(function* ({ params, payload }) {
+          yield* requireOwnEnvironment(params.environmentId);
+          const principal = yield* RelayEnvironmentPrincipal;
+          return yield* reminderPublisher
+            .publish({
+              environmentId: params.environmentId,
+              environmentPublicKey: principal.environmentPublicKey,
+              reminder: payload,
+            })
+            .pipe(Effect.catch(() => relayInternalErrorResponse("upstream_unavailable")));
+        }, mapRelayCommonApiErrors("not_authorized")),
       )
       .handle(
         "updateLinkPreferences",

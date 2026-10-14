@@ -48,6 +48,7 @@ export const ApnsNotificationPayload = Schema.Struct({
   // notification after the thread has moved to another phase.
   phase: Schema.optional(RelayAgentAwarenessPhase),
   updatedAt: Schema.optional(Schema.String),
+  expiresAt: Schema.optional(Schema.String),
 });
 export type ApnsNotificationPayload = typeof ApnsNotificationPayload.Type;
 

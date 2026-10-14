@@ -42,6 +42,7 @@ interface ApnsLiveActivityRequest {
 
 interface ApnsPushNotificationRequest {
   readonly token: string;
+  readonly expiration?: string;
   readonly priority: "10";
   readonly payload: unknown;
 }
@@ -180,6 +181,9 @@ function makePushNotificationRequest(input: {
 }): ApnsPushNotificationRequest {
   return {
     token: input.token,
+    ...(input.notification.expiresAt
+      ? { expiration: String(Math.floor(Date.parse(input.notification.expiresAt) / 1000)) }
+      : {}),
     priority: "10",
     payload: {
       aps: {
@@ -310,6 +314,7 @@ export const make = Effect.gen(function* () {
           authorization: `bearer ${jwt}`,
           "apns-priority": input.request.priority,
           "apns-push-type": "alert",
+          ...(input.request.expiration ? { "apns-expiration": input.request.expiration } : {}),
           "apns-topic": input.credentials.bundleId,
         }),
         HttpClientRequest.bodyJson(input.request.payload),
