@@ -6,7 +6,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.text.InputType
@@ -58,10 +57,6 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.input.RemoteInputIntentHelper
-import com.google.android.gms.wearable.DataClient
-import com.google.android.gms.wearable.DataEventBuffer
-import com.google.android.gms.wearable.DataMapItem
-import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,27 +64,22 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 
 internal const val PREFS = "t3wear"
-internal const val KEY_BASE = "baseUrl"
-internal const val KEY_TOKEN = "token"
-internal const val KEY_LABEL = "label"
 // Set by the complication tap to open that thread straight away.
 internal const val EXTRA_THREAD_ID = "threadId"
+internal const val EXTRA_ENVIRONMENT_ID = "environmentId"
 private const val INPUT_RESULT_KEY = "t3_input_key"
-private const val PAIRING_PATH = "/t3code/pairing"
-// Data Layer URIs use the `wear` scheme; an empty host matches the item from any node.
-private val PAIRING_URI: Uri = Uri.Builder().scheme("wear").path(PAIRING_PATH).build()
 
 class MainActivity : ComponentActivity() {
-    private var pairingLink: String? = null
+    private var openEnvironmentId: String? = null
     private var openThreadId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        pairingLink = intent.dataString
+        openEnvironmentId = intent.getStringExtra(EXTRA_ENVIRONMENT_ID)
         openThreadId = intent.getStringExtra(EXTRA_THREAD_ID)
         setContent {
             MaterialTheme {
-                WearApp(getSharedPreferences(PREFS, Context.MODE_PRIVATE), pairingLink, openThreadId)
+                WearApp(getSharedPreferences(PREFS, Context.MODE_PRIVATE), openThreadId, openEnvironmentId)
             }
         }
     }
@@ -103,209 +93,45 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun WearApp(prefs: SharedPreferences, pairingLink: String?, openThreadId: String?) {
-    var baseUrl by rememberSaveable { mutableStateOf(prefs.getString(KEY_BASE, null)) }
-    var token by rememberSaveable { mutableStateOf(prefs.getString(KEY_TOKEN, null)) }
-    var label by rememberSaveable { mutableStateOf(prefs.getString(KEY_LABEL, null)) }
-    var message by rememberSaveable { mutableStateOf<String?>(null) }
-    var pendingLink by rememberSaveable { mutableStateOf(pairingLink) }
-    var checkingPhone by remember { mutableStateOf(true) }
-
+private fun WearApp(prefs: SharedPreferences, openThreadId: String?, openEnvironmentId: String?) {
     val context = LocalContext.current
-
-    val onPaired: (String, String, String) -> Unit = { b, t, l ->
-        prefs.edit().putString(KEY_BASE, b).putString(KEY_TOKEN, t).putString(KEY_LABEL, l).apply()
-        baseUrl = b; token = t; label = l
-        pendingLink = null; message = null
-    }
-    val signOut: (String?) -> Unit = { msg ->
-        prefs.edit().remove(KEY_BASE).remove(KEY_TOKEN).remove(KEY_LABEL).apply()
-        baseUrl = null; token = null; label = null
-        message = msg
-    }
-
+    val api = remember(context) { T3Api(context) }
+    val nav = rememberSwipeDismissableNavController()
     LaunchedEffect(Unit) {
-        readPhonePairing(context) { b, t, l ->
-            onPaired(b, t, l)
+        prefs.edit().remove("baseUrl").remove("token").remove("label").apply()
+        if (openThreadId != null && openEnvironmentId != null) {
+            nav.navigate("thread/${URLEncoder.encode(openEnvironmentId, "UTF-8")}/${URLEncoder.encode(openThreadId, "UTF-8")}")
         }
-        checkingPhone = false
     }
-
     AppScaffoldFallback {
-        if (checkingPhone) {
-            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+        SwipeDismissableNavHost(navController = nav, startDestination = "sessions") {
+            composable("sessions") {
+                SessionsScreen(api = api, label = "From phone", onOpen = { thread ->
+                    nav.navigate("thread/${URLEncoder.encode(thread.environmentId, "UTF-8")}/${URLEncoder.encode(thread.id, "UTF-8")}")
+                })
             }
-        } else if (baseUrl == null || pendingLink != null) {
-            PairScreen(
-                pendingLink = pendingLink,
-                message = message,
-                onPaired = onPaired,
-                onMessage = { message = it },
-            )
-        } else {
-            val nav = rememberSwipeDismissableNavController()
-            LaunchedEffect(openThreadId) {
-                if (openThreadId != null) nav.navigate("thread/${URLEncoder.encode(openThreadId, "UTF-8")}")
-            }
-            SwipeDismissableNavHost(navController = nav, startDestination = "sessions") {
-                composable("sessions") {
-                    SessionsScreen(
-                        api = T3Api(baseUrl!!, token),
-                        label = label ?: "",
-                        onOpen = { id -> nav.navigate("thread/${URLEncoder.encode(id, "UTF-8")}") },
-                        onUnpair = { signOut(null) },
-                    )
-                }
-                composable("thread/{id}") { entry ->
-                    val id = URLDecoder.decode(entry.arguments?.getString("id") ?: "", "UTF-8")
-                    ThreadScreen(
-                        api = T3Api(baseUrl!!, token),
-                        threadId = id,
-                        onExpired = { signOut("Session expired, pair again") },
-                    )
-                }
+            composable("thread/{environmentId}/{id}") { entry ->
+                val environmentId = URLDecoder.decode(entry.arguments?.getString("environmentId") ?: "", "UTF-8")
+                val id = URLDecoder.decode(entry.arguments?.getString("id") ?: "", "UTF-8")
+                val threadApi = remember(context, environmentId) { T3Api(context, environmentId) }
+                ThreadScreen(api = threadApi, threadId = id)
             }
         }
     }
-}
-
-private fun readPhonePairing(context: Context, onFound: (String, String, String) -> Unit) {
-    val listener = object : DataClient.OnDataChangedListener {
-        override fun onDataChanged(events: DataEventBuffer) {
-            for (event in events) {
-                if (event.dataItem.uri.path == PAIRING_PATH) {
-                    val dm = DataMapItem.fromDataItem(event.dataItem).dataMap
-                    val base = dm.getString("baseUrl")
-                    val token = dm.getString("accessToken")
-                    if (!base.isNullOrBlank() && !token.isNullOrBlank()) {
-                        onFound(base, token, "From Phone")
-                    }
-                }
-            }
-        }
-    }
-    Wearable.getDataClient(context).addListener(listener, PAIRING_URI, DataClient.FILTER_PREFIX)
-    Wearable.getDataClient(context).getDataItems(PAIRING_URI)
-        .addOnSuccessListener { items ->
-            for (item in items) {
-                val dm = DataMapItem.fromDataItem(item).dataMap
-                val base = dm.getString("baseUrl")
-                val token = dm.getString("accessToken")
-                if (!base.isNullOrBlank() && !token.isNullOrBlank()) {
-                    onFound(base, token, "From Phone")
-                    break
-                }
-            }
-        }
 }
 
 @Composable
-private fun AppScaffoldFallback(content: @Composable () -> Unit) {
-    content()
-}
-
-@Composable
-private fun PairScreen(
-    pendingLink: String?,
-    message: String?,
-    onPaired: (String, String, String) -> Unit,
-    onMessage: (String) -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    var stagedBase by rememberSaveable { mutableStateOf<String?>(null) }
-    var busy by rememberSaveable { mutableStateOf(false) }
-    var needCode by rememberSaveable { mutableStateOf(false) }
-
-    val connect: (String, String?) -> Unit = { base, code ->
-        if (code == null) {
-            stagedBase = base; needCode = true
-        } else {
-            busy = true
-            val api = T3Api(base, null)
-            scope.launch {
-                try {
-                    val l = api.environmentLabel()
-                    val t = api.pair(code)
-                    onPaired(base, t, l)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: SessionExpired) {
-                    busy = false; onMessage("Session expired, pair again")
-                } catch (e: Exception) {
-                    busy = false; onMessage(e.message ?: "Failed to pair")
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(pendingLink) {
-        if (pendingLink != null) {
-            val p = parsePairing(pendingLink)
-            if (p != null) connect(p.baseUrl, p.code)
-        }
-    }
-
-    val enterLink = rememberTextInput("Pairing link or address") { input ->
-        val p = parsePairing(input)
-        if (p == null) onMessage("Not a valid link or address")
-        else connect(p.baseUrl, p.code)
-    }
-
-    val enterCode = rememberTextInput("Pairing code") { code ->
-        val base = stagedBase ?: return@rememberTextInput
-        connect(base, code)
-    }
-
-    when {
-        enterLink.open -> TextEntrySheet(enterLink)
-        enterCode.open -> TextEntrySheet(enterCode)
-        else -> ScreenScaffold(scrollState = rememberScalingLazyListState()) { padding ->
-            ScalingLazyColumn(contentPadding = padding) {
-                item { Text("Pair T3 Code", style = MaterialTheme.typography.titleMedium) }
-                item {
-                    Text(
-                        "On your computer run `npx t3 pair` and enter the link",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary,
-                    )
-                }
-                message?.let { m ->
-                    item { Text(m, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                }
-                if (busy) item {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                    }
-                }
-                item {
-                    Button(
-                        onClick = { enterLink.launch() },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Enter link or address") }
-                }
-                if (needCode) item {
-                    Button(
-                        onClick = { enterCode.launch() },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Enter code") }
-                }
-            }
-        }
-    }
-}
+private fun AppScaffoldFallback(content: @Composable () -> Unit) { content() }
 
 @Composable
 private fun SessionsScreen(
     api: T3Api,
     label: String,
-    onOpen: (String) -> Unit,
-    onUnpair: () -> Unit,
+    onOpen: (ThreadRow) -> Unit,
 ) {
     var rows by remember { mutableStateOf<List<ThreadRow>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableIntStateOf(0) }
-    var confirmUnpair by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     var pushedCount by rememberSaveable { mutableIntStateOf(-1) }
@@ -323,7 +149,7 @@ private fun SessionsScreen(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            error = if (e is SessionExpired) "Session expired, pair again" else (e.message ?: "Failed to load")
+            error = e.message ?: "Check T3 Code on your phone."
         }
     }
 
@@ -352,14 +178,14 @@ private fun SessionsScreen(
                             else -> row.project
                         }
                         if (needsYou || working) {
-                            Button(onClick = { onOpen(row.id) }, modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = { onOpen(row) }, modifier = Modifier.fillMaxWidth()) {
                                 Column {
                                     Text(row.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         } else {
-                            FilledTonalButton(onClick = { onOpen(row.id) }, modifier = Modifier.fillMaxWidth()) {
+                            FilledTonalButton(onClick = { onOpen(row) }, modifier = Modifier.fillMaxWidth()) {
                                 Column {
                                     Text(row.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.labelSmall)
@@ -369,17 +195,6 @@ private fun SessionsScreen(
                     }
                     item {
                         CompactButton(onClick = { refreshKey++ }, modifier = Modifier.fillMaxWidth()) { Text("Refresh") }
-                    }
-                    item {
-                        if (confirmUnpair) {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                CompactButton(onClick = { confirmUnpair = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                                Spacer(Modifier.size(8.dp))
-                                CompactButton(onClick = onUnpair, modifier = Modifier.weight(1f)) { Text("Unpair") }
-                            }
-                        } else {
-                            CompactButton(onClick = { confirmUnpair = true }, modifier = Modifier.fillMaxWidth()) { Text("Unpair") }
-                        }
                     }
                 }
             }
@@ -391,7 +206,6 @@ private fun SessionsScreen(
 private fun ThreadScreen(
     api: T3Api,
     threadId: String,
-    onExpired: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var title by rememberSaveable { mutableStateOf("") }
@@ -406,7 +220,6 @@ private fun ThreadScreen(
 
     fun handleError(e: Exception) {
         if (e is CancellationException) throw e
-        if (e is SessionExpired) { onExpired(); return }
         error = e.message ?: "Failed"
     }
 
@@ -435,9 +248,6 @@ private fun ThreadScreen(
                 draft = null; status = ThreadStatus.Working; sending = false
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: SessionExpired) {
-                sending = false
-                onExpired()
             } catch (e: Exception) {
                 sending = false
                 error = "Not sent: ${e.message ?: "failed"}"

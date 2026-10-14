@@ -1,1 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <application>
+    <service android:name="expo.modules.t3weardatalayer.WearCompanionTaskService" android:exported="false" />
+    <service android:name="expo.modules.t3weardatalayer.WearCompanionListenerService" android:exported="true">
+      <intent-filter>
+        <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+        <data android:scheme="wear" android:host="*" android:pathPrefix="/t3code/companion/request" />
+      </intent-filter>
+    </service>
+  </application>
+</manifest>

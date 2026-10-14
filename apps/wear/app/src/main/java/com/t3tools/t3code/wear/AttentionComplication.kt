@@ -26,23 +26,19 @@ class AttentionComplicationService : SuspendingComplicationDataSourceService() {
         render(type, Attention(2, ThreadRow("preview", "Approve the deploy", "my-app", ThreadStatus.NeedsYou, "")))
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
-        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val base = prefs.getString(KEY_BASE, null)
-        val token = prefs.getString(KEY_TOKEN, null)
-        if (base == null || token == null) return unavailable(request.complicationType, "Pair T3")
         return try {
-            render(request.complicationType, attention(T3Api(base, token).threads()))
+            render(request.complicationType, attention(T3Api(this).threads()))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             // Off the home network the watch cannot reach the server; say so instead of showing 0.
-            unavailable(request.complicationType, "T3 unreachable")
+            unavailable(request.complicationType, "Phone unavailable")
         }
     }
 
     private fun render(type: ComplicationType, attention: Attention): ComplicationData? {
         val thread = attention.first
-        val tap = open(thread?.id)
+        val tap = open(thread?.id, thread?.environmentId)
         val description = PlainComplicationText.Builder(
             if (thread == null) "No threads need you" else "${attention.count} threads need you: ${thread.title}",
         ).build()
@@ -93,9 +89,10 @@ class AttentionComplicationService : SuspendingComplicationDataSourceService() {
         }
     }
 
-    private fun open(threadId: String?): PendingIntent {
+    private fun open(threadId: String?, environmentId: String? = null): PendingIntent {
         val intent = Intent(this, MainActivity::class.java).apply {
             if (threadId != null) putExtra(EXTRA_THREAD_ID, threadId)
+            if (environmentId != null) putExtra(EXTRA_ENVIRONMENT_ID, environmentId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         return PendingIntent.getActivity(

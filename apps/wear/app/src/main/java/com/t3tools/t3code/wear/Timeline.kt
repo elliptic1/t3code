@@ -18,6 +18,7 @@ data class ThreadRow(
     val project: String,
     val status: ThreadStatus,
     val lastActivityAt: String,
+    val environmentId: String = "",
 )
 
 fun sortRows(rows: List<ThreadRow>): List<ThreadRow> =

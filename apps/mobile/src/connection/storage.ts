@@ -23,15 +23,6 @@ import * as Option from "effect/Option";
 
 import * as CatalogStore from "./catalog-store";
 
-let T3WearDataLayer: {
-  setPairing: (url: string, token: string) => Promise<void>;
-  clearPairing: () => Promise<void>;
-} | null = null;
-try {
-  const { requireNativeModule } = require("expo-modules-core");
-  T3WearDataLayer = requireNativeModule("T3WearDataLayer");
-} catch {}
-
 function targetPersistenceError(
   operation:
     | "list-targets"
@@ -67,34 +58,11 @@ export const layer = Layer.effectContext(
         Effect.mapError((error) => targetPersistenceError("list-disabled-targets", error)),
       ),
     });
-    // Keeps the paired Wear OS watch signed in to the first saved token connection, so the
-    // watch app pairs on its own. Runs at startup too: pairings saved before this existed
-    // (or before the watch app was installed) still need to reach the watch.
-    const syncWear = catalog.read.pipe(
-      Effect.map((document) => {
-        if (!T3WearDataLayer) return;
-        for (const profile of document.profiles) {
-          if (profile._tag !== "BearerConnectionProfile") continue;
-          const token = document.credentials.find(
-            (entry) => entry.connectionId === profile.connectionId,
-          )?.credential.token;
-          if (token)
-            return void T3WearDataLayer.setPairing(profile.httpBaseUrl, token).catch(() => {});
-        }
-        void T3WearDataLayer.clearPairing().catch(() => {});
-      }),
-      Effect.ignore,
-    );
-    yield* syncWear;
-
     const registrationStore = Persistence.ConnectionRegistrationStore.of({
       register: (registration, routes) =>
         catalog
           .update((document) => registerConnectionInCatalog(document, registration, routes))
-          .pipe(
-            Effect.tap(() => syncWear),
-            Effect.mapError((error) => targetPersistenceError("register-connection", error)),
-          ),
+          .pipe(Effect.mapError((error) => targetPersistenceError("register-connection", error))),
       setRoutes: (environmentId, routes) =>
         catalog
           .update((document) => setRoutesInCatalog(document, environmentId, routes))
@@ -102,10 +70,7 @@ export const layer = Layer.effectContext(
       remove: (environmentId) =>
         catalog
           .update((document) => removeConnectionFromCatalog(document, environmentId))
-          .pipe(
-            Effect.tap(() => syncWear),
-            Effect.mapError((error) => targetPersistenceError("remove-connection", error)),
-          ),
+          .pipe(Effect.mapError((error) => targetPersistenceError("remove-connection", error))),
       setEnabled: (environmentId, enabled) =>
         catalog
           .update((document) => setConnectionEnabledInCatalog(document, environmentId, enabled))

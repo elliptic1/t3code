@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature android:name="android.hardware.type.watch" />
 
@@ -17,12 +16,12 @@
 
         <meta-data
             android:name="com.google.android.wearable.standalone"
-            android:value="true" />
+            android:value="false" />
 
         <!-- Auto-install on paired watch when phone app is installed -->
         <meta-data
             android:name="com.google.android.wearable.companion"
-            android:value="com.t3tools.t3code" />
+            android:value="${applicationId}" />
 
         <!-- Watch face complication: threads that are waiting on the user. -->
         <service
@@ -51,12 +50,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- adb shell am start -d 't3wear://pair?url=<encoded pairing link>' -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="t3wear" android:host="pair" />
-            </intent-filter>
         </activity>
     </application>
 </manifest>

@@ -1,6 +1,6 @@
 import { registerRootComponent } from "expo";
 import "react-native-gesture-handler";
-import { LogBox } from "react-native";
+import { AppRegistry, LogBox } from "react-native";
 import { featureFlags } from "react-native-screens";
 
 import App from "./src/App";
@@ -14,3 +14,9 @@ if (process.env.EXPO_PUBLIC_SHOWCASE === "1") {
 }
 
 registerRootComponent(App);
+
+// Wear Data Layer requests can start the phone runtime while the app is backgrounded.
+AppRegistry.registerHeadlessTask("T3WatchRequest", () => async (input) => {
+  const { handleWatchRequest } = await import("./src/rpc/watch-companion");
+  await handleWatchRequest(input);
+});
