@@ -1,3 +1,4 @@
+import type { OrchestrationV2ModelFallback } from "@t3tools/contracts";
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
@@ -107,7 +108,11 @@ import {
   presentPendingBackgroundWork,
   presentProviderGoal,
 } from "@t3tools/client-runtime/state/thread-execution";
-import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
+import {
+  resolveActiveThreadRun,
+  threadSupportsActiveSteering,
+  threadSupportsProviderHandoff,
+} from "@t3tools/client-runtime/state/thread-workflows";
 import {
   codexFeedbackMessage,
   parseCodexFeedbackCommand,
@@ -165,6 +170,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useNavigateBack } from "../hooks/useNavigateBack";
 import { assistantCitationFromLocation } from "../lib/assistantCitationNavigation";
 import { isMacPlatform } from "../lib/utils";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
@@ -1779,6 +1785,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
+  const navigateBack = useNavigateBack();
   const citationLocation = useLocation({
     select: (location) => ({
       href: location.href,
@@ -2141,6 +2148,8 @@ export default function ChatView(props: ChatViewProps) {
   const activeLatestRun = isServerThread ? serverLatestRun : (activeThread?.latestRun ?? null);
   const activeActivityRun = isServerThread ? serverActivityRun : (activeThread?.latestRun ?? null);
   const activeRuntime = isServerThread ? serverRuntime : (activeThread?.runtime ?? null);
+  const composerActiveRun =
+    serverProjection === null ? null : resolveActiveThreadRun(serverProjection);
   const hasHeldQueuedRuns =
     isServerThread &&
     serverProjection?.runs.some((run) => run.status === "queued" && run.queueHeld === true) ===
@@ -8091,7 +8100,7 @@ export default function ChatView(props: ChatViewProps) {
           return;
         }
 
-        void settleThread(activeThreadRef).then((result) => {
+        void settleThread(activeThreadRef, { onSettled: navigateBack }).then((result) => {
           if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
           const error = squashAtomCommandFailure(result);
           toastManager.add(
@@ -8385,6 +8394,7 @@ export default function ChatView(props: ChatViewProps) {
     onToggleDiff,
     pinThread,
     settleThread,
+    navigateBack,
     supportsPinning,
     supportsSettlement,
     confirmAndUnpinThread,
@@ -9362,10 +9372,16 @@ export default function ChatView(props: ChatViewProps) {
     // old history. The message queues behind the /compact run, since steering into it is
     // rejected.
     const compactBeforeSend =
+      dispatchMode !== "parallel" &&
       resumeCompactionTokens !== null &&
       !keepFullHistory &&
       messageTextForSend.toLowerCase() !== "/compact";
-    const turnDispatchMode = compactBeforeSend || sendQueuesBehindSetup ? "queue" : dispatchMode;
+    const turnDispatchMode =
+      dispatchMode === "parallel"
+        ? "parallel"
+        : compactBeforeSend || sendQueuesBehindSetup
+          ? "queue"
+          : dispatchMode;
     const shouldQueueBehindActiveRun =
       compactBeforeSend ||
       sendQueuesBehindSetup ||
@@ -9846,7 +9862,7 @@ export default function ChatView(props: ChatViewProps) {
             ...(attachment.source ? { source: attachment.source } : {}),
           },
     );
-    if (!shouldQueueBehindActiveRun) {
+    if (!shouldQueueBehindActiveRun && dispatchMode !== "parallel") {
       // A sent turn returns to the live edge and anchors its new transcript
       // row. Queued input stays in the composer queue and must not move the
       // timeline away from the provider work already in flight.
@@ -9863,25 +9879,26 @@ export default function ChatView(props: ChatViewProps) {
         messageId: messageIdForSend,
       });
     }
-    setOptimisticUserMessages((existing) => [
-      ...existing,
-      {
-        id: messageIdForSend,
-        role: "user",
-        text: outgoingMessageText,
-        ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
-        ...(outgoingMessageContext !== undefined ? { context: outgoingMessageContext } : {}),
-        runId: null,
-        createdAt: messageCreatedAt,
-        updatedAt: messageCreatedAt,
-        streaming: false,
-        ...(shouldQueueBehindActiveRun
-          ? { inputIntent: "queued_turn" as const }
-          : phase === "running" && dispatchMode === "steer"
-            ? { inputIntent: "steer" as const }
-            : {}),
-      },
-    ]);
+    if (dispatchMode !== "parallel")
+      setOptimisticUserMessages((existing) => [
+        ...existing,
+        {
+          id: messageIdForSend,
+          role: "user",
+          text: outgoingMessageText,
+          ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
+          ...(outgoingMessageContext !== undefined ? { context: outgoingMessageContext } : {}),
+          runId: null,
+          createdAt: messageCreatedAt,
+          updatedAt: messageCreatedAt,
+          streaming: false,
+          ...(shouldQueueBehindActiveRun
+            ? { inputIntent: "queued_turn" as const }
+            : phase === "running" && dispatchMode === "steer"
+              ? { inputIntent: "steer" as const }
+              : {}),
+        },
+      ]);
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
       const toastCopy = buildExpiredTerminalContextToastCopy(
@@ -9932,7 +9949,7 @@ export default function ChatView(props: ChatViewProps) {
 
     let failure: AtomCommandResult<unknown, unknown> | null = null;
 
-    if (failure === null && isServerThread) {
+    if (failure === null && isServerThread && dispatchMode !== "parallel") {
       const settingsResult = await persistThreadSettingsForNextTurn({
         threadId: threadIdForSend,
         createdAt: messageCreatedAt,
@@ -10797,6 +10814,19 @@ export default function ChatView(props: ChatViewProps) {
       return reason ? `${reason.description} Start a new thread to use this model.` : null;
     },
     [activeRuntime, activeThread, providerStatuses, supportsProviderSwitchingViaHandoff],
+  );
+
+  const onModelFallbackChange = useCallback(
+    async (modelFallback: OrchestrationV2ModelFallback | null) => {
+      if (!activeThread || !isServerThread || !canOperateThread) return;
+      const result = await updateThreadMetadata({
+        environmentId: activeThread.environmentId,
+        input: { threadId: activeThread.id, modelFallback },
+      });
+      if (result._tag === "Failure")
+        toastManager.add({ type: "error", title: "Could not update automatic model switching" });
+    },
+    [activeThread, isServerThread, canOperateThread, updateThreadMetadata],
   );
 
   const onProviderModelSelect = useCallback(
@@ -11779,6 +11809,13 @@ export default function ChatView(props: ChatViewProps) {
                                 isLocalDraftThread && activeProject === null
                               }
                               phase={phase}
+                              canSteerActiveTurn={threadSupportsActiveSteering(serverProjection)}
+                              canStartParallelAgent={
+                                serverConfig?.environment.capabilities.composerParallelTasks ===
+                                  true &&
+                                composerActiveRun?.rootNodeId != null &&
+                                composerActiveRun.status !== "preparing"
+                              }
                               canInterrupt={canInterruptRunningThread}
                               isConnecting={isConnecting}
                               isSendBusy={
@@ -11843,6 +11880,13 @@ export default function ChatView(props: ChatViewProps) {
                               activeProjectDefaultModelSelection={
                                 activeProjectDefaultModelSelection
                               }
+                              modelFallback={activeThread?.modelFallback ?? null}
+                              {...(isServerThread &&
+                              canOperateThread &&
+                              supportsProviderSwitchingViaHandoff &&
+                              serverConfig?.environment.capabilities.modelFallback === true
+                                ? { onModelFallbackChange }
+                                : {})}
                               activeThreadModelSelection={activeThread?.modelSelection}
                               activeProjectId={activeProject?.id ?? null}
                               activeContextWindow={activeContextWindow}

@@ -16,6 +16,9 @@ export function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
+    readonly settled: boolean;
+    /** Absent when the connection cannot operate threads. */
+    readonly onToggleSettled?: () => void;
   },
 ) {
   const returnToList = useWorkspaceListNavigation("threads");

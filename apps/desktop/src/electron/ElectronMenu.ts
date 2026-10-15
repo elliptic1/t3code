@@ -51,6 +51,7 @@ export class ElectronMenu extends Context.Service<
   ElectronMenu,
   {
     readonly startDictation: Effect.Effect<boolean>;
+    readonly stopDictation: Effect.Effect<boolean>;
     readonly setApplicationMenu: (
       template: readonly Electron.MenuItemConstructorOptions[],
     ) => Effect.Effect<void>;
@@ -194,6 +195,11 @@ export const make = Effect.gen(function* () {
     startDictation: Effect.sync(() => {
       if (platform !== "darwin") return false;
       Electron.Menu.sendActionToFirstResponder("startDictation:");
+      return true;
+    }),
+    stopDictation: Effect.sync(() => {
+      if (platform !== "darwin") return false;
+      Electron.Menu.sendActionToFirstResponder("stopDictation:");
       return true;
     }),
     setApplicationMenu: (template) =>

@@ -35,6 +35,22 @@ android {
         }
     }
 
+    buildTypes {
+        release {
+            // Local companion installs must retain the phone's signing identity.
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            ndk.debugSymbolLevel = "none"
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
+    }
+
+    // Native libraries come prebuilt from dependencies; the watch app needs no local NDK.
+    packaging {
+        jniLibs.keepDebugSymbols.add("**/*.so")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -71,4 +87,6 @@ dependencies {
     implementation(libs.watchface.complications.data.source)
 
     testImplementation(libs.junit)
+    testImplementation(libs.mockwebserver)
+    testImplementation("org.json:json:20240303")
 }

@@ -10,7 +10,15 @@ import {
   useNavigation,
   type StaticScreenProps,
 } from "@react-navigation/native";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import * as Option from "effect/Option";
 import {
   AuthOrchestrationOperateScope,
@@ -292,19 +300,31 @@ function ThreadRouteContent(
   );
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
-  const returnToList = useWorkspaceListNavigation("threads");
-  const { settleThread, unsettleThread } = useThreadListActions();
+  const navigation = useNavigation();
+  const { settleThread, unsettleThread } = useThreadListActions({ dismissRows: false });
   const threadSettled = selectedThread?.settledOverride === "settled";
+  const settleTargetRef = useRef(selectedThread);
+  useLayoutEffect(() => {
+    settleTargetRef.current = selectedThread;
+  }, [selectedThread]);
   const handleToggleSettled = useCallback(() => {
     if (!selectedThread) return;
     if (threadSettled) {
       void unsettleThread(selectedThread);
       return;
     }
-    // Reveal the list before its existing dismissal animation settles the row.
-    returnToList();
-    void settleThread(selectedThread);
-  }, [returnToList, selectedThread, settleThread, threadSettled, unsettleThread]);
+    void settleThread(selectedThread).then((settled) => {
+      const current = settleTargetRef.current;
+      if (
+        !settled ||
+        !navigation.isFocused() ||
+        current?.environmentId !== selectedThread.environmentId ||
+        current.id !== selectedThread.id
+      )
+        return;
+      navigation.dispatch(StackActions.popTo("Home"));
+    });
+  }, [navigation, selectedThread, settleThread, threadSettled, unsettleThread]);
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composer = useThreadComposerState();
   const gitState = useSelectedThreadGitState();
@@ -335,9 +355,8 @@ function ThreadRouteContent(
       },
     };
   }, [loadEarlierHistory, selectedThread, selectedThreadDetailState.history]);
-  const navigation = useNavigation();
-  const openPullRequest = useOpenPullRequest();
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack, "merge thread back");
+  const openPullRequest = useOpenPullRequest();
   const mergeBackTargetThreadId = resolveMergeBackTargetThreadId(selectedThreadDetail);
   const mergeBackRun =
     selectedThreadDetail === null ? null : resolveLatestMergeBackRun(selectedThreadDetail);
@@ -1058,6 +1077,7 @@ function ThreadRouteContent(
           composerDraftKey={composer.composerDraftKey}
           followUpBehavior={composer.followUpBehavior}
           canSteerActiveTurn={composer.canSteerActiveTurn}
+          canStartParallelAgent={composer.canStartParallelAgent}
           isSavingQueuedEdit={composer.isSavingQueuedEdit}
           onCancelQueuedRunEdit={composer.cancelQueuedRunEdit}
           onRemoveQueuedEditAttachment={composer.onRemoveQueuedEditAttachment}

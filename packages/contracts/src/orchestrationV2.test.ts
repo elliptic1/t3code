@@ -28,6 +28,7 @@ import {
   OrchestrationV2CheckpointScope,
   OrchestrationV2Command,
   OrchestrationV2LimitRecoveryUpdate,
+  OrchestrationV2ModelFallback,
   OrchestrationV2DomainEvent,
   OrchestrationV2ProviderCapabilities,
   OrchestrationV2ProviderThread,
@@ -1567,4 +1568,20 @@ describe("latestProviderTurnForAttempt", () => {
     expect(latestProviderTurnForAttempt(turns, RunAttemptId.make("goal-attempt"))?.id).toBe("last");
     expect(latestProviderTurnForAttempt(turns, null)).toBeUndefined();
   });
+});
+
+it("requires independent provider accounts for automatic model fallback", () => {
+  const decode = Schema.decodeUnknownSync(OrchestrationV2ModelFallback);
+  expect(
+    decode({
+      preferred: { instanceId: "claude", model: "opus" },
+      fallback: { instanceId: "codex", model: "sol" },
+    }).fallback.instanceId,
+  ).toBe("codex");
+  expect(() =>
+    decode({
+      preferred: { instanceId: "claude", model: "opus" },
+      fallback: { instanceId: "claude", model: "sonnet" },
+    }),
+  ).toThrow("different provider account");
 });

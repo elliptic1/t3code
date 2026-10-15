@@ -1,3 +1,4 @@
+import { modelFallbackContinuation } from "./ModelFallback.ts";
 import { CommandId, MessageId, type OrchestrationV2Command } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -85,12 +86,33 @@ const makeSweep = Effect.gen(function* () {
     });
     const nowMs = DateTime.toEpochMillis(now);
     for (const thread of candidates) {
-      const command = limitRecoveryCommand(
-        thread,
-        preferences.autoResumeLimitedThreads,
-        nowMs,
-        preferences.snoozeLimitedThreads,
-      );
+      // The query excludes pending approvals/questions; dispatch rechecks them
+      // under the thread lock, so recovery only needs the two accounts' history.
+      const fallback = thread.modelFallback
+        ? modelFallbackContinuation(
+            {
+              ...(yield* projections.getThreadRecords(thread.id, ["runs", "turnItems"], {
+                turnItemTypes: ["error", "run_interrupt_request"],
+                ...(thread.modelFallbackRunIds
+                  ? {
+                      runIds: thread.modelFallbackRunIds,
+                      turnItemRunIds: thread.modelFallbackRunIds,
+                    }
+                  : {}),
+              })),
+              runtimeRequests: [],
+            },
+            nowMs,
+          )
+        : null;
+      const command = thread.modelFallback
+        ? fallback
+        : limitRecoveryCommand(
+            thread,
+            preferences.autoResumeLimitedThreads,
+            nowMs,
+            preferences.snoozeLimitedThreads,
+          );
       if (command === null) continue;
       yield* threads.dispatch(command).pipe(
         Effect.catchCause((cause) =>

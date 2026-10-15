@@ -83,9 +83,17 @@ start of the composer to edit the most recently queued message. Change
 `thread.editQueuedMessage` to use another shortcut.
 
 Mobile has the same choice under **Settings → Follow-ups**. While a turn is
-running the send button shows which action it will take. Long-press it to use the
-other action for a single message, or hold `Cmd` while sending from a hardware
-keyboard. The button only offers Steer when the running agent supports it.
+running the send button shows which action it will take. Hold `Cmd` while sending
+from a hardware keyboard to use the other action.
+
+On web, desktop, and mobile, press and hold the send button while an agent is
+working to choose **Queue**, **Steer now**, or **Start parallel agent**. On web and
+desktop, right-click the button or focus it and press the Down arrow to open the
+same menu. Steering requires an active turn that supports it. A parallel agent
+works in the same workspace while the foreground agent continues, and reports
+its result back to this thread. If the turn ends before the parallel task can
+start, the message returns to your draft. Update the connected T3 Code server
+if the parallel action is unavailable.
 
 ## Queue messages offline on mobile
 

@@ -1,6 +1,8 @@
 package com.t3tools.t3code.wear
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TimelineTest {
@@ -99,5 +101,15 @@ class TimelineTest {
         )
         val sorted = sortRows(rows)
         assertEquals(listOf("b", "a", "c"), sorted.map { it.id })
+    }
+
+    @Test
+    fun settledThreadsStayBehindTheCollapsedSection() {
+        fun row(status: ThreadStatus, settled: Boolean) =
+            ThreadRow("a", "A", "p", status, "2026-01-01T00:00:00Z", settled)
+        assertTrue(row(ThreadStatus.Idle, settled = true).tucked)
+        assertFalse(row(ThreadStatus.Idle, settled = false).tucked)
+        assertTrue(row(ThreadStatus.NeedsYou, settled = true).tucked)
+        assertTrue(row(ThreadStatus.Working, settled = true).tucked)
     }
 }

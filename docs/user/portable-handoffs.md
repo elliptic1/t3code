@@ -5,8 +5,9 @@ restart, or use a fork that the provider cannot resume itself.
 
 Short conversations transfer intact. For longer conversations, T3 Code favors recent requests and
 answers, the original request, and relevant activity such as command outcomes. Selected messages
-keep their full text, order, and user or assistant role, including partial work from failed or
-interrupted turns. Your new request stays separate and is never shortened to make history fit.
+keep their order and user or assistant role, including partial work from failed or interrupted
+turns. Oversized messages may transfer as marked excerpts preserving their beginning and end.
+Your new request stays separate and is never shortened to make history fit.
 
 Codex receives historical messages directly when its installed version supports that operation.
 Other providers receive the same selection as attributed conversation context. A handoff does not
@@ -17,12 +18,24 @@ to retrieve saved messages and activity, including the remainder of a long item.
 constraint, you can still repeat it in your next message. A handoff is a budgeted selection, not an
 agent-written summary.
 
+## Automatic model switching
+
+In an existing thread's model picker, choose **Set fallback model** and select a model from another
+provider account. The current model becomes your preferred model. T3 Code automatically continues
+with the fallback when the preferred account hits a usage limit, then returns to the preferred model
+on the next turn after its reported reset. A turn already running on the fallback finishes first.
+
+If both accounts are limited, work waits until one is available. Without a usable reset time, T3 Code
+waits 15 minutes before trying that account again. Stop, snooze, and archive prevent automatic
+continuation of the paused work. Choose **Disable auto switching** in the model picker to remove the
+fallback. Selecting a model outside the pair also disables automatic switching.
+
 ## Context limits
 
 A handoff must leave room for existing provider context, your request and attachments, instructions,
-tools, and subsequent work. If even its retrieval references cannot fit, T3 Code reports an error
-instead of shortening your request. Compact the target conversation or select a larger-context
-model before trying again.
+tools, and subsequent work. If the target conversation is too full, T3 Code starts a fresh provider
+conversation and transfers bounded history. When there is no room for history, it sends your new
+request alone. The full conversation remains saved in T3 Code.
 
 Server operators can set `T3CODE_CONTEXT_HANDOFF_TOKEN_CAP` to change the initial history allowance
 (default 16,000; clamped to 1,024–64,000). This is an upper bound, not a provider context-window
@@ -32,8 +45,8 @@ attachment payloads do not consume that ceiling.
 
 T3 Code uses available capacity information for your selected model and options, together with
 provider context telemetry. Starting a fresh provider conversation clears prior usage, while keeping
-known model capacity. Changing models or context-window options discards stale usage and compaction
-thresholds.
+known model capacity. Changing models or context-window options keeps measured conversation usage
+and refreshes the capacity and compaction thresholds for the new selection.
 
 When no capacity information is available, T3 Code assumes a 128,000-token window. It reserves at
 least 16,000 tokens, or a quarter of the window when larger, for instructions, tools, and subsequent

@@ -1,6 +1,9 @@
 /* oxlint-disable unicorn/prefer-add-event-listener -- Native WebRTC declares the on-event API but does not ship its EventTarget typings. */
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
-import { voiceSessionConfiguration } from "@t3tools/client-runtime/voice-conversation/session";
+import {
+  voiceSessionConfiguration,
+  type VoiceHistoryLine,
+} from "@t3tools/client-runtime/voice-conversation/session";
 import type { VoiceSessionConnection } from "@t3tools/contracts";
 import {
   createVoiceConversationController,
@@ -16,8 +19,10 @@ export interface VoiceConnection {
 export async function connectVoice(input: {
   connection: VoiceSessionConnection;
   signal: AbortSignal;
+  /** Earlier conversations the new session should pick up from. */
+  history?: ReadonlyArray<VoiceHistoryLine>;
   execute: (action: VoiceAction) => Promise<unknown>;
-  onTranscript: (speaker: "You" | "T3", text: string) => void;
+  onTranscript: (speaker: "You" | "T3", text: string, id?: string) => void;
   onError: (message: string) => void;
   onStatus: (status: string) => void;
 }): Promise<VoiceConnection> {
@@ -26,7 +31,7 @@ export async function connectVoice(input: {
   let send: (event: unknown) => void = () => {};
   const controller = createVoiceConversationController({ ...input, send: (event) => send(event) });
   const onEvent = controller.onEvent;
-  const session = voiceSessionConfiguration(connection);
+  const session = voiceSessionConfiguration(connection, input.history);
   if (connection.transport === "websocket") {
     const socket = await connectPcmSocket({ connection, signal, onEvent, onError: input.onError });
     send = socket.send;

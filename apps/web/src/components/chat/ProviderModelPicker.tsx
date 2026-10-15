@@ -1,7 +1,10 @@
+import { Button } from "../ui/button";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type ProviderInstanceId,
   type EnvironmentId,
+  type ModelSelection,
+  type OrchestrationV2ModelFallback,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
@@ -34,6 +37,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
    * icon, label and the default-highlighted combobox row.
    */
   activeInstanceId: ProviderInstanceId;
+  preferredSelection?: ModelSelection;
+  modelFallback?: OrchestrationV2ModelFallback | null;
+  onModelFallbackChange?: (policy: OrchestrationV2ModelFallback | null) => void;
   model: string;
   selectedModels?: ReadonlyArray<{ instanceId: ProviderInstanceId; model: string }>;
   onToggleModel?: (instanceId: ProviderInstanceId, model: string) => void;
@@ -64,6 +70,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
   const size = props.size ?? "sm";
+  const [choosingFallback, setChoosingFallback] = useState(false);
+  const preferredSelection = props.modelFallback?.preferred ??
+    props.preferredSelection ?? { instanceId: props.activeInstanceId, model: props.model };
 
   // Resolve the active instance entry by exact routing key. The composer
   // resolves fallbacks before rendering this component; if the selected
@@ -98,6 +107,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
 
   const setIsMenuOpen = (open: boolean) => {
+    if (!open) setChoosingFallback(false);
     props.onOpenChange?.(open);
     if (props.open === undefined) {
       setUncontrolledIsMenuOpen(open);
@@ -154,7 +164,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 
   const handleInstanceModelChange = (instanceId: ProviderInstanceId, model: string) => {
     if (props.disabled) return;
-    props.onInstanceModelChange(instanceId, model);
+    if (choosingFallback) {
+      if (instanceId === preferredSelection.instanceId) return;
+      props.onModelFallbackChange?.({
+        preferred: preferredSelection,
+        fallback: { instanceId, model },
+      });
+    } else {
+      props.onInstanceModelChange(instanceId, model);
+    }
     setIsMenuOpen(false);
   };
 
@@ -276,6 +294,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>
+          {props.modelFallback ? (
+            <Badge variant="outline" size="sm">
+              Auto
+            </Badge>
+          ) : null}
           {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (
             <Badge variant="outline" size="sm">
               Unavailable
@@ -312,11 +335,49 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           terminalOpen={props.terminalOpen ?? false}
           onRequestClose={() => setIsMenuOpen(false)}
           {...(props.onOpenProviderSetup ? { onOpenProviderSetup: props.onOpenProviderSetup } : {})}
-          {...(props.getModelDisabledReason
-            ? { getModelDisabledReason: props.getModelDisabledReason }
-            : {})}
+          getModelDisabledReason={(instanceId, model) =>
+            choosingFallback && instanceId === preferredSelection.instanceId
+              ? "Choose a different provider account for a separate usage allowance."
+              : (props.getModelDisabledReason?.(instanceId, model) ?? null)
+          }
           onInstanceModelChange={handleInstanceModelChange}
         />
+        {props.onModelFallbackChange && props.selectedModels === undefined ? (
+          <div className="flex flex-col gap-1 border-t p-2">
+            <p className="px-2 text-xs text-muted-foreground">
+              {choosingFallback
+                ? "Choose the model to use when the preferred provider hits its usage limit."
+                : props.modelFallback
+                  ? `Preferred: ${props.modelFallback.preferred.model} · Fallback: ${props.modelFallback.fallback.model}`
+                  : "Automatically continue with another model when usage runs out."}
+            </p>
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setChoosingFallback((value) => !value)}
+              >
+                {choosingFallback
+                  ? "Cancel fallback selection"
+                  : props.modelFallback
+                    ? "Change fallback"
+                    : "Set fallback model"}
+              </Button>
+              {props.modelFallback ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    props.onModelFallbackChange?.(null);
+                    setIsMenuOpen(false);
+                  }}
+                >
+                  Disable auto switching
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         {props.selectedModels === undefined ? (
           <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />
         ) : null}

@@ -43,6 +43,27 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Run a workflow
+
+A workflow runs a sequence of stages in one thread. Ask your agent to create one
+with instructions, success criteria, and an attempt limit for each stage. On web
+and desktop, open the thread details to see **Workflows**; on mobile, open
+**Workflows** above the conversation. The APK example saves a draft that syncs a
+fork, checks, builds, verifies and publishes an APK, then waits for manual
+installation confirmation. Saving a draft runs nothing; choose **Start** to run it.
+
+Each stage records its outcome and evidence. The next stage starts only after the
+agent reports success. **Retry** keeps successful stages and retries the failed
+stage within its attempt limit. An interrupted stage requires inspection before
+retrying, because it may already have changed files or published an artifact.
+**Resume when ready** continues a stage waiting for input or confirmation.
+
+Workflow state survives a server restart. Pause and cancel prevent later stages
+from starting; they allow current work to finish. Stages use the thread's selected
+provider and permissions. The provider needs access to T3's workflow tools to
+report results. For the APK example, publication and installation are separate
+outcomes: publishing a download does not confirm what is installed on your phone.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

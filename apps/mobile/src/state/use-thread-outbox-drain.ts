@@ -829,7 +829,10 @@ export function useThreadOutboxDrain(): void {
       }
       const { reportFailure } = makeDeliveryHelpers(queuedMessage);
 
-      if (settings.runtimeMode !== thread.runtimeMode) {
+      if (
+        queuedMessage.dispatchMode !== "parallel" &&
+        settings.runtimeMode !== thread.runtimeMode
+      ) {
         if (!hasAccess()) return true;
         const runtimeResult = await setThreadRuntimeMode({
           environmentId: queuedMessage.environmentId,
@@ -846,7 +849,10 @@ export function useThreadOutboxDrain(): void {
         }
       }
 
-      if (settings.interactionMode !== thread.interactionMode) {
+      if (
+        queuedMessage.dispatchMode !== "parallel" &&
+        settings.interactionMode !== thread.interactionMode
+      ) {
         if (!hasAccess()) return true;
         const interactionResult = await setThreadInteractionMode({
           environmentId: queuedMessage.environmentId,

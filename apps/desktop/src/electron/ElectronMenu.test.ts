@@ -265,9 +265,10 @@ describe("system dictation", () => {
         sendActionMock.mockClear();
         const menu = yield* ElectronMenu.ElectronMenu;
         assert.equal(yield* menu.startDictation, platform === "darwin");
+        assert.equal(yield* menu.stopDictation, platform === "darwin");
         assert.deepEqual(
           sendActionMock.mock.calls,
-          platform === "darwin" ? [["startDictation:"]] : [],
+          platform === "darwin" ? [["startDictation:"], ["stopDictation:"]] : [],
         );
       }).pipe(
         Effect.provide(

@@ -4,7 +4,7 @@
  * is a long-press on the send button), so both clients agree on what the user's
  * configured follow-up behavior means.
  */
-export type ComposerDispatchMode = "auto" | "queue" | "steer" | "restart";
+export type ComposerDispatchMode = "auto" | "queue" | "steer" | "restart" | "parallel";
 export type ActiveTurnComposerAction = Exclude<ComposerDispatchMode, "auto">;
 
 /** The alternate switches between queue and steer relative to the configured action. */
@@ -12,7 +12,7 @@ export function resolveComposerDispatchMode(input: {
   /** A turn is in flight, so the follow-up has to queue behind it or steer it. */
   readonly running: boolean;
   readonly alternateModifier: boolean;
-  readonly activeTurnDefault?: ActiveTurnComposerAction;
+  readonly activeTurnDefault?: Exclude<ActiveTurnComposerAction, "parallel">;
 }): ComposerDispatchMode {
   if (!input.running) return "auto";
   const defaultAction = input.activeTurnDefault ?? "steer";
@@ -22,7 +22,7 @@ export function resolveComposerDispatchMode(input: {
 
 /** What the alternate would do, for labelling the affordance that triggers it. */
 export function alternateComposerDispatchAction(
-  activeTurnDefault?: ActiveTurnComposerAction,
+  activeTurnDefault?: Exclude<ActiveTurnComposerAction, "parallel">,
 ): ActiveTurnComposerAction {
   return resolveComposerDispatchMode({
     running: true,

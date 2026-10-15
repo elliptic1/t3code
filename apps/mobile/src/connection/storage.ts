@@ -22,6 +22,17 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as CatalogStore from "./catalog-store";
+import { connectionForWatch } from "./wear-connection";
+
+let T3WearDataLayer: {
+  setPairing: (url: string, token: string, label: string) => Promise<void>;
+  clearPairing: () => Promise<void>;
+  setVoiceHistory: (historyJson: string) => Promise<void>;
+} | null = null;
+try {
+  const { requireNativeModule } = require("expo-modules-core");
+  T3WearDataLayer = requireNativeModule("T3WearDataLayer");
+} catch {}
 
 function targetPersistenceError(
   operation:
@@ -41,7 +52,33 @@ function targetPersistenceError(
 
 export const layer = Layer.effectContext(
   Effect.gen(function* () {
-    const catalog = yield* CatalogStore.make();
+    const savedCatalog = yield* CatalogStore.make();
+    let wearWrite = Promise.resolve();
+    const mirrorToWear = (document: Parameters<typeof connectionForWatch>[0]) => {
+      const bridge = T3WearDataLayer;
+      if (!bridge) return;
+      const connection = connectionForWatch(document);
+      wearWrite = wearWrite
+        .then(() =>
+          connection
+            ? bridge.setPairing(connection.baseUrl, connection.token, connection.label)
+            : bridge.clearPairing(),
+        )
+        .catch(() => console.warn("Could not sync the phone connection to Wear OS"));
+    };
+    const catalog = {
+      read: savedCatalog.read,
+      update: (transform: Parameters<typeof savedCatalog.update>[0]) =>
+        savedCatalog
+          .update(transform)
+          .pipe(
+            Effect.tap(() =>
+              savedCatalog.read.pipe(
+                Effect.tap((document) => Effect.sync(() => mirrorToWear(document))),
+              ),
+            ),
+          ),
+    };
     const githubRoutingPermissions = yield* makeGitHubRoutingPermissions({
       read: catalog.read.pipe(Effect.map((document) => document.githubRoutingPermissions ?? [])),
       write: (githubRoutingPermissions) =>
@@ -50,6 +87,7 @@ export const layer = Layer.effectContext(
 
     const targetStore = Persistence.ConnectionTargetStore.of({
       list: catalog.read.pipe(
+        Effect.tap((document) => Effect.sync(() => mirrorToWear(document))),
         Effect.map((document) => document.targets),
         Effect.mapError((error) => targetPersistenceError("list-targets", error)),
       ),

@@ -2,6 +2,7 @@ import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { startVoiceAgentConversation } from "@t3tools/client-runtime/voice-conversation/agent";
+import { updateVoiceTranscript } from "@t3tools/client-runtime/voice-conversation/session";
 import { randomUUID } from "../lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
@@ -57,7 +58,7 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<
-    ReadonlyArray<{ id: string; speaker: string; text: string }>
+    Array<{ id: string; speaker: string; text: string }>
   >([]);
   const stop = () => {
     session.current?.abort.abort();
@@ -133,9 +134,11 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
         },
         () => focusedThread.current,
       ),
-      onTranscript: (speaker: "You" | "T3", text: string) => {
+      onTranscript: (speaker: "You" | "T3", text: string, id?: string) => {
         if (session.current === owner)
-          setTranscript((lines) => [...lines.slice(-39), { id: randomUUID(), speaker, text }]);
+          setTranscript((lines) =>
+            updateVoiceTranscript(lines, { id: id ?? randomUUID(), speaker, text }, 40),
+          );
       },
       onStatus: (value: string) => {
         if (session.current === owner) setStatus(value);

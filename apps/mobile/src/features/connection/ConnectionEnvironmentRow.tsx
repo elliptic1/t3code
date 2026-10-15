@@ -1,11 +1,13 @@
 import { ConnectionTraceId } from "./ConnectionTraceId";
 import { SymbolView } from "../../components/AppSymbol";
-import { connectionStatusText } from "@t3tools/client-runtime/connection";
+import { connectionDiagnostics, connectionStatusText } from "@t3tools/client-runtime/connection";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import { type EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
+import * as Option from "effect/Option";
+import Constants from "expo-constants";
 import { useCallback, useState } from "react";
 import { Platform, Alert, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
@@ -16,6 +18,9 @@ import { MaterialButton } from "../../components/MaterialButton";
 import { MaterialIconButton } from "../../components/MaterialIconButton";
 import { ThemedSwitch } from "../../components/ThemedSwitch";
 import { cn } from "../../lib/cn";
+import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+import { environmentCatalog } from "../../connection/catalog";
+import { useEnvironmentPresentation } from "../../state/presentation";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
 import { serverEnvironment } from "../../state/server";
 import { ConnectionFormField } from "./ConnectionFormField";
@@ -50,6 +55,27 @@ export function ConnectionEnvironmentRow(props: {
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(props.environment.environmentId),
   );
+  const { presentation } = useEnvironmentPresentation(props.environment.environmentId);
+  const supervisor = useAtomValue(environmentCatalog.stateAtom(props.environment.environmentId));
+  const [copiedError, setCopiedError] = useState<string | null>(null);
+  async function copyDiagnostics() {
+    if (presentation === null) return;
+    const didCopy = await tryCopyTextWithHaptic(
+      connectionDiagnostics({
+        environment: presentation,
+        state: Option.getOrNull(AsyncResult.value(supervisor)),
+        client: {
+          surface: "mobile",
+          version: Constants.expoConfig?.version ?? "unknown",
+          platform: `${Platform.OS} ${Platform.Version}`,
+        },
+        capturedAt: new Date().toISOString(),
+      }),
+      { target: "connection diagnostics" },
+    );
+    if (didCopy) setCopiedError(props.environment.connectionError);
+    else Alert.alert("Could not copy diagnostics", "Please try again.");
+  }
   const unsupported = props.environment.connectionState === "unsupported";
   const enabled = props.environment.isEnabled && !unsupported;
   const statusLabel = connectionStatusLabel(props.environment);
@@ -147,6 +173,23 @@ export function ConnectionEnvironmentRow(props: {
           }}
         />
       </Pressable>
+
+      {props.environment.connectionError !== null ? (
+        <View className="px-4 pb-3">
+          <MaterialButton
+            label={
+              copiedError === props.environment.connectionError
+                ? "Diagnostics copied"
+                : "Copy error and context"
+            }
+            tone="secondary"
+            disabled={presentation === null}
+            onPress={() => {
+              void copyDiagnostics();
+            }}
+          />
+        </View>
+      ) : null}
 
       {props.expanded ? (
         <Animated.View

@@ -1,4 +1,5 @@
 import {
+  ChatAttachmentId,
   CheckpointId,
   CheckpointRef,
   CheckpointScopeId,
@@ -79,6 +80,8 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly projection?: OrchestrationV2ThreadProjection;
   readonly projectionRequests?: ThreadId[];
   readonly advertiseServerResolvedCommandContext?: boolean;
+  readonly advertiseComposerParallelTasks?: boolean;
+  readonly advertiseModelFallback?: boolean;
 }) {
   const client = {
     [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command: OrchestrationV2Command) =>
@@ -126,6 +129,10 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
       environment: {
         capabilities: {
           repositoryIdentity: true,
+          ...(input.advertiseComposerParallelTasks === false
+            ? {}
+            : { composerParallelTasks: true }),
+          ...(input.advertiseModelFallback === false ? {} : { modelFallback: true }),
           ...(input.advertiseServerResolvedCommandContext === false
             ? {}
             : { serverResolvedCommandContext: true }),
@@ -149,6 +156,91 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
 });
 
 describe("V2 environment commands", () => {
+  it.effect.each(["Review the change", ""])(
+    "launches a user-owned parallel task with composer content: %s",
+    (text) =>
+      Effect.gen(function* () {
+        const commands: OrchestrationV2Command[] = [];
+        const projectionRequests: ThreadId[] = [];
+        const supervisor = yield* makeSupervisor({ commands, projects: [], projectionRequests });
+        const attachments = [
+          {
+            type: "image" as const,
+            id: ChatAttachmentId.make("stored-image"),
+            name: "screen.png",
+            mimeType: "image/png",
+            sizeBytes: 3,
+          },
+        ];
+        const context = { version: 1 as const, records: [] };
+        const modelSelection = {
+          instanceId: ProviderInstanceId.make("claude"),
+          model: "custom-model",
+        };
+        yield* startThreadTurn({
+          commandId: CommandId.make("user-parallel"),
+          threadId: v2ThreadId,
+          message: {
+            messageId: MessageId.make("parallel-message"),
+            role: "user",
+            text,
+            attachments,
+            context,
+          },
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "plan",
+          dispatchMode: "parallel",
+          creationSource: "mobile",
+        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+        expect(projectionRequests).toEqual([]);
+        expect(commands).toEqual([
+          {
+            type: "delegated_task.request",
+            commandId: CommandId.make("user-parallel"),
+            createdBy: "user",
+            creationSource: "mobile",
+            parentThreadId: v2ThreadId,
+            task: text || "Please review the attached content.",
+            attachments,
+            context,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "plan",
+            completionWake: "always",
+          },
+        ]);
+      }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("refuses parallel delivery to a server without composer parallel support", () =>
+    Effect.gen(function* () {
+      const commands: OrchestrationV2Command[] = [];
+      const supervisor = yield* makeSupervisor({
+        commands,
+        projects: [],
+        advertiseComposerParallelTasks: false,
+      });
+      const result = yield* Effect.result(
+        startThreadTurn({
+          commandId: CommandId.make("late-parallel"),
+          threadId: v2ThreadId,
+          message: {
+            messageId: MessageId.make("late-message"),
+            role: "user",
+            text: "Review",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          dispatchMode: "parallel",
+        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor)),
+      );
+      expect(result._tag).toBe("Failure");
+      expect(commands).toEqual([]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
   it.effect("routes projects through the event-sourced project transport", () =>
     Effect.gen(function* () {
       const projects: ProjectMutation[] = [];
@@ -718,6 +810,41 @@ describe("V2 environment commands", () => {
         ]);
         // A text-only edit must not send an attachments replacement list.
         expect(commands[5]).not.toHaveProperty("attachments");
+      }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect.each([true, false])(
+    "sets a preferred/fallback pair only on a supporting server: %s",
+    (supported) =>
+      Effect.gen(function* () {
+        const commands: OrchestrationV2Command[] = [];
+        const projectionRequests: ThreadId[] = [];
+        const supervisor = yield* makeSupervisor({
+          commands,
+          projects: [],
+          projectionRequests,
+          advertiseModelFallback: supported,
+        });
+        const policy = {
+          preferred: { instanceId: ProviderInstanceId.make("claude"), model: "opus" },
+          fallback: { instanceId: ProviderInstanceId.make("codex"), model: "sol" },
+        };
+        const result = yield* updateThreadMetadata({
+          commandId: CommandId.make("automatic-models"),
+          threadId: v2ThreadId,
+          modelFallback: policy,
+          modelSelection: policy.preferred,
+        }).pipe(
+          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          Effect.result,
+        );
+        expect(result._tag).toBe(supported ? "Success" : "Failure");
+        if (supported)
+          expect(
+            commands.map((command) => ("modelFallback" in command ? command.modelFallback : null)),
+          ).toEqual([policy, policy]);
+        else expect(commands).toEqual([]);
+        expect(projectionRequests).toEqual([]);
       }).pipe(Effect.provide(layerTestCrypto)),
   );
 

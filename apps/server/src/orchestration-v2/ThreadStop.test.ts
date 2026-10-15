@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import {
+  ChatAttachmentId,
   CommandId,
   EventId,
   MessageId,
@@ -704,4 +705,68 @@ it.effect(
       );
       assert.isTrue(Exit.isFailure(unrelated));
     }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("user parallel work creates one child without changing the foreground run", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const parentThreadId = ThreadId.make("thread:user-parallel");
+    yield* createWatchingThread(parentThreadId, 10);
+    yield* send(parentThreadId, "Foreground work", "start_immediately");
+    const before = yield* orchestrator.getThreadProjection(parentThreadId);
+    const attachments = [
+      {
+        type: "image" as const,
+        id: ChatAttachmentId.make("stored-image"),
+        name: "screen.png",
+        mimeType: "image/png",
+        sizeBytes: 3,
+      },
+    ];
+    const context = { version: 1 as const, records: [] };
+    const command = {
+      type: "delegated_task.request" as const,
+      commandId: CommandId.make("user-parallel"),
+      parentThreadId,
+      task: "Review in parallel",
+      modelSelection,
+      runtimeMode: "full-access" as const,
+      interactionMode: "plan" as const,
+      completionWake: "always" as const,
+      attachments,
+      context,
+      createdBy: "user" as const,
+      creationSource: "mobile" as const,
+    };
+    yield* orchestrator.dispatch(command);
+    yield* orchestrator.dispatch(command);
+    const after = yield* orchestrator.getThreadProjection(parentThreadId);
+    assert.deepEqual(after.runs, before.runs);
+    assert.deepEqual(after.messages, before.messages);
+    assert.deepEqual(after.thread.modelSelection, before.thread.modelSelection);
+    assert.equal(after.thread.interactionMode, "default");
+    assert.lengthOf(after.subagents, 1);
+    const task = after.subagents[0]!;
+    assert.equal(task.createdBy, "user");
+    assert.equal(task.origin, "app_owned");
+    assert.equal(task.completionWake, "always");
+    assert.isFalse(after.nodes.find((node) => node.id === task.id)!.countsForRun);
+    const child = yield* orchestrator.getThreadProjection(task.childThreadId!);
+    assert.equal(child.thread.interactionMode, "plan");
+    assert.equal(child.thread.worktreePath, before.thread.worktreePath);
+    assert.equal(child.messages[0]!.text, "Review in parallel");
+    assert.deepEqual(child.messages[0]!.attachments, attachments);
+    assert.deepEqual(child.messages[0]!.context, context);
+    yield* orchestrator.dispatch({
+      type: "thread.stop",
+      commandId: CommandId.make("stop-parallel-parent"),
+      threadId: parentThreadId,
+    });
+    yield* orchestrator.dispatch(command);
+    assert.lengthOf((yield* orchestrator.getThreadProjection(parentThreadId)).subagents, 1);
+    const rejected = yield* Effect.exit(
+      orchestrator.dispatch({ ...command, commandId: CommandId.make("late-parallel") }),
+    );
+    assert.isTrue(Exit.isFailure(rejected));
+  }).pipe(Effect.provide(layerTest)),
 );
