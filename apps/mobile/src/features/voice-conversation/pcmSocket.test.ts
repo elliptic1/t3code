@@ -92,7 +92,10 @@ beforeEach(() => {
   });
   vi.stubGlobal("WebSocket", Socket);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 describe("native PCM voice socket", () => {
   it("authenticates with a temporary token, encodes signed little-endian PCM, and mutes upload", async () => {
     const { connection, socket } = await open();
@@ -163,14 +166,58 @@ describe("native PCM voice socket", () => {
     expect(mocks.stop).toHaveBeenCalledOnce();
     expect(socket.close).toHaveBeenCalledOnce();
   });
-  it("reports network errors even if no close event follows", async () => {
+  it("retries a temporary handshake failure after releasing the failed audio resources", async () => {
+    vi.useFakeTimers();
+    const options = input();
+    const pending = connectPcmSocket(options);
+    const first = await created;
+    created = new Promise((resolve) => {
+      onCreated = resolve;
+    });
+    first.dispatchEvent(new Event("error"));
+    first.dispatchEvent(new CloseEvent("close", { code: 1006, reason: "Connection reset" }));
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await created;
+    expect(first.close).toHaveBeenCalledOnce();
+    expect(mocks.stop).toHaveBeenCalledOnce();
+    second.dispatchEvent(new Event("open"));
+    const connection = await pending;
+    expect(options.onError).not.toHaveBeenCalled();
+    expect(mocks.start).toHaveBeenCalledOnce();
+    await connection.close();
+  });
+  it("reports an unavailable network after one retry, even without close events", async () => {
+    vi.useFakeTimers();
     const options = input();
     const pending = connectPcmSocket(options);
     const rejected = expect(pending).rejects.toThrow("phone's internet connection");
-    const socket = await created;
-    socket.dispatchEvent(new Event("error"));
+    const first = await created;
+    created = new Promise((resolve) => {
+      onCreated = resolve;
+    });
+    first.dispatchEvent(new Event("error"));
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await created;
+    second.dispatchEvent(new Event("error"));
     await rejected;
     expect(options.onError).toHaveBeenCalledOnce();
+    expect(mocks.stop).toHaveBeenCalledTimes(2);
+  });
+  it("cancels a pending retry without reopening the microphone or reporting an error", async () => {
+    vi.useFakeTimers();
+    const abort = new AbortController();
+    const options = input(abort);
+    const pending = connectPcmSocket(options);
+    const rejected = expect(pending).rejects.toThrow();
+    const first = await created;
+    first.dispatchEvent(new Event("error"));
+    await vi.advanceTimersByTimeAsync(0);
+    abort.abort();
+    await rejected;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.stop).toHaveBeenCalledOnce();
+    expect(options.onError).not.toHaveBeenCalled();
   });
   it("cleans up the recorder and socket when cancelled before connection", async () => {
     const abort = new AbortController();
