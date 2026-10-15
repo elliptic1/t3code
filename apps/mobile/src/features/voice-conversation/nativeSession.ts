@@ -17,24 +17,30 @@ export async function connectNativeVoice(
   if (!token) throw new Error("Finish dictation before starting a voice conversation.");
   let connection: VoiceConnection | undefined;
   let releaseAudio = async () => {};
+  let releaseFocus = () => {};
   let releaseBackground = async () => {};
   let preparing = true;
   let opened = false;
   let closing: Promise<void> | undefined;
   const close = () => {
-    if (preparing) return Promise.resolve();
+    if (preparing) return Promise.resolve().then(releaseFocus);
     input.signal.removeEventListener("abort", onAbort);
     closing ??= (async () => {
       try {
-        await connection?.close();
+        // Yield to keyboard dictation before waiting for native recorder shutdown.
+        releaseFocus();
       } finally {
         try {
-          await releaseAudio();
+          await connection?.close();
         } finally {
           try {
-            await releaseBackground();
+            await releaseAudio();
           } finally {
-            releaseVoiceInputSession(token);
+            try {
+              await releaseBackground();
+            } finally {
+              releaseVoiceInputSession(token);
+            }
           }
         }
       }
@@ -64,13 +70,20 @@ export async function connectNativeVoice(
     const tag = `voice-conversation:${randomUUID()}`;
     const awake = Platform.OS === "android" ? Promise.resolve() : activateKeepAwakeAsync(tag);
     void awake.catch(() => {});
-    AudioManager.observeAudioInterruptions("gainTransientExclusive");
     const interruption = AudioManager.addSystemEventListener("interruption", ({ type }) => {
       if (type === "began") input.onError("Voice was interrupted. Start again when ready.");
     });
+    let observing = true;
+    releaseFocus = () => {
+      if (!observing) return;
+      observing = false;
+      try {
+        interruption.remove();
+      } finally {
+        AudioManager.observeAudioInterruptions(false);
+      }
+    };
     releaseAudio = async () => {
-      interruption.remove();
-      AudioManager.observeAudioInterruptions(false);
       try {
         await AudioManager.setAudioSessionActivity(false);
       } finally {
@@ -78,6 +91,9 @@ export async function connectNativeVoice(
           await awake.then(() => deactivateKeepAwake(tag)).catch(() => {});
       }
     };
+    // Conversations can last minutes. Exclusive transient focus can prevent
+    // system speech recognition from starting while T3 runs in the background.
+    AudioManager.observeAudioInterruptions("gain");
     const { connectVoice } = await import("./connection");
     connection = await connectVoice(input);
     input.signal.throwIfAborted();
