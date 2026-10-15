@@ -1,12 +1,51 @@
 import { AudioContext, AudioRecorder, type AudioBufferSourceNode } from "react-native-audio-api";
 import type { VoiceSessionConnection } from "@t3tools/contracts";
 
-export async function connectPcmSocket(input: {
+type PcmSocketInput = {
   connection: VoiceSessionConnection;
   signal: AbortSignal;
   onEvent: (data: string) => void;
   onError: (message: string) => void;
-}) {
+};
+
+export async function connectPcmSocket(input: PcmSocketInput) {
+  // One short retry fits within the session token's 60-second lifetime.
+  // Recreate audio resources only after the failed attempt has released them.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await connectPcmSocketOnce(input);
+    } catch (error) {
+      input.signal.throwIfAborted();
+      const message = error instanceof Error ? error.message : "";
+      const transient =
+        message.startsWith("Voice WebSocket connection failed:") &&
+        !/\b(?:HTTP\s+)?4\d\d\b|certificate|SSLHandshake|authentication|unauthorized|forbidden/i.test(
+          message,
+        ) &&
+        /network|connect|timed? out|timeout|resolve|reset|unexpected end|broken pipe|5\d\d/i.test(
+          message.slice("Voice WebSocket connection failed:".length),
+        );
+      if (attempt > 0 || !transient) {
+        if (message.startsWith("Voice WebSocket connection failed:")) input.onError(message);
+        throw error;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => {
+          clearTimeout(timer);
+          reject(input.signal.reason);
+        };
+        const timer = setTimeout(() => {
+          input.signal.removeEventListener("abort", abort);
+          resolve();
+        }, 500);
+        input.signal.addEventListener("abort", abort, { once: true });
+        if (input.signal.aborted) abort();
+      });
+    }
+  }
+}
+
+async function connectPcmSocketOnce(input: PcmSocketInput) {
   const { connection, signal } = input;
   signal.throwIfAborted();
   const context = new AudioContext({ sampleRate: 24000 });
@@ -147,7 +186,9 @@ export async function connectPcmSocket(input: {
     await new Promise<void>((resolve, reject) => {
       const abort = () => reject(new DOMException("Aborted", "AbortError"));
       signal.addEventListener("abort", abort, { once: true });
+      let opened = false;
       socket!.addEventListener("open", () => {
+        opened = true;
         signal.removeEventListener("abort", abort);
         resolve();
       });
@@ -162,7 +203,7 @@ export async function connectPcmSocket(input: {
           : detail;
         const message = `Voice WebSocket connection failed: ${safeDetail.slice(0, 500)}`;
         reject(new Error(message));
-        input.onError(message);
+        if (opened) input.onError(message);
       };
       socket!.addEventListener("error", (event) => {
         const detail =
