@@ -151,15 +151,30 @@ export async function connectPcmSocket(input: {
         signal.removeEventListener("abort", abort);
         resolve();
       });
-      socket!.addEventListener("error", () => {
+      let failed = false;
+      const fail = (detail: string) => {
+        if (failed || signal.aborted) return;
+        failed = true;
         signal.removeEventListener("abort", abort);
-        reject(new Error("Could not connect to the realtime WebSocket."));
-        input.onError("Voice WebSocket connection failed.");
+        // Android can include handshake headers in its failure reason.
+        const safeDetail = connection.clientSecret
+          ? detail.split(connection.clientSecret).join("<redacted>")
+          : detail;
+        const message = `Voice WebSocket connection failed: ${safeDetail.slice(0, 500)}`;
+        reject(new Error(message));
+        input.onError(message);
+      };
+      socket!.addEventListener("error", (event) => {
+        const detail =
+          "message" in event && typeof event.message === "string" && event.message
+            ? event.message
+            : "Could not reach the voice provider. Check the phone's internet connection.";
+        // React Native emits a plain error followed immediately by a close
+        // carrying OkHttp's actual failure. Let that reason win before reporting.
+        queueMicrotask(() => fail(detail));
       });
-      socket!.addEventListener("close", () => {
-        signal.removeEventListener("abort", abort);
-        reject(new Error("Voice connection closed."));
-        if (!signal.aborted) input.onError("Voice connection closed. Start again to reconnect.");
+      socket!.addEventListener("close", (event) => {
+        fail(event.reason || `Connection closed (code ${event.code}). Start again to reconnect.`);
       });
     });
     signal.throwIfAborted();

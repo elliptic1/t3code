@@ -142,6 +142,36 @@ describe("native PCM voice socket", () => {
     expect(socket.send).not.toHaveBeenCalled();
     await connection.close();
   });
+  it("reports Android's handshake failure instead of hiding it behind the preceding error", async () => {
+    const options = input();
+    const pending = connectPcmSocket(options);
+    const rejected = expect(pending).rejects.toThrow("HTTP 403");
+    const socket = await created;
+    socket.dispatchEvent(new Event("error"));
+    socket.dispatchEvent(
+      new CloseEvent("close", {
+        code: 1006,
+        reason: "Expected HTTP 101 but was HTTP 403; xai-client-secret.temporary",
+      }),
+    );
+    await rejected;
+    expect(options.onError).toHaveBeenCalledOnce();
+    expect(options.onError).toHaveBeenCalledWith(
+      expect.stringContaining("HTTP 403; xai-client-secret.<redacted>"),
+    );
+    expect(options.onError.mock.calls[0]![0]).not.toContain("temporary");
+    expect(mocks.stop).toHaveBeenCalledOnce();
+    expect(socket.close).toHaveBeenCalledOnce();
+  });
+  it("reports network errors even if no close event follows", async () => {
+    const options = input();
+    const pending = connectPcmSocket(options);
+    const rejected = expect(pending).rejects.toThrow("phone's internet connection");
+    const socket = await created;
+    socket.dispatchEvent(new Event("error"));
+    await rejected;
+    expect(options.onError).toHaveBeenCalledOnce();
+  });
   it("cleans up the recorder and socket when cancelled before connection", async () => {
     const abort = new AbortController();
     const pending = connectPcmSocket(input(abort));
