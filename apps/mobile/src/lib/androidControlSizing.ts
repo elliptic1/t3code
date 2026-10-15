@@ -9,6 +9,7 @@ export function resolveAndroidControlSizing(baseFontSize: number) {
 
   return {
     scale,
+    navigationBarHeight: 80 * Math.max(1, scale),
     iconSize,
     smallIconSize: Math.round(16 * scale),
     mediumIconSize: Math.round(18 * scale),

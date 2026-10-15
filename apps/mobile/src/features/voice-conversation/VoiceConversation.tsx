@@ -1,3 +1,5 @@
+import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
+import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { VoiceButton } from "./VoiceButton";
 import { useEffect, useRef, useState } from "react";
 import { AppState, Platform, Pressable, ScrollView, View } from "react-native";
@@ -45,6 +47,14 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
     (selected === null ? available[0] : undefined);
   const environmentId = environment?.environmentId;
   const insets = useSafeAreaInsets();
+  const { layout } = useAdaptiveWorkspaceLayout();
+  const { navigationBarHeight, fabClearance } = useAndroidControlSizing();
+  // The compact Android root stacks New thread and Filter above its bottom tabs.
+  const bottom =
+    Math.max(insets.bottom, 12) +
+    (Platform.OS === "android" && route?.name === "Home" && !layout.usesSplitView
+      ? navigationBarHeight + fabClearance + 16
+      : 88);
   const enabled = environment !== undefined;
   if (!enabled && (selected !== null || open)) {
     setSelected(null);
@@ -57,7 +67,7 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
       style={{
         position: "absolute",
         right: 28,
-        bottom: Math.max(insets.bottom, 12) + 88,
+        bottom,
         maxWidth: "90%",
       }}
     >

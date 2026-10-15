@@ -47,7 +47,7 @@ export function AndroidWorkspaceNavigation(props: {
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const { themeAppearance, themeVariables: colors } = useAppearancePreferences();
-  const { scale } = useAndroidControlSizing();
+  const { scale, navigationBarHeight } = useAndroidControlSizing();
   const rail = Boolean(props.rail);
   const { containerColor, indicatorColor, selectedColor, unselectedColor } =
     androidWorkspaceNavigationColors(colors, rail);
@@ -87,7 +87,7 @@ export function AndroidWorkspaceNavigation(props: {
           }
           props.onSelect?.();
         }}
-        style={rail ? { flex: 1 } : { height: 80 * Math.max(1, scale) }}
+        style={rail ? { flex: 1 } : { height: navigationBarHeight }}
       />
     </View>
   );
