@@ -50,6 +50,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -14148,13 +14149,25 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             // Later steers wait on the move still in flight instead of
             // piling up another request for the same run.
             for (let repeat = 1; repeat <= 2; repeat++) {
-              const again = yield* Effect.forkScoped(steer);
-              // The steer's 5 second wait starts once it reaches it; move the
-              // clock until the steer has gone out.
-              for (let tick = 0; tick < 100 && again.pollUnsafe() === undefined; tick++) {
-                yield* TestClock.adjust("1 second");
-                yield* Effect.yieldNow;
-              }
+              const timeoutStarted = yield* Deferred.make<void>();
+              const expireTimeout = yield* Deferred.make<void>();
+              const clock = yield* Clock.Clock;
+              const again = yield* steer.pipe(
+                Effect.provideService(Clock.Clock, {
+                  ...clock,
+                  sleep: (duration) =>
+                    Duration.toMillis(duration) === 5_000
+                      ? Deferred.succeed(timeoutStarted, undefined).pipe(
+                          Effect.andThen(Deferred.await(expireTimeout)),
+                        )
+                      : clock.sleep(duration),
+                }),
+                Effect.forkScoped,
+              );
+              // Skill discovery does asynchronous I/O before the timeout starts.
+              // Expire the actual wait instead of advancing past it beforehand.
+              yield* Deferred.await(timeoutStarted);
+              yield* Deferred.succeed(expireTimeout, undefined);
               assert.isTrue(Exit.isSuccess(yield* Fiber.await(again)));
               assert.equal(harness.offeredMessages.length, offered + 1 + repeat);
             }
