@@ -3,7 +3,6 @@ import type {
   OrchestrationV2ProviderThread,
 } from "@t3tools/contracts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import { ContextHandoffBudgetError } from "@t3tools/provider-core/server/failure";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
@@ -73,15 +72,23 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
       oldContext && historyCost([], `${coverage}\n${oldContext}`) + 512 <= budget
         ? `${coverage}\n${oldContext}`
         : coverage;
-    const selected = selectHistory({
+    let selected = selectHistory({
       messages,
       coverage: fullCoverage,
       omittedItems: pending.reduce((sum, handoff) => sum + (handoff.history?.omittedItems ?? 0), 0),
       budget,
+      compressOversized: true,
     });
     if (historyCost(selected.messages, selected.context) > budget) {
       if (input.deferInline) return { context: "", delivered: Effect.void, unsent: Effect.void };
-      return yield* new ContextHandoffBudgetError();
+      // Even metadata is optional when the destination has no history allowance.
+      // Preserve the request and record every omitted item for later retrieval.
+      selected = {
+        messages: [],
+        context: "",
+        omittedItemIds: messages.map((message) => message.itemId),
+        omittedItems: messages.length,
+      };
     }
     const omittedItemIds = new Set(selected.omittedItemIds);
     const persist = (status: "pending" | "injected" | "inline") =>
@@ -96,12 +103,14 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
                   delivery: {
                     nativeThreadId,
                     status,
-                    omittedItemIds: [
-                      ...(handoff.history?.omittedItemIds ?? []),
-                      ...(handoff.history?.messages ?? [])
-                        .filter((message) => omittedItemIds.has(message.itemId))
-                        .map((message) => message.itemId),
-                    ],
+                    omittedItemIds: Array.from(
+                      new Set([
+                        ...(handoff.history?.omittedItemIds ?? []),
+                        ...(handoff.history?.messages ?? [])
+                          .filter((message) => omittedItemIds.has(message.itemId))
+                          .map((message) => message.itemId),
+                      ]),
+                    ),
                     itemIds: selected.messages
                       .filter((message) =>
                         handoff.history?.messages.some(
@@ -114,7 +123,7 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
           }),
         { discard: true },
       );
-    if (input.inject !== undefined && nativeThreadId !== undefined) {
+    if (selected.context !== "" && input.inject !== undefined && nativeThreadId !== undefined) {
       if (
         pending.some(
           (handoff) =>

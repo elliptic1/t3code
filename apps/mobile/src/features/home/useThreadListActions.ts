@@ -119,6 +119,7 @@ function checkThreadOperationPermission(thread: EnvironmentThreadShell, title: s
 /** Resolves to true iff the action was dispatched and succeeded. */
 function useThreadActionExecutor(
   onCompleted?: (action: ThreadListAction, thread: EnvironmentThreadShell) => void,
+  dismissRows = true,
 ) {
   const archiveMutation = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
   const unarchiveMutation = useAtomCommand(threadEnvironment.unarchive, { reportFailure: false });
@@ -157,30 +158,30 @@ function useThreadActionExecutor(
           );
           return false;
         }
-        const result = await withThreadDismissal(
-          key,
-          async () =>
-            action === "unsettle"
-              ? // reason "user" pins the thread active: auto-settle stays
-                // suppressed until real activity clears the pin server-side.
-                await unsettleMutation({
-                  environmentId: thread.environmentId,
-                  input: { threadId: thread.id, reason: "user" },
-                })
-              : await (
-                  action === "settle"
-                    ? settleMutation
-                    : action === "archive"
-                      ? archiveMutation
-                      : action === "unarchive"
-                        ? unarchiveMutation
-                        : deleteMutation
-                )({
-                  environmentId: thread.environmentId,
-                  input: { threadId: thread.id },
-                }),
-          (result) => result._tag === "Success",
-        );
+        const run = async () =>
+          action === "unsettle"
+            ? // A manual un-settle suppresses auto-settle until new activity.
+              await unsettleMutation({
+                environmentId: thread.environmentId,
+                input: { threadId: thread.id, reason: "user" },
+              })
+            : await (
+                action === "settle"
+                  ? settleMutation
+                  : action === "archive"
+                    ? archiveMutation
+                    : action === "unarchive"
+                      ? unarchiveMutation
+                      : deleteMutation
+              )({
+                environmentId: thread.environmentId,
+                input: { threadId: thread.id },
+              });
+        // A hidden or frozen list cannot finish its row animation. Actions in
+        // the thread screen commit directly before navigating back to the list.
+        const result = dismissRows
+          ? await withThreadDismissal(key, run, (result) => result._tag === "Success")
+          : await run();
         if (result._tag === "Failure") {
           Alert.alert(actionFailureTitle(action), actionFailureMessage(action, result.cause));
           return false;
@@ -199,6 +200,7 @@ function useThreadActionExecutor(
     [
       archiveMutation,
       deleteMutation,
+      dismissRows,
       onCompleted,
       settleMutation,
       unarchiveMutation,
@@ -244,7 +246,7 @@ function useConfirmDeleteThread(
   );
 }
 
-export function useThreadListActions(): {
+export function useThreadListActions(options: { readonly dismissRows?: boolean } = {}): {
   readonly archiveThread: (thread: EnvironmentThreadShell) => void;
   readonly confirmDeleteThread: (thread: EnvironmentThreadShell) => void;
   readonly settleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
@@ -265,7 +267,7 @@ export function useThreadListActions(): {
   readonly renameThread: (thread: EnvironmentThreadShell) => void;
   readonly regenerateThreadTitle: (thread: EnvironmentThreadShell) => Promise<boolean>;
 } {
-  const executeAction = useThreadActionExecutor();
+  const executeAction = useThreadActionExecutor(undefined, options.dismissRows);
   const snoozeMutation = useAtomCommand(threadEnvironment.snooze, { reportFailure: false });
   const unsnoozeMutation = useAtomCommand(threadEnvironment.unsnooze, { reportFailure: false });
   const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });

@@ -604,6 +604,33 @@ export const layer: Layer.Layer<
           return undefined;
         });
       let effectiveHandoffs = handoffs;
+      const userText = projectComposerContextForProvider({
+        text: message.text,
+        records: message.context?.records ?? [],
+      });
+
+      // Only started runs establish a telemetry selection, not queued runs or
+      // failures during session setup.
+      const measuredContext = latestNativeContextUsage(projection, providerThread);
+      const previousSelection =
+        measuredContext?.modelSelection ??
+        projection.runs.findLast(
+          (source) =>
+            source.ordinal < run.ordinal &&
+            source.startedAt !== null &&
+            source.providerThreadId === providerThread.id,
+        )?.modelSelection;
+      const sameSelection =
+        previousSelection === undefined ||
+        modelSelectionsEqual(previousSelection, run.modelSelection);
+      const reuseTelemetry =
+        sameSelection ||
+        (previousSelection !== undefined &&
+          session.canReuseContextUsage?.(previousSelection, run.modelSelection) === true);
+      const knownModelWindow = session.getModelContextWindow?.(
+        run.modelSelection,
+        resolvedRuntimePolicy.cwd,
+      );
       const loadedProviderThread = yield* Effect.gen(function* () {
         if (nativeForkTransfer !== undefined) {
           const sourceProjection = yield* projectionStore.getThreadRecords(
@@ -665,15 +692,93 @@ export const layer: Layer.Layer<
             handoff.delivery?.nativeThreadId === providerThread.nativeThreadRef?.nativeId &&
             handoff.delivery?.status === "pending",
         );
+        // A returning provider may have a full native transcript, or the selected
+        // model may have a smaller window. Reuse the portable resume fallback
+        // before sending history into a conversation that cannot accommodate it.
+        const resumeUsage = contextUsageForHandoff({
+          sameNativeThread: true,
+          sameSelection,
+          reuseTelemetry,
+          previousUsage: measuredContext
+            ? { ...providerThread.contextUsage, ...measuredContext.usage }
+            : providerThread.contextUsage,
+          knownModelWindow,
+        });
+        const checkCapacity =
+          !sameSelection ||
+          effectiveHandoffs.some(
+            (handoff) =>
+              handoff.delivery?.nativeThreadId !== providerThread.nativeThreadRef?.nativeId ||
+              handoff.delivery?.status === "pending",
+          );
+        const nativeEstimate = yield* Effect.gen(function* () {
+          if (!checkCapacity || resumeUsage !== null) return 0;
+          const acceptedAttemptIds = new Set(
+            projection.providerTurns.map((turn) => turn.runAttemptId),
+          );
+          const nativeRunIds = new Set(
+            projection.attempts
+              .filter(
+                (source) =>
+                  source.providerThreadId === providerThread.id &&
+                  acceptedAttemptIds.has(source.id) &&
+                  (source.nativeThreadId === undefined ||
+                    source.nativeThreadId === providerThread.nativeThreadRef?.nativeId),
+              )
+              .map((source) => source.runId),
+          );
+          const deliveredHistory = projection.contextHandoffs.filter(
+            (handoff) =>
+              handoff.toProviderThreadId === providerThread.id &&
+              handoff.delivery?.nativeThreadId === providerThread.nativeThreadRef?.nativeId &&
+              handoff.delivery?.status !== "pending",
+          );
+          return (yield* projectionStore.getTurnStartHistory(input.threadId)).reduce(
+            (sum, item) =>
+              item.runId !== null &&
+              nativeRunIds.has(item.runId) &&
+              item.providerThreadId === providerThread.id
+                ? sum +
+                  Buffer.byteLength(historicalMessage(item)?.text ?? "") +
+                  (item.type === "user_message" ? attachmentTokenAllowance(item.attachments) : 0)
+                : sum,
+            deliveredHistory.reduce(
+              (sum, handoff) =>
+                sum +
+                (handoff.history?.messages ?? []).reduce(
+                  (cost, historical) =>
+                    handoff.delivery?.itemIds.includes(historical.itemId) &&
+                    (historical.runId === null || !nativeRunIds.has(historical.runId))
+                      ? cost + Buffer.byteLength(historical.text)
+                      : cost,
+                  0,
+                ),
+              0,
+            ),
+          );
+        });
+        const needsPortableContext =
+          checkCapacity &&
+          (resumeUsage?.usedTokens ?? nativeEstimate) > 0 &&
+          handoffBudget({
+            tokenCap: 1_024,
+            userText,
+            attachments: message.attachments,
+            providerThread: { ...providerThread, contextUsage: resumeUsage },
+            nativeContextEstimate: nativeEstimate,
+            modelContextWindow: knownModelWindow,
+          }) < 1_024;
         const resumed = yield* Effect.result(
-          uncertainDelivery
+          uncertainDelivery || needsPortableContext
             ? Effect.fail(
                 new ProviderAdapter.ProviderAdapterTurnStartError({
                   driver: session.driver,
                   threadId: projection.thread.id,
                   providerThreadId: providerThread.id,
                   runId,
-                  cause: "Uncertain native history injection",
+                  cause: needsPortableContext
+                    ? "Native context exceeds destination allowance"
+                    : "Uncertain native history injection",
                 }),
               )
             : session.resumeThread({
@@ -687,11 +792,15 @@ export const layer: Layer.Layer<
           return resumed.success;
         }
 
-        yield* Effect.logWarning("Provider resume failed; attempting a fresh native session", {
+        yield* Effect.logWarning("Replacing provider native session with portable context", {
           driver: session.driver,
           providerThreadId: providerThread.id,
           runId,
-          reason: uncertainDelivery ? "uncertain_history_delivery" : "resume_failed",
+          reason: needsPortableContext
+            ? "context_capacity"
+            : uncertainDelivery
+              ? "uncertain_history_delivery"
+              : "resume_failed",
           errorTag: resumed.failure._tag,
         });
         const replacement = yield* loadFromProvider(
@@ -782,34 +891,12 @@ export const layer: Layer.Layer<
         return;
       }
       const now = yield* DateTime.now;
-      // Only started runs reached the provider-thread update below. Queued runs and
-      // failures during session setup cannot establish a new telemetry selection.
-      const measuredContext = latestNativeContextUsage(projection, providerThread);
-      const previousSelection =
-        measuredContext?.modelSelection ??
-        projection.runs.findLast(
-          (source) =>
-            source.ordinal < run.ordinal &&
-            source.startedAt !== null &&
-            source.providerThreadId === providerThread.id,
-        )?.modelSelection;
-      const sameSelection =
-        previousSelection === undefined ||
-        modelSelectionsEqual(previousSelection, run.modelSelection);
       const sameNativeThread =
         loadedProviderThread.nativeThreadRef?.nativeId === providerThread.nativeThreadRef?.nativeId;
       const threadUsage = loadedProviderThread.contextUsage ?? providerThread.contextUsage;
       const previousUsage = measuredContext
         ? { ...threadUsage, ...measuredContext.usage }
         : threadUsage;
-      const reuseTelemetry =
-        sameSelection ||
-        (previousSelection !== undefined &&
-          session.canReuseContextUsage?.(previousSelection, run.modelSelection) === true);
-      const knownModelWindow = session.getModelContextWindow?.(
-        run.modelSelection,
-        resolvedRuntimePolicy.cwd,
-      );
       // Persist before delivery. Keep this native transcript's measured
       // occupancy. A different model drops compaction telemetry and uses the
       // new window when that window is known.
@@ -947,10 +1034,6 @@ export const layer: Layer.Layer<
       const routableSubagents = projection.subagents.filter((subagent) =>
         RunExecutionService.canRouteRelatedSubagent(subagent.status),
       );
-      const userText = projectComposerContextForProvider({
-        text: message.text,
-        records: message.context?.records ?? [],
-      });
       // Delivered once: this run's provider turn marks the work as told. A
       // restart continuation is prompted by its own text or resumes natively.
       const noteContinuation = isRestartNoteContinuation(

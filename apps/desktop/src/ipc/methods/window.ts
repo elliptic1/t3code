@@ -355,28 +355,36 @@ export const probeRemoteEditors = DesktopIpc.makeIpcMethod({
   }),
 });
 
-export const startDictation = DesktopIpc.makeIpcMethod({
-  channel: IpcChannels.START_DICTATION_CHANNEL,
-  payload: Schema.Undefined,
-  result: Schema.Boolean,
-  handler: Effect.fn("desktop.ipc.window.startDictation")(function* (_input, event) {
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const window = yield* electronWindow.main;
-    if (
-      event === undefined ||
-      Option.isNone(window) ||
-      window.value.isDestroyed() ||
-      !window.value.isFocused() ||
-      window.value.webContents.id !== event.sender.id
-    )
-      return false;
-    // Native actions target the application's first responder. A preview `<webview>` keeps
-    // reporting focus after the composer takes it back, so claim it rather than check for it.
-    window.value.webContents.focus();
-    const menu = yield* ElectronMenu.ElectronMenu;
-    return yield* menu.startDictation;
-  }),
-});
+function dictationMethod(channel: string, action: "startDictation" | "stopDictation") {
+  return DesktopIpc.makeIpcMethod({
+    channel,
+    payload: Schema.Undefined,
+    result: Schema.Boolean,
+    handler: Effect.fn(`desktop.ipc.window.${action}`)(function* (_input, event) {
+      const electronWindow = yield* ElectronWindow.ElectronWindow;
+      const window = yield* electronWindow.main;
+      if (
+        event === undefined ||
+        Option.isNone(window) ||
+        window.value.isDestroyed() ||
+        !window.value.isFocused() ||
+        window.value.webContents.id !== event.sender.id
+      )
+        return false;
+      // Native actions target the application's first responder. A preview `<webview>` keeps
+      // reporting focus after the composer takes it back, so claim it rather than check for it.
+      window.value.webContents.focus();
+      const menu = yield* ElectronMenu.ElectronMenu;
+      return yield* menu[action];
+    }),
+  });
+}
+
+export const startDictation = dictationMethod(
+  IpcChannels.START_DICTATION_CHANNEL,
+  "startDictation",
+);
+export const stopDictation = dictationMethod(IpcChannels.STOP_DICTATION_CHANNEL, "stopDictation");
 
 export const pasteAsText = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PASTE_AS_TEXT_CHANNEL,

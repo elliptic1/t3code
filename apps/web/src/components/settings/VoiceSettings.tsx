@@ -1,6 +1,13 @@
+import { useRef } from "react";
 import { VOICE_CONNECTION_PRESETS, type VoiceConnectionSettings } from "@t3tools/contracts";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+import {
+  useScopedSettings,
+  useScopedSettingsMixed,
+  useUpdateScopedSettings,
+} from "./useScopedSettings";
+import { Textarea } from "../ui/textarea";
+import { useSettingsScope } from "./SettingsScopeContext";
 import { DraftInput } from "../ui/draft-input";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -8,6 +15,11 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 
 export function VoiceSettings() {
   const value = useScopedSettings((settings) => settings.voiceConnection);
+  const instructions = useScopedSettings((settings) => settings.voiceInstructions);
+  const instructionsMixed = useScopedSettingsMixed(["voiceInstructions"]);
+  const { targets } = useSettingsScope();
+  const scopeKey = targets.map((target) => target.environmentId).join(",");
+  const instructionsEdited = useRef(false);
   const update = useUpdateScopedSettings();
   const patch = (next: Partial<VoiceConnectionSettings>) =>
     update({ voiceConnection: { ...value, ...next } });
@@ -48,6 +60,36 @@ export function VoiceSettings() {
           </Select>
         }
       />
+      <SettingsRow
+        title="Saved instructions"
+        serverScoped
+        settingKeys={["voiceInstructions"]}
+        description="Your voice assistant remembers these instructions at every session start. Ask her to remember a role or preference, or edit them here. Clear them to forget. Shared across devices connected to this environment."
+      >
+        <div className="mt-3 max-w-2xl pb-3.5">
+          <Textarea
+            key={`${scopeKey}:${instructionsMixed}:${instructions}`}
+            aria-label="Saved voice instructions"
+            defaultValue={instructionsMixed ? "" : instructions}
+            placeholder={
+              instructionsMixed
+                ? "Mixed. Enter instructions for all selected environments."
+                : "Act as the COO of my company."
+            }
+            rows={4}
+            maxLength={16000}
+            onChange={() => {
+              instructionsEdited.current = true;
+            }}
+            onBlur={(event) => {
+              const next = event.target.value.trim();
+              if (instructionsEdited.current && (instructionsMixed || next !== instructions))
+                update({ voiceInstructions: next });
+              instructionsEdited.current = false;
+            }}
+          />
+        </div>
+      </SettingsRow>
       {value.mode === "agent" ? null : <VoiceProviderSettings value={value} patch={patch} />}
     </SettingsSection>
   );

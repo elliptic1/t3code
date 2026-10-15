@@ -1,6 +1,8 @@
 import {
+  AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   EnvironmentHttpApi,
+  EnvironmentHttpBadRequestError,
   type OrchestrationProjectShell,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -16,6 +18,8 @@ import {
   requireEnvironmentScope,
 } from "../auth/http.ts";
 import { traceLocalHandlerWork } from "../cloud/traceRelayRequest.ts";
+import * as ServerSettingsService from "../serverSettings.ts";
+import { createVoiceSession } from "../voice/session.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import {
@@ -55,6 +59,7 @@ export const layer = HttpApiBuilder.group(
     const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
     const projectStore = yield* ProjectStore.ProjectStoreV2;
     const projectEnrichment = yield* ProjectEnrichmentService.ProjectEnrichmentService;
+    const serverSettings = yield* ServerSettingsService.ServerSettingsService;
 
     const enrichProjectShells = Effect.fn("http.orchestration.enrichProjectShells")(
       (projects: ReadonlyArray<OrchestrationProjectShell>) =>
@@ -230,6 +235,30 @@ export const layer = HttpApiBuilder.group(
                 }),
               ),
             );
+        }),
+      )
+      .handle(
+        "createVoiceSession",
+        Effect.fn("environment.orchestration.createVoiceSession")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          const settings = yield* serverSettings.getSettings.pipe(
+            Effect.catch((cause) => failEnvironmentInternal("internal_error", cause)),
+          );
+          return yield* createVoiceSession(
+            settings.voiceConnection,
+            fetch,
+            settings.voiceInstructions,
+          ).pipe(
+            traceLocalHandlerWork,
+            Effect.catch(
+              Effect.fnUntraced(function* (cause) {
+                if (Predicate.isTagged(cause, "VoiceSessionError"))
+                  return yield* new EnvironmentHttpBadRequestError({ message: cause.message });
+                return yield* failEnvironmentInternal("internal_error", cause);
+              }),
+            ),
+          );
         }),
       );
   }),

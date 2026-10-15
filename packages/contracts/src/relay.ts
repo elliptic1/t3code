@@ -11,10 +11,21 @@ import * as OpenApi from "effect/http-api/OpenApi";
 import {
   DpopFailureReason,
   EnvironmentId,
+  IsoDateTime,
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+
+/** A subscription allowance reminder, independent of any agent thread. */
+export const RelayUsageResetReminder = Schema.Struct({
+  providerInstanceId: TrimmedNonEmptyString,
+  providerLabel: TrimmedNonEmptyString.check(Schema.isMaxLength(120)),
+  windowId: TrimmedNonEmptyString,
+  resetsAt: IsoDateTime,
+  remainingPercent: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
+});
+export type RelayUsageResetReminder = typeof RelayUsageResetReminder.Type;
 
 export const RelayAgentAwarenessPlatform = Schema.Literals(["ios", "android"]);
 export type RelayAgentAwarenessPlatform = typeof RelayAgentAwarenessPlatform.Type;
@@ -33,6 +44,7 @@ export type RelayAgentAwarenessPhase = typeof RelayAgentAwarenessPhase.Type;
 export const RelayAgentAwarenessPreferences = Schema.Struct({
   liveActivitiesEnabled: Schema.Boolean,
   notificationsEnabled: Schema.Boolean,
+  usageResetRemindersSupported: Schema.optional(Schema.Boolean),
   notifyOnApproval: Schema.Boolean,
   notifyOnInput: Schema.Boolean,
   notifyOnCompletion: Schema.Boolean,
@@ -1207,6 +1219,16 @@ const RelayServerGroup = HttpApiGroup.make("server")
         error: RelayAgentActivityPublishErrors,
       },
     ).annotate(OpenApi.Summary, "Publish agent activity"),
+    HttpApiEndpoint.post(
+      "publishUsageResetReminder",
+      "/v1/environments/:environmentId/usage-reset-reminder",
+      {
+        params: Schema.Struct({ environmentId: EnvironmentId }),
+        payload: RelayUsageResetReminder,
+        success: Schema.Struct({ delivered: Schema.Boolean }),
+        error: RelayAuthAndInternalErrors,
+      },
+    ).annotate(OpenApi.Summary, "Send a subscription usage reset reminder"),
     HttpApiEndpoint.post(
       "updateLinkPreferences",
       "/v1/environments/:environmentId/link-preferences",

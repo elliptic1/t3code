@@ -16,6 +16,9 @@ export function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
+    readonly settled: boolean;
+    /** Absent when the connection cannot operate threads. */
+    readonly onToggleSettled?: () => void;
   },
 ) {
   const navigation = useNavigation();
@@ -59,8 +62,18 @@ export function ThreadHeader(
         onPress: onMergeBack,
       });
     }
+    // Last, so it lands in the overflow menu rather than crowding the header.
+    if (props.onToggleSettled) {
+      actions.push({
+        accessibilityLabel: props.settled ? "Move out of settled" : "Settle thread",
+        icon: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
+        onPress: props.onToggleSettled,
+      });
+    }
     return actions;
   }, [
+    props.settled,
+    props.onToggleSettled,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,

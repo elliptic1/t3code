@@ -126,11 +126,12 @@ export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(
   }
   if (
     command.type !== "message.dispatch" &&
+    command.type !== "delegated_task.request" &&
     (command.type !== "queued-run.edit" || command.attachments === undefined)
   )
     return yield* threads.dispatch(command);
   const claimed = yield* AttachmentClaims.claimPendingAttachments({
-    threadId: command.threadId,
+    threadId: command.type === "delegated_task.request" ? command.parentThreadId : command.threadId,
     attachments: command.attachments ?? [],
   });
   return yield* threads

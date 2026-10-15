@@ -177,3 +177,16 @@ describe("routeAgentNotificationResponseOnce", () => {
     expect(navigations).toEqual(["/threads/env/thread"]);
   });
 });
+
+it("opens Usage from a reset reminder without a thread", () => {
+  expect(
+    extractAgentNotificationDeepLink(
+      responseWithData({ deepLink: "/settings/usage", environmentId: "env", threadId: "" }),
+    ),
+  ).toBe("/settings/usage");
+  expect(
+    extractAgentNotificationDeepLink(
+      responseWithData({ deepLink: "/settings/usage?redirect=other" }),
+    ),
+  ).toBeNull();
+});

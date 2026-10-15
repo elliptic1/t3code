@@ -1,4 +1,13 @@
 import {
+  WorkflowGetInput,
+  WorkflowListInput,
+  WorkflowListResult,
+  WorkflowCreateInput,
+  WorkflowControlInput,
+  WorkflowResult,
+  WorkflowError,
+} from "./workflow.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -512,6 +521,11 @@ export const WS_METHODS = {
   serverRefreshUsageRates: "server.refreshUsageRates",
 
   // Scheduled tasks
+  workflowsGet: "workflows.get",
+  workflowsList: "workflows.list",
+  workflowsSubscribe: "workflows.subscribe",
+  workflowsCreate: "workflows.create",
+  workflowsControl: "workflows.control",
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
@@ -1760,6 +1774,33 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const WsWorkflowsGetRpc = Rpc.make(WS_METHODS.workflowsGet, {
+  payload: WorkflowGetInput,
+  success: WorkflowResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsListRpc = Rpc.make(WS_METHODS.workflowsList, {
+  payload: WorkflowListInput,
+  success: WorkflowListResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsSubscribeRpc = Rpc.make(WS_METHODS.workflowsSubscribe, {
+  payload: WorkflowListInput,
+  success: WorkflowListResult,
+  stream: true,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsCreateRpc = Rpc.make(WS_METHODS.workflowsCreate, {
+  payload: WorkflowCreateInput,
+  success: WorkflowResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsControlRpc = Rpc.make(WS_METHODS.workflowsControl, {
+  payload: WorkflowControlInput,
+  success: WorkflowResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -1913,6 +1954,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
   WsServerSignalProcessRpc,
+  WsWorkflowsGetRpc,
+  WsWorkflowsListRpc,
+  WsWorkflowsSubscribeRpc,
+  WsWorkflowsCreateRpc,
+  WsWorkflowsControlRpc,
   WsScheduledTasksListRpc,
   WsScheduledTasksSubscribeRpc,
   WsScheduledTasksUpsertRpc,

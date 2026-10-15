@@ -30,7 +30,7 @@ class Peer extends EventTarget {
 }
 function input(abort = new AbortController()) {
   return {
-    connection: { ...VOICE_CONNECTION_PRESETS.openai, clientSecret: "ephemeral" },
+    connection: { ...VOICE_CONNECTION_PRESETS.openai, instructions: "", clientSecret: "ephemeral" },
     signal: abort.signal,
     execute: vi.fn(async () => ({})),
     onTranscript: vi.fn(),

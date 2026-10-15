@@ -1,3 +1,10 @@
+import { threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { useEnvironmentScope, readEnvironmentScope } from "../../state/session";
+import {
+  AuthOrchestrationOperateScope,
+  type OrchestrationV2ModelFallback,
+} from "@t3tools/contracts";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -183,6 +190,7 @@ export interface ThreadComposerProps {
   readonly followUpBehavior: FollowUpBehavior;
   /** Whether the live turn can actually be steered by this provider. */
   readonly canSteerActiveTurn: boolean;
+  readonly canStartParallelAgent: boolean;
   readonly editorRef?: RefObject<ComposerEditorHandle | null>;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onPickDraftMedia: (source?: ComposerMediaSource) => Promise<void>;
@@ -257,17 +265,19 @@ const FOLLOW_UP_ACTION_LABEL = {
   queue: "Queue",
   steer: "Steer now",
   restart: "Restart turn",
+  parallel: "Start parallel agent",
 } as const;
 
 const FOLLOW_UP_ACTION_SUBTITLE = {
   queue: "Run after the current turn",
-  steer: "Interrupt what the agent is doing",
+  steer: "Send immediately to the active agent",
   restart: "Start the turn over with this message",
+  parallel: "Separate agent in this workspace; foreground continues",
 } as const;
 
 /**
  * The composer's primary button. While a turn is running it also long-presses
- * into the two follow-up behaviors, which is mobile's stand-in for the Command
+ * into the follow-up actions, which is mobile's stand-in for the Command
  * modifier a hardware keyboard has.
  */
 function SendActionButton(props: {
@@ -289,9 +299,7 @@ function SendActionButton(props: {
   if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
     return button;
   }
-  const actions = [presentation.action, presentation.alternate].filter(
-    (action): action is ActiveTurnComposerAction => action !== null,
-  );
+  const actions = presentation.choices;
   return (
     <ControlPillMenu
       accessibilityLabel="Choose how to send this message"
@@ -302,9 +310,10 @@ function SendActionButton(props: {
         subtitle: FOLLOW_UP_ACTION_SUBTITLE[action],
         state: action === presentation.action ? ("on" as const) : ("off" as const),
       }))}
-      onPressAction={({ nativeEvent }) =>
-        props.onSend(nativeEvent.event as ActiveTurnComposerAction)
-      }
+      onPressAction={({ nativeEvent }) => {
+        const action = actions.find((choice) => choice === nativeEvent.event);
+        if (action) props.onSend(action);
+      }}
     >
       {button}
     </ControlPillMenu>
@@ -376,6 +385,21 @@ export function ComposerSurface(props: {
 }
 
 export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposerProps) {
+  const updateMetadata = useAtomCommand(threadEnvironment.updateMetadata);
+  const canConfigureFallback = useEnvironmentScope(
+    props.environmentId,
+    AuthOrchestrationOperateScope,
+  );
+  const onModelFallbackChange = useCallback(
+    (modelFallback: OrchestrationV2ModelFallback | null) => {
+      if (!readEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope)) return;
+      void updateMetadata({
+        environmentId: props.environmentId,
+        input: { threadId: props.selectedThread.id, modelFallback },
+      });
+    },
+    [props.environmentId, props.selectedThread.id, updateMetadata],
+  );
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const composerPanel = materialTheme["--color-composer-panel"];
@@ -427,6 +451,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     editingQueuedMessage: queuedEdit !== null,
     running: props.activeThreadBusy,
     canSteer: props.canSteerActiveTurn,
+    canParallel:
+      props.canStartParallelAgent &&
+      props.connectionState === "connected" &&
+      props.serverConfig?.environment.capabilities.composerParallelTasks === true,
     followUpBehavior: props.followUpBehavior,
     deliveryDeferred:
       props.connectionState !== "connected" || props.queueCount > 0 || attachmentsUploading,
@@ -678,6 +706,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       providerInstanceId: currentModelSelection.instanceId,
       providerGroups: threadProviderGroups,
       selectedModel: currentModelSelection,
+      modelFallback: props.selectedThread.modelFallback ?? null,
+      ...(canConfigureFallback &&
+      props.canSwitchProvider &&
+      props.serverConfig?.environment.capabilities.modelFallback === true
+        ? { onModelFallbackChange }
+        : {}),
       reportedModelSelection: props.reportedModelSelection,
       onSelectModel: (option) =>
         props.onUpdateModelSelection(withRememberedModelOptions(option.selection)),
@@ -696,6 +730,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     [
       currentModelSelection,
       props.reportedModelSelection,
+      props.selectedThread.modelFallback,
+      props.canSwitchProvider,
+      canConfigureFallback,
+      props.serverConfig?.environment.capabilities.modelFallback,
+      onModelFallbackChange,
       currentRuntimeMode,
       props.onUpdateModelSelection,
       props.onUpdateRuntimeMode,
@@ -1134,7 +1173,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                             size={size}
                           />
                         )}
-                        label={currentModelOption?.label ?? currentModelSelection.model}
+                        label={`${currentModelOption?.label ?? currentModelSelection.model}${props.selectedThread.modelFallback ? " · Auto" : ""}`}
                         maxWidth="100%"
                         onPress={openSettings}
                       />

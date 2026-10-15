@@ -1095,6 +1095,14 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.scheduledTasksGetWebhookDelivery,
     }),
     /** Live scheduled-task list: snapshot on subscribe, fresh list after every server-side change. */
+    workflowDetails: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:workflow:details",
+      tag: WS_METHODS.workflowsGet,
+    }),
+    workflowsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:workflows:live",
+      tag: WS_METHODS.workflowsSubscribe,
+    }),
     scheduledTasksLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:scheduled-tasks:live",
       tag: WS_METHODS.scheduledTasksSubscribe,
@@ -1299,6 +1307,14 @@ export function createServerEnvironmentAtoms<R, E>(
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,
+    }),
+    createWorkflow: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workflow:create",
+      tag: WS_METHODS.workflowsCreate,
+    }),
+    controlWorkflow: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workflow:control",
+      tag: WS_METHODS.workflowsControl,
     }),
     upsertScheduledTask: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:scheduled-task:upsert",

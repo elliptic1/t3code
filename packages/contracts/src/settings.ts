@@ -1061,6 +1061,9 @@ export const StorageCleanupSettings = Schema.Struct({
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
 export const ServerSettings = Schema.Struct({
+  voiceInstructions: Schema.String.check(Schema.isMaxLength(16000)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
   voiceConnection: VoiceConnectionSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(VOICE_CONNECTION_PRESETS.openai)),
   ),
@@ -1267,6 +1270,10 @@ export const ServerSettings = Schema.Struct({
   usageLimitSources: Schema.Record(UsageLimitSourceId, UsageLimitSourceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** Sends phone reminders before short subscription allowances reset. */
+  usageResetRemindersEnabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   /** Allows this server to read the Cursor CLI's macOS Keychain login for account usage. */
   cursorKeychainUsageEnabled: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
@@ -1403,6 +1410,7 @@ const ModelSelectionPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  voiceInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16000))),
   voiceConnection: Schema.optionalKey(VoiceConnectionSettings),
   worktreeCleanup: Schema.optionalKey(
     Schema.NullOr(
@@ -1523,6 +1531,7 @@ export const ServerSettingsPatch = Schema.Struct({
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
   ),
+  usageResetRemindersEnabled: Schema.optionalKey(Schema.Boolean),
   cursorKeychainUsageEnabled: Schema.optionalKey(Schema.Boolean),
   /** Each entry replaces one model's rates; `null` restores automatic pricing. */
   usagePriceOverrides: Schema.optionalKey(

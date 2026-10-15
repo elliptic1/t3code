@@ -177,6 +177,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       return {
         threadId: thread.id,
         modelSelection: thread.modelSelection,
+        modelFallback: thread.modelFallback ?? null,
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,
       };
@@ -195,6 +196,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
           threadId: thread.id,
           commandId: yield* newCommandId(),
           modelSelection: input.modelSelection,
+          ...(input.modelFallback === undefined ? {} : { modelFallback: input.modelFallback }),
         })
         .pipe(Effect.mapError(dispatchFailure));
       return { sequence: result.sequence };

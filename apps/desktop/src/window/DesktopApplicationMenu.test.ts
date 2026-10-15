@@ -97,6 +97,7 @@ const layerElectronMenu = (
 ) =>
   Layer.succeed(ElectronMenu.ElectronMenu, {
     startDictation: Effect.succeed(false),
+    stopDictation: Effect.succeed(false),
     setApplicationMenu: (template) =>
       Deferred.succeed(applicationMenuTemplate, template).pipe(Effect.asVoid),
     popupTemplate: () => Effect.void,

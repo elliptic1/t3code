@@ -1,3 +1,4 @@
+import { ThreadWorkflowsPanel } from "./ThreadWorkflowsPanel";
 import { useAtomValue } from "@effect/atom-react";
 import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
@@ -206,6 +207,7 @@ export interface ThreadDetailScreenProps {
   readonly composerDraftKey: string | null;
   readonly followUpBehavior: FollowUpBehavior;
   readonly canSteerActiveTurn: boolean;
+  readonly canStartParallelAgent: boolean;
   readonly isSavingQueuedEdit: boolean;
   readonly onCancelQueuedRunEdit: () => void;
   readonly onRemoveQueuedEditAttachment: (attachmentId: string) => void;
@@ -1025,6 +1027,10 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
       // A sent message makes the snapshot stale; a refused send leaves it in place.
       clearUsageLimitsFor(targetThreadKey);
 
+      if (followUp === "parallel") {
+        composerEditorRef.current?.blur();
+        return messageId;
+      }
       setSubmittedMessageId(messageId);
       setAnchorMessageId(
         resolveThreadFeedSubmissionAnchor({
@@ -1144,6 +1150,11 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
 
   return (
     <View className="flex-1">
+      <ThreadWorkflowsPanel
+        key={selectedThreadKey}
+        environmentId={props.environmentId}
+        threadId={props.selectedThread.id}
+      />
       {!usesNativeWorkspaceColumns ? <NativeLayoutObserver onChange={setScreenMetrics} /> : null}
       {showContent ? (
         <View
@@ -1476,6 +1487,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                         draftKey={props.composerDraftKey ?? undefined}
                         followUpBehavior={props.followUpBehavior}
                         canSteerActiveTurn={props.canSteerActiveTurn}
+                        canStartParallelAgent={props.canStartParallelAgent}
                         queuedEdit={
                           props.queuedRunEdit === null
                             ? null

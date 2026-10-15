@@ -70,7 +70,7 @@ class Socket extends EventTarget {
 }
 function input(abort = new AbortController()) {
   return {
-    connection: { ...VOICE_CONNECTION_PRESETS.xai, clientSecret: "temporary" },
+    connection: { ...VOICE_CONNECTION_PRESETS.xai, instructions: "", clientSecret: "temporary" },
     signal: abort.signal,
     onEvent: vi.fn(),
     onError: vi.fn(),

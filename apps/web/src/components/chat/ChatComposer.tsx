@@ -1,3 +1,4 @@
+import type { OrchestrationV2ModelFallback } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
@@ -1081,6 +1082,7 @@ import {
   CircleAlertIcon,
   PaperclipIcon,
   MicIcon,
+  MicOffIcon,
   PencilRulerIcon,
   PlayIcon,
   ShieldIcon,
@@ -1130,6 +1132,7 @@ import {
   resolveProviderSlashCommandsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
+import { useDesktopDictation } from "../../hooks/useDesktopDictation";
 import { useDelayedStatus } from "../../hooks/useDelayedStatus";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { usePanelAnimationSettings } from "../../panelAnimations";
@@ -1356,8 +1359,9 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
-  onStartDictation?: (() => void) | undefined;
+  onToggleDictation?: (() => void) | undefined;
   dictationDisabled: boolean;
+  dictationActive: boolean;
   canOperateThread: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   reserveContextWindowMeter: boolean;
@@ -1373,6 +1377,9 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   isRunning: boolean;
   canInterrupt: boolean;
   followUpBehavior: "queue" | "steer";
+  canSteer: boolean;
+  canStartParallelAgent: boolean;
+  onSendAction: (action: ComposerDispatchMode) => void;
   alternateShortcutLabel: string | null;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
@@ -1409,24 +1416,27 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
       ) : props.reserveContextWindowMeter ? (
         <ContextWindowMeterPlaceholder />
       ) : null}
-      {props.onStartDictation ? (
+      {props.onToggleDictation ? (
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
                 type="button"
-                variant="ghost"
+                variant={props.dictationActive ? "secondary" : "ghost"}
                 size="icon-sm"
                 disabled={props.dictationDisabled}
                 onPointerDown={(event) => event.preventDefault()}
-                onClick={props.onStartDictation}
-                aria-label="Start dictation"
+                onClick={props.onToggleDictation}
+                aria-pressed={props.dictationActive}
+                aria-label={props.dictationActive ? "Stop dictation" : "Start dictation"}
               />
             }
           >
-            <MicIcon />
+            {props.dictationActive ? <MicOffIcon /> : <MicIcon />}
           </TooltipTrigger>
-          <TooltipPopup>Start dictation</TooltipPopup>
+          <TooltipPopup>
+            {props.dictationActive ? "Stop dictation" : "Start dictation"}
+          </TooltipPopup>
         </Tooltip>
       ) : null}
       <ComposerPrimaryActions
@@ -1436,6 +1446,9 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         isRunning={props.isRunning}
         canInterrupt={props.canInterrupt}
         followUpBehavior={props.followUpBehavior}
+        canSteer={props.canSteer}
+        canStartParallelAgent={props.canStartParallelAgent}
+        onSendAction={props.onSendAction}
         alternateShortcutLabel={props.alternateShortcutLabel}
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}
@@ -1567,6 +1580,8 @@ export interface ChatComposerProps {
 
   // Session phase
   phase: SessionPhase;
+  canSteerActiveTurn: boolean;
+  canStartParallelAgent: boolean;
   /** Stop is offered: a run is preparing, starting, or running. */
   canInterrupt: boolean;
   isConnecting: boolean;
@@ -1629,6 +1644,8 @@ export interface ChatComposerProps {
   providerCatalogKnown: boolean;
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
   activeThreadModelSelection: ModelSelection | null | undefined;
+  modelFallback?: OrchestrationV2ModelFallback | null;
+  onModelFallbackChange?: (policy: OrchestrationV2ModelFallback | null) => void;
   reportedModelSelection?: ModelSelection | null;
 
   // Context window
@@ -1778,6 +1795,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerCatalogKnown,
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
+    modelFallback,
+    onModelFallbackChange,
     reportedModelSelection,
     activeContextWindow,
     compactThreadUnavailable,
@@ -2500,18 +2519,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Refs
   // ------------------------------------------------------------------
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
-  const startDictation = useCallback(() => {
+  const focusDictationEditor = useCallback(() => {
     const editor = composerEditorRef.current;
-    const start = window.desktopBridge?.startDictation;
-    if (!editor || !start) return;
+    if (!editor) return false;
     editor.focusPreservingSelection();
-    const reportFailure = () => {
-      toastManager.add({ type: "error", title: "Could not start dictation" });
-    };
-    void start().then((started) => {
-      if (!started) reportFailure();
-    }, reportFailure);
+    return true;
   }, []);
+  const dictation = useDesktopDictation(focusDictationEditor);
 
   const pasteAsTextShortcutUntilRef = useRef(0);
   const pastedTextFileNamesRef = useRef<{ targetKey: string; names: Set<string> }>({
@@ -5560,6 +5574,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         />
       ) : null}
       <ProviderModelPicker
+        modelFallback={modelFallback ?? null}
+        preferredSelection={selectedModelSelection}
+        {...(onModelFallbackChange ? { onModelFallbackChange } : {})}
         compact={false}
         isComposerOwned
         disabled={providerCatalogPending || isSendBusy}
@@ -5599,14 +5616,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             }
           : {})}
         activeInstanceId={
-          providerCatalogPending
-            ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
-            : selectedInstanceId
+          modelFallback && activeThreadModelSelection
+            ? activeThreadModelSelection.instanceId
+            : providerCatalogPending
+              ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
+              : selectedInstanceId
         }
         model={
-          providerCatalogPending
-            ? (activeThreadModelSelection?.model ?? selectedModelForPickerWithCustomFallback)
-            : selectedModelForPickerWithCustomFallback
+          modelFallback && activeThreadModelSelection
+            ? activeThreadModelSelection.model
+            : providerCatalogPending
+              ? (activeThreadModelSelection?.model ?? selectedModelForPickerWithCustomFallback)
+              : selectedModelForPickerWithCustomFallback
         }
         lockedProvider={lockedProvider}
         lockedContinuationGroupKey={lockedContinuationGroupKey}
@@ -7698,15 +7719,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     </>
                   ) : null}
                   <ComposerFooterPrimaryActions
-                    onStartDictation={
-                      window.desktopBridge?.startDictation ? startDictation : undefined
+                    onToggleDictation={
+                      window.desktopBridge?.startDictation
+                        ? () => {
+                            void dictation.toggle();
+                          }
+                        : undefined
                     }
+                    dictationActive={dictation.isActive}
                     dictationDisabled={
-                      isConnecting ||
-                      isComposerApprovalState ||
-                      projectSelectionRequired ||
-                      isChoiceOnlyPendingQuestion ||
-                      activePendingIsResponding
+                      dictation.isPending ||
+                      (!dictation.isActive &&
+                        (isConnecting ||
+                          isComposerApprovalState ||
+                          projectSelectionRequired ||
+                          isChoiceOnlyPendingQuestion ||
+                          activePendingIsResponding))
                     }
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
@@ -7719,6 +7747,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isRunning={phase === "running"}
                     canInterrupt={canInterrupt}
                     followUpBehavior={settings.followUpBehavior}
+                    canSteer={props.canSteerActiveTurn}
+                    canStartParallelAgent={props.canStartParallelAgent}
+                    onSendAction={(action) => submitComposer(undefined, action)}
                     alternateShortcutLabel={shortcutLabelForCommand(
                       keybindings,
                       "composer.sendAlternate",

@@ -6,7 +6,11 @@ import { expect, it } from "@effect/vitest";
 import {
   ChatAttachmentId,
   CommandId,
+  ComposerContextId,
   EventId,
+  NodeId,
+  ProviderInstanceId,
+  RunId,
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
@@ -762,5 +766,55 @@ it.effect("applies the image budget across all questions before dispatch", () =>
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(String(result.cause)).toContain("80 MiB");
     expect(captured).toEqual([]);
+  }).pipe(Effect.provide(layerIntakeTest)),
+);
+
+it.effect("claims parallel-task uploads and remaps their composer context before dispatch", () =>
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    const id = ChatAttachmentId.make(createPendingAttachmentId()!);
+    NodeFS.writeFileSync(
+      NodePath.join(config.attachmentsDir, `${id}.png`),
+      new Uint8Array([1, 2, 3]),
+    );
+    const captured: OrchestrationV2ServerCommand[] = [];
+    yield* dispatchCommand({
+      type: "delegated_task.request",
+      commandId: CommandId.make("parallel-upload"),
+      createdBy: "user",
+      creationSource: "mobile",
+      parentThreadId: ThreadId.make("parallel-parent"),
+      parentRunId: RunId.make("parent-run"),
+      parentNodeId: NodeId.make("parent-root"),
+      task: "Review this screenshot",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.1-codex" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      attachments: [{ type: "image", id, name: "screen.png", mimeType: "image/png", sizeBytes: 3 }],
+      context: {
+        version: 1,
+        records: [
+          {
+            version: 1,
+            contextId: ComposerContextId.make("screen"),
+            kind: "image",
+            label: "screen.png",
+            attachmentId: id,
+            name: "screen.png",
+            mimeType: "image/png",
+            sizeBytes: 3,
+          },
+        ],
+      },
+    }).pipe(Effect.provide(layerFailingDispatch(captured)), Effect.result);
+    expect(captured).toHaveLength(1);
+    const command = captured[0]!;
+    if (command.type !== "delegated_task.request") throw new Error("Expected a parallel task");
+    const attachment = command.attachments![0]!;
+    expect(attachment.id).not.toBe(id);
+    const path = resolveAttachmentPath({ attachmentsDir: config.attachmentsDir, attachment });
+    expect(NodeFS.readFileSync(path!)).toEqual(Buffer.from([1, 2, 3]));
+    expect(command.context?.records[0]).toMatchObject({ attachmentId: attachment.id });
+    expect(NodeFS.existsSync(NodePath.join(config.attachmentsDir, `${id}.png`))).toBe(true);
   }).pipe(Effect.provide(layerIntakeTest)),
 );

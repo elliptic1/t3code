@@ -1,3 +1,4 @@
+import * as Workflows from "./workflows/WorkflowService.ts";
 import { createVoiceSession } from "./voice/session.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
@@ -1223,6 +1224,7 @@ const layerWsRpc = (
       };
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const workflows = yield* Workflows.WorkflowService;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const pullRequests = yield* PullRequestService.PullRequestService;
@@ -2041,6 +2043,11 @@ const layerWsRpc = (
               Effect.andThen(subscribeOrchestrationV2Thread(input)),
             ),
           ),
+        [WS_METHODS.workflowsGet]: (input) => workflows.get(input.id, input.threadId),
+        [WS_METHODS.workflowsList]: (input) => workflows.list(input.threadId),
+        [WS_METHODS.workflowsSubscribe]: (input) => workflows.subscribe(input.threadId),
+        [WS_METHODS.workflowsCreate]: (input) => workflows.create(input),
+        [WS_METHODS.workflowsControl]: (input) => workflows.control(input),
         [WS_METHODS.scheduledTasksList]: (_input) =>
           scheduledTasks.list().pipe(Effect.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
@@ -2389,7 +2396,9 @@ const layerWsRpc = (
           }),
         [WS_METHODS.serverCreateVoiceSession]: () =>
           serverSettings.getSettings.pipe(
-            Effect.flatMap((settings) => createVoiceSession(settings.voiceConnection)),
+            Effect.flatMap((settings) =>
+              createVoiceSession(settings.voiceConnection, fetch, settings.voiceInstructions),
+            ),
           ),
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,

@@ -47,6 +47,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
+import { useNavigateBack } from "./useNavigateBack";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -64,9 +65,8 @@ function failureToast(title: string, error: unknown) {
  * chat header. Renders through the native context-menu bridge and dispatches
  * through the same mutations the sidebar uses.
  *
- * Unlike the sidebar, settle and snooze here never navigate away: the caller
- * is acting on the thread they are reading, and ChatView's parked-thread
- * banner already offers the way back.
+ * Settling the open thread returns to the previous page after success.
+ * Snoozing keeps the thread open with its parked-thread banner.
  */
 export function useThreadActionMenu(input: {
   readonly threadRef: ScopedThreadRef | null;
@@ -76,6 +76,7 @@ export function useThreadActionMenu(input: {
 }) {
   const { threadRef, projectCwd, onStartRename } = input;
   const router = useRouter();
+  const navigateBack = useNavigateBack();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
@@ -229,7 +230,9 @@ export function useThreadActionMenu(input: {
             return;
           }
           case "settle":
-            await reportFailure("Failed to settle thread", () => settleThread(threadRef));
+            await reportFailure("Failed to settle thread", () =>
+              settleThread(threadRef, { onSettled: navigateBack }),
+            );
             return;
           case "unsettle":
             await reportFailure("Failed to un-settle thread", () => unsettleThread(threadRef));
@@ -360,6 +363,7 @@ export function useThreadActionMenu(input: {
       router,
       setThreadAutoSettle,
       settleThread,
+      navigateBack,
       snoozeThread,
       threadRef,
       timestampFormat,

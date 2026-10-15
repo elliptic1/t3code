@@ -24,6 +24,7 @@ vi.mock("../ProjectScriptsControl", () => ({
 vi.mock("./ThreadAutomationsPanel", () => ({
   ThreadAutomationsPanel: () => null,
 }));
+vi.mock("./ThreadWorkflowsPanel", () => ({ ThreadWorkflowsPanel: () => null }));
 vi.mock("./ThreadRelationshipsControl", () => ({
   ThreadRelationshipsPanel: () => null,
 }));

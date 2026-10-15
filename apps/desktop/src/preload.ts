@@ -207,7 +207,10 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.OPEN_SYSTEM_SETTINGS_CHANNEL, pane),
   probeRemoteEditors: () => ipcRenderer.invoke(IpcChannels.PROBE_REMOTE_EDITORS_CHANNEL, undefined),
   ...(clientPlatform === "darwin"
-    ? { startDictation: () => ipcRenderer.invoke(IpcChannels.START_DICTATION_CHANNEL, undefined) }
+    ? {
+        startDictation: () => ipcRenderer.invoke(IpcChannels.START_DICTATION_CHANNEL, undefined),
+        stopDictation: () => ipcRenderer.invoke(IpcChannels.STOP_DICTATION_CHANNEL, undefined),
+      }
     : {}),
   pasteAsText: () => ipcRenderer.invoke(IpcChannels.PASTE_AS_TEXT_CHANNEL, undefined),
   onMenuAction: (listener) => {

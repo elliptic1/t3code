@@ -36,7 +36,7 @@ vi.mock("./connection", () => ({ connectVoice: mocks.connect }));
 function input(abort = new AbortController()) {
   return {
     signal: abort.signal,
-    connection: { ...VOICE_CONNECTION_PRESETS.openai, clientSecret: "temporary" },
+    connection: { ...VOICE_CONNECTION_PRESETS.openai, instructions: "", clientSecret: "temporary" },
     execute: vi.fn(),
     onTranscript: vi.fn(),
     onStatus: vi.fn(),

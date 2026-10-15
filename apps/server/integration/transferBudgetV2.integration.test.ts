@@ -46,6 +46,7 @@ import * as ProjectService from "../src/project/ProjectService.ts";
 import * as ProjectEnrichmentService from "../src/project/ProjectEnrichmentService.ts";
 import * as OrchestrationHttp from "../src/orchestration-v2/http.ts";
 import * as ServerHttp from "../src/http.ts";
+import * as ServerSettings from "../src/serverSettings.ts";
 import { subscribeOrchestrationV2Thread, subscribeOrchestrationV2Shell } from "../src/ws.ts";
 import {
   measureHttpGet,
@@ -115,6 +116,7 @@ const layerServices = layerManagement.pipe(
   Layer.provideMerge(Layer.mock(ProjectService.ProjectService)({})),
   Layer.provideMerge(layerEnrichment),
   Layer.provideMerge(layerPersistence),
+  Layer.provideMerge(ServerSettings.layerTest()),
 );
 class TransferApi extends HttpApi.make("environment").add(
   EnvironmentHttpApi.groups.orchestration,

@@ -15,7 +15,7 @@ export async function connectVoice(input: {
   connection: VoiceSessionConnection;
   signal: AbortSignal;
   execute: (action: VoiceAction) => Promise<unknown>;
-  onTranscript: (speaker: "You" | "T3", text: string) => void;
+  onTranscript: (speaker: "You" | "T3", text: string, id?: string) => void;
   onError: (message: string) => void;
   onStatus: (status: string) => void;
 }): Promise<VoiceConnection> {

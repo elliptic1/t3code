@@ -168,6 +168,55 @@ describe("archive Undo", () => {
   });
 });
 
+describe("settle navigation", () => {
+  it("returns from the open thread only after settling succeeds", async () => {
+    router.state.matches[0]!.params = target;
+    const back = vi.fn();
+    let finish!: (result: { _tag: "Success"; value: undefined }) => void;
+    commands.settle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const settled = useThreadActions().settleThread(target, { onSettled: back });
+    expect(back).not.toHaveBeenCalled();
+    finish({ _tag: "Success", value: undefined });
+    await settled;
+    expect(back).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the open thread when settling fails", async () => {
+    router.state.matches[0]!.params = target;
+    const back = vi.fn();
+    commands.settle.mockResolvedValueOnce({ _tag: "Failure", cause: new Error("Disconnected") });
+    await useThreadActions().settleThread(target, { onSettled: back });
+    expect(back).not.toHaveBeenCalled();
+  });
+
+  it("preserves navigation made while the settle command was in flight", async () => {
+    router.state.matches[0]!.params = target;
+    const back = vi.fn();
+    let finish!: (result: { _tag: "Success"; value: undefined }) => void;
+    commands.settle.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const settled = useThreadActions().settleThread(target, { onSettled: back });
+    router.state.matches[0]!.params = { ...target, threadId: "another-thread" };
+    finish({ _tag: "Success", value: undefined });
+    await settled;
+    expect(back).not.toHaveBeenCalled();
+  });
+
+  it("does not close an identically named thread in another environment", async () => {
+    router.state.matches[0]!.params = { ...target, environmentId: "another-environment" };
+    const back = vi.fn();
+    await useThreadActions().settleThread(target, { onSettled: back });
+    expect(back).not.toHaveBeenCalled();
+  });
+});
+
 describe("settle and snooze Undo", () => {
   it("un-settles from the notice and expires the Undo after a manual un-settle", async () => {
     const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");

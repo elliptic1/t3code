@@ -1,6 +1,6 @@
 package com.t3tools.t3code.wear
 
-enum class ThreadStatus { NeedsYou, Working, Idle }
+enum class ThreadStatus { NeedsYou, Working, Idle, Failed }
 
 fun threadStatus(
     turnState: String?,
@@ -9,6 +9,7 @@ fun threadStatus(
     needsInput: Boolean,
 ): ThreadStatus {
     if (needsInput) return ThreadStatus.NeedsYou
+    if (turnState == "failed") return ThreadStatus.Failed
     val working = turnState == "running" ||
         (sessionStatus == "running" && activeTurnId != null)
     return if (working) ThreadStatus.Working else ThreadStatus.Idle
@@ -20,7 +21,11 @@ data class ThreadRow(
     val project: String,
     val status: ThreadStatus,
     val lastActivityAt: String,
-)
+    val settled: Boolean = false,
+) {
+    /** Settled threads are only visible after explicitly expanding their section. */
+    val tucked: Boolean get() = settled
+}
 
 fun sortRows(rows: List<ThreadRow>): List<ThreadRow> =
     rows.sortedByDescending { it.lastActivityAt }

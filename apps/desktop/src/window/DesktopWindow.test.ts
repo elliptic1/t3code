@@ -190,6 +190,7 @@ const layerDesktopServerExposure = Layer.succeed(DesktopServerExposure.DesktopSe
 
 const layerElectronMenu = Layer.succeed(ElectronMenu.ElectronMenu, {
   startDictation: Effect.succeed(false),
+  stopDictation: Effect.succeed(false),
   setApplicationMenu: () => Effect.void,
   popupTemplate: () => Effect.void,
   showContextMenu: () => Effect.succeedNone,
@@ -310,6 +311,7 @@ function layerTest(input: {
         layerElectronApp,
         Layer.succeed(ElectronMenu.ElectronMenu, {
           startDictation: Effect.succeed(false),
+          stopDictation: Effect.succeed(false),
           setApplicationMenu: () => Effect.void,
           showContextMenu: () => Effect.succeedNone,
           popupTemplate: input.onPopupTemplate ?? (() => Effect.void),

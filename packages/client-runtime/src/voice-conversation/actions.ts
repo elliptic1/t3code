@@ -86,8 +86,33 @@ export function createVoiceActionBindings<R, ER>(deps: {
     return async (action: VoiceAction): Promise<unknown> => {
       const projects = readProjects().filter((project) => project.environmentId === environmentId);
       switch (action.action) {
-        case "get_context":
-          return { environmentId, currentThreadId: focusedThread() };
+        case "get_voice_settings": {
+          const settings = appAtomRegistry.get(serverEnvironment.settingsValueAtom(environmentId));
+          if (!settings) throw new Error("Environment settings are not loaded.");
+          return { instructions: settings.voiceInstructions };
+        }
+        case "update_voice_settings": {
+          const settings = voiceResult(
+            await runAtomCommand(appAtomRegistry, serverEnvironment.updateSettings, {
+              environmentId,
+              input: { patch: { voiceInstructions: action.instructions } },
+            }),
+          );
+          return { instructions: settings.voiceInstructions };
+        }
+        case "get_context": {
+          const threadId = focusedThread();
+          // A route can outlive its thread after archival or deletion. Resolve it
+          // against the current shell on every call rather than trusting the route ID.
+          const thread = threadId
+            ? readThreadShell(scopeThreadRef(environmentId, ThreadId.make(threadId)))
+            : null;
+          return {
+            environmentId,
+            currentThreadId:
+              thread && thread.archivedAt === null && thread.deletedAt === null ? thread.id : null,
+          };
+        }
         case "list_projects":
           return projects.map(({ id, title, workspaceRoot }) => ({ id, title, workspaceRoot }));
         case "list_threads": {
@@ -189,6 +214,15 @@ export function createVoiceActionBindings<R, ER>(deps: {
                 modelSelection,
                 runtimeMode: effective.defaultRuntimeMode,
                 interactionMode: "default",
+                ...(action.message === undefined
+                  ? {}
+                  : {
+                      initialMessage: {
+                        messageId: MessageId.make(randomUUID()),
+                        text: action.message,
+                        attachments: [],
+                      },
+                    }),
                 workspaceStrategy:
                   effective.defaultThreadEnvMode === "worktree"
                     ? { type: "worktree", baseRef: "HEAD", startFromOrigin: false }

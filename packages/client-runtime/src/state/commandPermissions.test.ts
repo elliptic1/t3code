@@ -59,6 +59,24 @@ const setup = Effect.gen(function* () {
 });
 
 describe("command permissions", () => {
+  it.effect("workflow mutations use the destination environment's operate grant", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        for (const method of [WS_METHODS.workflowsCreate, WS_METHODS.workflowsControl]) {
+          const workflowPermissions = createCommandPermissions(runtime, method);
+          registry.set(sessions(env), AsyncResult.success(grant(true)));
+          registry.set(sessions(other), AsyncResult.success(grant(false)));
+          expect(registry.get(workflowPermissions.permissionAtom(env))).toBe(true);
+          yield* workflowPermissions.authorize(registry, env);
+          expect(registry.get(workflowPermissions.permissionAtom(other))).toBe(false);
+          expect(
+            (yield* workflowPermissions.authorize(registry, other).pipe(Effect.flip))._tag,
+          ).toBe("EnvironmentAuthorizationError");
+        }
+      }),
+    ),
+  );
   it.effect("requires the destination settings grant to run storage cleanup", () =>
     Effect.scoped(
       Effect.gen(function* () {
