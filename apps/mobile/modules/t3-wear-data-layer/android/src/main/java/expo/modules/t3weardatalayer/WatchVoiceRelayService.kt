@@ -142,6 +142,7 @@ class WatchVoiceRelayService : Service() {
 
   private fun finish() {
     closing = true
+    callbacks.remove(sessionId)?.invoke(IllegalStateException("Watch voice session ended."))
     handler.removeCallbacks(idleCheck)
     socket?.close(1000, "ended")
     socket = null

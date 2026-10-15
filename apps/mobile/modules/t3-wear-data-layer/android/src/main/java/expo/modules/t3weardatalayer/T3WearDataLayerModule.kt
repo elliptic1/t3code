@@ -36,6 +36,7 @@ class T3WearDataLayerModule : Module() {
       context.getSharedPreferences("voice-presence", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
       val intent = android.content.Intent(context, ConnectionPresenceService::class.java)
       if (enabled) context.startForegroundService(intent) else context.stopService(intent)
+      Unit
     }
     AsyncFunction("awaitConnectionStopped") { promise: Promise -> ConnectionPresenceService.awaitStop(promise) }
 
