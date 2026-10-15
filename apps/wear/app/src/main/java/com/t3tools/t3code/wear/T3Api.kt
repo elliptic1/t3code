@@ -46,16 +46,33 @@ class T3Api(
     private val baseUrl: String,
     private val token: String?,
     private val rpcClient: OkHttpClient = watchRpcClient,
+    private val phoneContext: android.content.Context? = null,
 ) {
 
     private fun JSONObject.str(key: String): String? =
         if (isNull(key)) null else optString(key)
 
-    constructor(context: android.content.Context) : this(
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString("baseUrl", null)
-            ?: throw java.io.IOException("Open T3 Code on your phone to sync the connection"),
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString("token", null),
-    )
+    constructor(context: android.content.Context) : this("", null, watchRpcClient, context.applicationContext)
+
+    private val environments = mutableMapOf<String, String>()
+    private suspend fun environmentFor(threadId: String): String {
+        if (!environments.containsKey(threadId)) threads()
+        return environments[threadId] ?: throw IOException("Refresh threads from your phone and try again.")
+    }
+
+    suspend fun startVoiceRelay(sessionId: String): JSONObject = requestPhone(phoneContext
+        ?: throw IOException("Voice requires your paired phone."), JSONObject().put("operation", "voiceStart").put("sessionId", sessionId))
+
+    suspend fun saveVoiceLine(environmentId: String, line: VoiceHistoryLine) {
+        requestPhone(phoneContext ?: throw IOException("Reconnect your phone."), JSONObject()
+            .put("operation", "voiceHistory").put("environmentId", environmentId)
+            .put("lines", JSONArray().put(JSONObject().put("id", line.id).put("speaker", line.speaker).put("text", line.text.takeLast(16000)))))
+    }
+
+    suspend fun voiceTool(environmentId: String, call: JSONObject): String = requestPhone(phoneContext
+        ?: throw IOException("Reconnect your phone."), JSONObject().put("operation", "voiceTool")
+        .put("environmentId", environmentId).put("callId", call.getString("call_id"))
+        .put("name", call.getString("name")).put("arguments", call.optString("arguments", "{}"))).getString("output")
 
     private suspend fun call(
         method: String,
@@ -135,8 +152,8 @@ class T3Api(
 
     // Decode and sort on a worker too; callers resume on the UI thread after call().
     suspend fun threads(): List<ThreadRow> = withContext(Dispatchers.IO) {
-        val text = call("GET", "/api/orchestration/shell")
-        val root = JSONObject(text)
+        val root = if (phoneContext != null) requestPhone(phoneContext, JSONObject().put("operation", "shell"))
+            else JSONObject(call("GET", "/api/orchestration/shell"))
         val projects = mutableMapOf<String, String>()
         root.optJSONArray("projects")?.let { arr ->
             for (i in 0 until arr.length()) {
@@ -148,6 +165,7 @@ class T3Api(
         root.optJSONArray("threads")?.let { arr ->
             for (i in 0 until arr.length()) {
                 val t = arr.getJSONObject(i)
+                if (t.has("environmentId")) environments[t.getString("id")] = t.getString("environmentId")
                 if (t.has("archivedAt") && !t.isNull("archivedAt")) continue
                 val status = shellThreadStatus(t)
                 rows.add(
@@ -167,15 +185,23 @@ class T3Api(
     }
 
     suspend fun thread(id: String, beforeCursor: String? = null): ThreadDetail = withContext(Dispatchers.IO) {
-        val encId = enc(id)
-        val snapshot = JSONObject(call("GET", "/api/orchestration/threads/$encId/bounded"))
+        val environmentId = if (phoneContext != null) environmentFor(id) else ""
+        fun threadRequest() = JSONObject().put("operation", "thread").put("environmentId", environmentId).put("threadId", id)
+        val snapshot = if (phoneContext != null) requestPhone(phoneContext, threadRequest())
+            else JSONObject(call("GET", "/api/orchestration/threads/${enc(id)}/bounded"))
         val history = beforeCursor?.let {
-            JSONObject(call("GET", "/api/orchestration/threads/$encId/history?cursor=${enc(it)}&view=conversation"))
+            if (phoneContext != null) requestPhone(phoneContext, threadRequest().put("cursor", it))
+            else JSONObject(call("GET", "/api/orchestration/threads/${enc(id)}/history?cursor=${enc(it)}&view=conversation"))
         }
         parseThreadSnapshot(snapshot, history)
     }
 
     suspend fun send(threadId: String, text: String, settings: TurnSettings) {
+        if (phoneContext != null) {
+            requestPhone(phoneContext, JSONObject().put("operation", "send").put("environmentId", environmentFor(threadId))
+                .put("threadId", threadId).put("text", text).put("busy", false))
+            return
+        }
         val commandId = UUID.randomUUID().toString()
         val messageId = UUID.randomUUID().toString()
         val payload = JSONObject()

@@ -1,3 +1,6 @@
+import { voiceSessionConfiguration } from "@t3tools/client-runtime/voice-conversation/session";
+import { createVoiceToolRunner } from "@t3tools/client-runtime/voice-conversation";
+import { createVoiceActions } from "../features/voice-conversation/actions";
 import { getClerkInstance } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { requireNativeModule } from "expo";
@@ -17,6 +20,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
+  WS_METHODS,
   WatchCompanionRequest,
   OrchestrationV2RpcSchemas,
   ORCHESTRATION_V2_WS_METHODS,
@@ -29,6 +33,8 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "../state/atom-registry";
+import { environmentShell } from "../state/shell";
+import { serverEnvironment } from "../state/server";
 import { makeTurnCommandMetadata } from "../lib/commandMetadata";
 import { activateCloudRelayAccount } from "../features/cloud/CloudAuthProvider";
 import {
@@ -37,9 +43,15 @@ import {
 } from "../features/cloud/publicConfig";
 
 const bridge = () =>
-  requireNativeModule<{ respond: (nodeId: string, response: string) => Promise<void> }>(
-    "T3WearDataLayer",
-  );
+  requireNativeModule<{
+    respond: (nodeId: string, response: string) => Promise<void>;
+    startVoiceRelay: (
+      nodeId: string,
+      sessionId: string,
+      connection: string,
+      configuration: string,
+    ) => Promise<void>;
+  }>("T3WearDataLayer");
 const decodeRequest = Schema.decodeUnknownSync(Schema.fromJsonString(WatchCompanionRequest));
 
 const decodeDispatchCommand = Schema.decodeUnknownEffect(
@@ -48,6 +60,7 @@ const decodeDispatchCommand = Schema.decodeUnknownEffect(
 
 const preparedConnection = Effect.gen(function* () {
   const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+  if (Option.isNone(yield* SubscriptionRef.get(supervisor.prepared))) yield* supervisor.retryNow;
   const prepared = yield* SubscriptionRef.changes(supervisor.prepared).pipe(
     Stream.filter(Option.isSome),
     Stream.map((value) => value.value),
@@ -74,10 +87,56 @@ const loadShell = Effect.gen(function* () {
 
 const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "watch companion request",
-  execute: (request: WatchCompanionRequest) =>
+  execute: ({ request, nodeId }: { request: WatchCompanionRequest; nodeId: string }) =>
     Effect.gen(function* () {
       const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
       const entries = yield* SubscriptionRef.get(registry.entries);
+      if (request.operation === "voiceStart") {
+        const candidates = [...entries.values()].filter(
+          (entry) =>
+            entry.enabled &&
+            (!request.environmentId || entry.target.environmentId === request.environmentId),
+        );
+        for (const entry of candidates) {
+          const environmentId = entry.target.environmentId;
+          const ready = yield* onEnvironment(environmentId, preparedConnection).pipe(
+            Effect.timeout("8 seconds"),
+            Effect.option,
+          );
+          if (Option.isNone(ready)) continue;
+          const settings = yield* onEnvironment(
+            environmentId,
+            requestGuarded(WS_METHODS.serverGetSettings, {}),
+          );
+          if (!settings.voiceConnection.enabled) continue;
+          const history = yield* onEnvironment(
+            environmentId,
+            requestGuarded(WS_METHODS.serverSyncVoiceHistory, { lines: [] }),
+          );
+          const connection = yield* onEnvironment(
+            environmentId,
+            requestGuarded(WS_METHODS.serverCreateVoiceSession, {}),
+          );
+          if (connection.transport !== "websocket")
+            return yield* Effect.fail(
+              new Error(
+                "Choose a WebSocket voice provider in your phone's voice settings for watch conversations.",
+              ),
+            );
+          yield* Effect.tryPromise(() =>
+            bridge().startVoiceRelay(
+              nodeId,
+              request.sessionId,
+              JSON.stringify(connection),
+              JSON.stringify(voiceSessionConfiguration(connection, history)),
+            ),
+          );
+          return { environmentId, history };
+        }
+        return yield* Effect.fail(
+          new Error("Enable voice conversation for a connected environment on your phone."),
+        );
+      }
       if (request.operation === "shell") {
         const enabled = [...entries.values()].filter((entry) => entry.enabled);
         const snapshots = yield* Effect.forEach(
@@ -121,6 +180,46 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
       }
       if (!entries.get(request.environmentId)?.enabled)
         return yield* Effect.fail(new Error("This environment is not enabled on your phone."));
+      if (request.operation === "voiceHistory") {
+        const history = yield* onEnvironment(
+          request.environmentId,
+          requestGuarded(WS_METHODS.serverSyncVoiceHistory, { lines: request.lines }),
+        );
+        return { history };
+      }
+      if (request.operation === "voiceTool") {
+        yield* onEnvironment(request.environmentId, preparedConnection);
+        // Headless requests have no mounted screens to hydrate the shared voice actions.
+        const shellAtom = environmentShell.stateValueAtom(request.environmentId);
+        const configAtom = serverEnvironment.configValueAtom(request.environmentId);
+        yield* Effect.acquireRelease(
+          Effect.sync(() => [appAtomRegistry.mount(shellAtom), appAtomRegistry.mount(configAtom)]),
+          (unmount) => Effect.sync(() => unmount.forEach((dispose) => dispose())),
+        );
+        yield* Effect.callback<void>((resume) => {
+          const check = () => {
+            if (appAtomRegistry.get(shellAtom).status === "live" && appAtomRegistry.get(configAtom))
+              resume(Effect.void);
+          };
+          const dispose = [
+            appAtomRegistry.subscribe(shellAtom, check),
+            appAtomRegistry.subscribe(configAtom, check),
+          ];
+          check();
+          return Effect.sync(() => dispose.forEach((unsubscribe) => unsubscribe()));
+        }).pipe(Effect.timeout("15 seconds"));
+        const runTool = createVoiceToolRunner(
+          createVoiceActions(request.environmentId, async () => {
+            throw new Error(
+              "Open the thread on your phone or Mac; the watch can read and manage it here.",
+            );
+          }),
+        );
+        const output = yield* Effect.tryPromise(() =>
+          runTool({ call_id: request.callId, name: request.name, arguments: request.arguments }),
+        );
+        return { output };
+      }
       if (request.operation === "thread") {
         return yield* onEnvironment(
           request.environmentId,
@@ -164,14 +263,28 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
         requestGuarded(ORCHESTRATION_V2_WS_METHODS.dispatchCommand, command),
       );
       return { accepted: true };
-    }).pipe(Effect.timeout("50 seconds")),
+    }).pipe(Effect.scoped, Effect.timeout("50 seconds")),
 });
 
 async function restorePhoneCloudSession() {
   const publishableKey = resolveCloudPublicConfig().clerk.publishableKey;
   if (!publishableKey) return;
   const clerk = getClerkInstance({ publishableKey, tokenCache });
-  if (!clerk.loaded) await clerk.load();
+  if (!clerk.loaded) {
+    // Cloud sign-in must not hold up a direct LAN or Tailscale pairing while offline.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        clerk.load(),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, 5000);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (!clerk.loaded) return;
+  }
   if (clerk.user && clerk.session) {
     const session = clerk.session;
     activateCloudRelayAccount(clerk.user.id, () =>
@@ -188,10 +301,15 @@ export async function handleWatchRequest(input: { nodeId: string; request: strin
     requestId = request.requestId;
     // Direct pairings remain usable if cloud sign-in cannot be restored offline.
     await restorePhoneCloudSession().catch(() => {});
-    const result = await runAtomCommand(appAtomRegistry, requestCommand, request, {
-      reportFailure: false,
-      reportDefect: false,
-    });
+    const result = await runAtomCommand(
+      appAtomRegistry,
+      requestCommand,
+      { request, nodeId: input.nodeId },
+      {
+        reportFailure: false,
+        reportDefect: false,
+      },
+    );
     if (result._tag !== "Success") throw squashAtomCommandFailure(result);
     await bridge().respond(
       input.nodeId,
@@ -209,4 +327,26 @@ export async function handleWatchRequest(input: { nodeId: string; request: strin
       }),
     );
   }
+}
+
+const presenceCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "background voice connection",
+  execute: () =>
+    Effect.gen(function* () {
+      // Construct and retain the same registry, routes and credential stores used by the UI.
+      yield* EnvironmentRegistry.EnvironmentRegistry;
+      yield* Effect.tryPromise(() =>
+        requireNativeModule<{
+          awaitConnectionStopped: () => Promise<void>;
+        }>("T3WearDataLayer").awaitConnectionStopped(),
+      );
+    }),
+});
+
+export async function keepPhoneConnectionsAlive() {
+  await restorePhoneCloudSession().catch(() => {});
+  await runAtomCommand(appAtomRegistry, presenceCommand, undefined, {
+    reportFailure: false,
+    reportDefect: false,
+  });
 }

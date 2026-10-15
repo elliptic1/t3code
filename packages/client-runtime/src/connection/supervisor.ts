@@ -146,8 +146,11 @@ export interface EnvironmentSupervisorOptions {
  * The long cap only applies to a connection that keeps failing. Returning to
  * the app, the network coming back, and an explicit retry all skip the wait.
  */
-export function retryDelayMs(failureCount: number, random: number): number {
-  const ceiling = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1));
+export function retryDelayMs(failureCount: number, random: number, recovering = false): number {
+  const ceiling = Math.min(
+    recovering ? 15_000 : RETRY_MAX_DELAY_MS,
+    RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1),
+  );
   return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
@@ -899,6 +902,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
   const run = Effect.fnUntraced(function* () {
     let failureCount = 0;
+    let recoveryUntil = 0;
     let generation = 0;
     let latestFailure: ConnectionAttemptError | null = null;
     let pendingRetry = Option.none<PendingRetryTrace>();
@@ -946,6 +950,9 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       // later, unrelated failure.
       const failedProbe = yield* Ref.getAndSet(probeUnanswered, false);
       if (outcome.established) {
+        // Recently working environments are commonly restarting for an update. Keep
+        // recovery responsive for five minutes without accelerating long outages.
+        recoveryUntil = (yield* Clock.currentTimeMillis) + 300_000;
         generation = nextGeneration;
         if (outcome.stable) {
           resetRetryLadder();
@@ -994,7 +1001,11 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }
 
       failureCount += 1;
-      const delayMs = retryDelayMs(failureCount - 1, yield* Random.next);
+      const delayMs = retryDelayMs(
+        failureCount - 1,
+        yield* Random.next,
+        (yield* Clock.currentTimeMillis) < recoveryUntil,
+      );
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
         previousAttempt,
         failureCount,

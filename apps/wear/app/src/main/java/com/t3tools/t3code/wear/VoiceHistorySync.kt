@@ -14,6 +14,7 @@ import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
+import org.json.JSONObject
 import org.json.JSONArray
 import org.json.JSONTokener
 
@@ -95,4 +96,36 @@ internal fun ObserveVoiceHistory(
             client.removeListener(listener)
         }
     }
+}
+
+/** A completed utterance survives process death until the server acknowledges its stable id. */
+internal class VoiceOutbox(private val load: () -> String, private val save: (String) -> Boolean) {
+    constructor(context: Context) : this(
+        { context.getSharedPreferences("voice-outbox", Context.MODE_PRIVATE).getString("pending", "[]") ?: "[]" },
+        { value -> context.getSharedPreferences("voice-outbox", Context.MODE_PRIVATE).edit().putString("pending", value).commit() },
+    )
+    private fun read(): JSONArray = JSONArray(load())
+    fun enqueue(environmentId: String, line: VoiceHistoryLine) = synchronized(lock) {
+        val old = read()
+        val next = (0 until old.length()).map { old.getJSONObject(it) }.filterNot {
+            it.optString("environmentId") == environmentId && it.optString("id") == line.id
+        }.takeLast(39) + JSONObject().put("environmentId", environmentId).put("id", line.id)
+            .put("speaker", line.speaker).put("text", line.text.takeLast(16000))
+        check(save(JSONArray(next).toString())) { "Could not save watch voice history." }
+    }
+    suspend fun flush(api: T3Api) = flush(api::saveVoiceLine)
+    suspend fun flush(send: suspend (String, VoiceHistoryLine) -> Unit) {
+        val batch = synchronized(lock) { val all = read(); (0 until all.length()).map { all.getJSONObject(it) } }
+        for (item in batch) {
+            send(item.getString("environmentId"), VoiceHistoryLine(item.getString("id"), item.getString("speaker"), item.getString("text")))
+            synchronized(lock) {
+                val all = read()
+                val remaining = (0 until all.length()).map { all.getJSONObject(it) }.filterNot {
+                    it.optString("environmentId") == item.getString("environmentId") && it.optString("id") == item.getString("id") && it.optString("text") == item.getString("text")
+                }
+                check(save(JSONArray(remaining).toString()))
+            }
+        }
+    }
+    companion object { private val lock = Any() }
 }

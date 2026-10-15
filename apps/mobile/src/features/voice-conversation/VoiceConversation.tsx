@@ -30,7 +30,7 @@ import { syncVoiceHistoryToWatch } from "./voiceHistory";
 type SessionOwner = { abort: AbortController; connection?: VoiceConnection };
 
 export function VoiceConversation({ state }: { state: NavigationState }) {
-  const { environments } = useEnvironments();
+  const { environments, isReady } = useEnvironments();
   const [selected, setSelected] = useState<EnvironmentId | null>(null);
   const [open, setOpen] = useState(false);
   const route = state.routes[state.index];
@@ -46,6 +46,30 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
     available.find((entry) => entry.environmentId === (selected ?? params?.environmentId)) ??
     (selected === null ? available[0] : undefined);
   const environmentId = environment?.environmentId;
+  const voiceEnabled = environments.some(
+    (entry) => entry.serverConfig?.settings.voiceConnection.enabled,
+  );
+  const settingsKnown = environments.every(
+    (entry) => entry.serverConfig !== null && entry.serverConfig !== undefined,
+  );
+  useEffect(() => {
+    if (Platform.OS !== "android" || !isReady || (!voiceEnabled && !settingsKnown)) return;
+    const update = () => {
+      if (AppState.currentState !== "active") return;
+      void import("expo")
+        .then(({ requireNativeModule }) =>
+          requireNativeModule<{ setConnectionReady: (enabled: boolean) => Promise<void> }>(
+            "T3WearDataLayer",
+          ).setConnectionReady(voiceEnabled),
+        )
+        .catch(() => console.warn("Could not update the background voice connection"));
+    };
+    update();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") update();
+    });
+    return () => subscription.remove();
+  }, [voiceEnabled, settingsKnown, isReady]);
   const insets = useSafeAreaInsets();
   const { layout } = useAdaptiveWorkspaceLayout();
   const { navigationBarHeight, fabClearance } = useAndroidControlSizing();

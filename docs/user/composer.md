@@ -242,6 +242,17 @@ conversation continues when you lock the screen or switch apps. Tap the voice
 notification to return to T3 Code and end the conversation. For a local voice server,
 use an address reachable from the phone; `localhost` refers to the phone itself.
 
+On Wear OS, open T3 Code on your paired watch and tap **Talk**. The watch uses its
+microphone and speaker; your phone carries the live connection and uses its saved
+server pairing. You do not need to pair the watch with the server separately.
+Recent conversation history and saved instructions come from the same environment
+used on your Mac and phone. End the conversation and let it finish saving before
+switching devices. If the phone disconnects, completed utterances stay on the watch
+and sync when you retry. Keep T3 Code and Tailscale available on the phone for remote
+access to your Mac. When voice is enabled, Android keeps the connection runtime
+available in the background and shows a connection notification on the phone.
+Disable voice to stop that background connection.
+
 ## Voice input on iPhone
 
 On supported iPhones with iOS 26 or later, use the composer's microphone to record,

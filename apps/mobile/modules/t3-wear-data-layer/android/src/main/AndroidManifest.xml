@@ -1,11 +1,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+  <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <application>
-    <service android:name="expo.modules.t3weardatalayer.WearCompanionTaskService" android:exported="false" />
+    <receiver android:name="expo.modules.t3weardatalayer.ConnectionPresenceReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+    <service android:name="expo.modules.t3weardatalayer.ConnectionPresenceService" android:exported="false" android:foregroundServiceType="connectedDevice" />
+    <service android:name="expo.modules.t3weardatalayer.WatchVoiceRelayService" android:exported="false" android:foregroundServiceType="connectedDevice" />
+    <service android:name="expo.modules.t3weardatalayer.WearCompanionTaskService" android:exported="false" android:foregroundServiceType="connectedDevice" />
     <service android:name="expo.modules.t3weardatalayer.WearCompanionListenerService" android:exported="true">
       <intent-filter>
         <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
-        <data android:scheme="wear" android:host="*" android:pathPrefix="/t3code/companion/request" />
+        <data android:scheme="wear" android:host="*" android:pathPrefix="/t3code/" />
       </intent-filter>
     </service>
   </application>

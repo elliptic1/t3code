@@ -25,7 +25,7 @@ import * as CatalogStore from "./catalog-store";
 import { connectionForWatch } from "./wear-connection";
 
 let T3WearDataLayer: {
-  setPairing: (url: string, token: string, label: string) => Promise<void>;
+  setCompanionAvailable: (label: string) => Promise<void>;
   clearPairing: () => Promise<void>;
   setVoiceHistory: (historyJson: string) => Promise<void>;
 } | null = null;
@@ -60,9 +60,7 @@ export const layer = Layer.effectContext(
       const connection = connectionForWatch(document);
       wearWrite = wearWrite
         .then(() =>
-          connection
-            ? bridge.setPairing(connection.baseUrl, connection.token, connection.label)
-            : bridge.clearPairing(),
+          connection ? bridge.setCompanionAvailable(connection.label) : bridge.clearPairing(),
         )
         .catch(() => console.warn("Could not sync the phone connection to Wear OS"));
     };

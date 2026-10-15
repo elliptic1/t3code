@@ -20,3 +20,8 @@ AppRegistry.registerHeadlessTask("T3WatchRequest", () => async (input) => {
   const { handleWatchRequest } = await import("./src/rpc/watch-companion");
   await handleWatchRequest(input);
 });
+
+AppRegistry.registerHeadlessTask("T3ConnectionPresence", () => async () => {
+  const { keepPhoneConnectionsAlive } = await import("./src/rpc/watch-companion");
+  await keepPhoneConnectionsAlive();
+});
