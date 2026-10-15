@@ -209,7 +209,8 @@ Provider API usage is billed separately from coding-agent subscriptions. The
 recent voice transcript is saved on the connected server. New conversations on
 web, desktop, and mobile use that history, so you can end on one device and continue
 on another connected to the same environment. Wait for **Ended** before switching
-devices; a save error means the latest words have not reached the server.
+devices; a save error means the latest words have not reached the server. **Start
+fresh** clears this shared voice history for the environment.
 
 To talk without a voice provider or API key, set **Conversation engine** to
 **Coding agent**. Your browser transcribes what you say and reads replies aloud, and

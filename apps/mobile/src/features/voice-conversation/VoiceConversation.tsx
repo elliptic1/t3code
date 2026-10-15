@@ -95,9 +95,12 @@ function VoiceSession(props: {
   const syncHistory = useAtomCommand(syncVoiceHistoryCommand, { reportFailure: false });
   const [historySync] = useState(() =>
     createVoiceHistorySync(
-      async (lines) => {
+      async (lines, reset) => {
         const stored = voiceResult(
-          await syncHistory({ environmentId: props.environmentId, input: { lines } }),
+          await syncHistory({
+            environmentId: props.environmentId,
+            input: { lines, ...(reset ? { reset: true } : {}) },
+          }),
         );
         void syncVoiceHistoryToWatch(stored).catch(() => {});
         return stored;
@@ -308,7 +311,20 @@ function VoiceSession(props: {
                   onPress={() => void start()}
                 />
                 {lines.length ? (
-                  <VoiceButton label="Start fresh" onPress={() => setLines([])} />
+                  <VoiceButton
+                    label="Start fresh"
+                    onPress={() => {
+                      void historySync.reset().then(
+                        () => setLines([]),
+                        () =>
+                          setError({
+                            message:
+                              "Could not clear voice history. Check your connection and try again.",
+                            details: "Voice history reset failed.",
+                          }),
+                      );
+                    }}
+                  />
                 ) : null}
               </>
             )}

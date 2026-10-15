@@ -14,6 +14,17 @@ const scenario = Effect.gen(function* () {
 });
 
 describe("shared voice history", () => {
+  it.effect("Start fresh clears shared history across a restart", () =>
+    Effect.gen(function* () {
+      const { file } = yield* scenario;
+      const server = yield* makeVoiceHistory(file);
+      yield* server.sync([{ id: "mac:1", speaker: "You", text: "Forget this" }]);
+      yield* server.sync([], true);
+      const phone = yield* makeVoiceHistory(file);
+      expect(yield* phone.sync([])).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect(
     "continues Mac to phone and back after a server restart without overwriting other clients",
     () =>

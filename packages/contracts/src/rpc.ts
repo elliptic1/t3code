@@ -767,7 +767,10 @@ const WsServerCommitDesktopUpdateRpc = Rpc.make(WS_METHODS.serverCommitDesktopUp
 });
 
 const WsServerSyncVoiceHistoryRpc = Rpc.make(WS_METHODS.serverSyncVoiceHistory, {
-  payload: Schema.Struct({ lines: VoiceConversationHistory }),
+  payload: Schema.Struct({
+    lines: VoiceConversationHistory,
+    reset: Schema.optional(Schema.Boolean),
+  }),
   success: VoiceConversationHistory,
   error: Schema.Union([VoiceSessionError, EnvironmentAuthorizationError]),
 });

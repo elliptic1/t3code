@@ -2422,7 +2422,7 @@ const layerWsRpc = (
             const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
             return { keybindings: keybindingsConfig, issues: [] };
           }),
-        [WS_METHODS.serverSyncVoiceHistory]: ({ lines }) => voiceHistory.sync(lines),
+        [WS_METHODS.serverSyncVoiceHistory]: ({ lines, reset }) => voiceHistory.sync(lines, reset),
         [WS_METHODS.serverCreateVoiceSession]: () =>
           serverSettings.getSettings.pipe(
             Effect.flatMap((settings) =>

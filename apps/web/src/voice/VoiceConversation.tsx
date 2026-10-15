@@ -68,7 +68,10 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
   const syncHistory = useAtomCommand(syncVoiceHistoryCommand, { reportFailure: false });
   const [historySync] = useState(() =>
     createVoiceHistorySync(
-      async (lines) => voiceResult(await syncHistory({ environmentId, input: { lines } })),
+      async (lines, reset) =>
+        voiceResult(
+          await syncHistory({ environmentId, input: { lines, ...(reset ? { reset: true } : {}) } }),
+        ),
       () => setError("Voice history could not be saved. End the conversation to retry."),
     ),
   );
@@ -305,6 +308,23 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
                 Start conversation
               </Button>
             )}
+            {!running && transcript.length ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  void historySync.reset().then(
+                    () => setTranscript([]),
+                    () =>
+                      setError(
+                        "Could not clear voice history. Check your connection and try again.",
+                      ),
+                  );
+                }}
+              >
+                Start fresh
+              </Button>
+            ) : null}
             {!running ? (
               <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
                 Close

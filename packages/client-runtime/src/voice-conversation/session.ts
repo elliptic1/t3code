@@ -94,7 +94,10 @@ export function voiceSessionConfiguration(
 
 /** Coalesce streaming revisions and serialize writes; End flushes the final audio item. */
 export function createVoiceHistorySync(
-  sync: (lines: readonly VoiceTranscriptLine[]) => Promise<readonly VoiceTranscriptLine[]>,
+  sync: (
+    lines: readonly VoiceTranscriptLine[],
+    reset?: boolean,
+  ) => Promise<readonly VoiceTranscriptLine[]>,
   onError: (error: unknown) => void,
 ) {
   const pending = new Map<string, VoiceTranscriptLine>();
@@ -126,6 +129,10 @@ export function createVoiceHistorySync(
     load: async () => {
       await flush();
       return sync([]);
+    },
+    reset: async () => {
+      await flush();
+      await sync([], true);
     },
     record: (line: VoiceTranscriptLine) => {
       pending.set(line.id, line);

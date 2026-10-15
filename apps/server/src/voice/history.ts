@@ -23,7 +23,7 @@ export const makeVoiceHistory = Effect.fn("voice.makeHistory")(function* (filePa
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const lock = yield* Semaphore.make(1);
-  const sync = (incoming: readonly VoiceTranscriptLine[]) =>
+  const sync = (incoming: readonly VoiceTranscriptLine[], reset = false) =>
     Effect.gen(function* () {
       const raw = yield* fs.readFileString(filePath).pipe(
         Effect.catchIf(
@@ -32,7 +32,7 @@ export const makeVoiceHistory = Effect.fn("voice.makeHistory")(function* (filePa
         ),
       );
       const previous = yield* decode(raw);
-      let lines = [...previous];
+      let lines = reset ? [] : [...previous];
       // Upsert only this session's changes: a stale device must never replace another's history.
       for (const line of incoming) {
         const index = lines.findIndex((old) => old.id === line.id);
