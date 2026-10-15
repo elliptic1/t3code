@@ -57,6 +57,34 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const update = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
+  const setEnabled = async (enabled: boolean) => {
+    if (saving) return;
+    const previous = draft.enabled;
+    setDraft((current) => ({ ...current, enabled }));
+    setSaving(true);
+    setMessage("");
+    try {
+      voiceResult(
+        await update({
+          environmentId: target.environmentId,
+          input: {
+            patch: {
+              voiceConnection: {
+                ...target.serverConfig.settings.voiceConnection,
+                enabled,
+              },
+            },
+          },
+        }),
+      );
+      setMessage("Saved");
+    } catch (error) {
+      setDraft((current) => ({ ...current, enabled: previous }));
+      setMessage(error instanceof Error ? error.message : "Could not save voice settings.");
+    } finally {
+      setSaving(false);
+    }
+  };
   const save = async () => {
     if (saving) return;
     setSaving(true);
@@ -99,7 +127,7 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
           accessibilityLabel="Enable voice conversation"
           value={draft.enabled}
           disabled={saving}
-          onValueChange={(enabled) => setDraft({ ...draft, enabled })}
+          onValueChange={(enabled) => void setEnabled(enabled)}
         />
       </View>
       <View className="flex-row flex-wrap">
