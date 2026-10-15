@@ -1,6 +1,11 @@
 import { voiceSessionConfiguration } from "@t3tools/client-runtime/voice-conversation/session";
 import { createVoiceToolRunner } from "@t3tools/client-runtime/voice-conversation";
-import { createVoiceActions } from "../features/voice-conversation/actions";
+import {
+  createVoiceActions,
+  createVoiceSessionCommand,
+  syncVoiceHistoryCommand,
+  voiceResult,
+} from "../features/voice-conversation/actions";
 import { getClerkInstance } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { requireNativeModule } from "expo";
@@ -15,6 +20,8 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import {
   createRuntimeCommand,
+  createEnvironmentRpcCommand,
+  type AtomCommand,
   followStreamInEnvironment,
   runAtomCommand,
   squashAtomCommandFailure,
@@ -45,6 +52,7 @@ import {
 const bridge = () =>
   requireNativeModule<{
     respond: (nodeId: string, response: string) => Promise<void>;
+    setConnectionReady: (enabled: boolean) => Promise<void>;
     startVoiceRelay: (
       nodeId: string,
       sessionId: string,
@@ -85,6 +93,22 @@ const loadShell = Effect.gen(function* () {
   return yield* Effect.fromOption(snapshot, () => new Error("Could not load the phone's threads."));
 });
 
+function phoneCommand<W, A, E>(command: AtomCommand<W, A, E>, input: W) {
+  return Effect.tryPromise(async () =>
+    voiceResult(
+      await runAtomCommand(appAtomRegistry, command, input, {
+        reportFailure: false,
+        reportDefect: false,
+      }),
+    ),
+  );
+}
+
+const sendWatchMessage = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "watch:send-message",
+  tag: ORCHESTRATION_V2_WS_METHODS.dispatchCommand,
+});
+
 const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "watch companion request",
   execute: ({ request, nodeId }: { request: WatchCompanionRequest; nodeId: string }) =>
@@ -109,20 +133,22 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
             requestGuarded(WS_METHODS.serverGetSettings, {}),
           );
           if (!settings.voiceConnection.enabled) continue;
-          const history = yield* onEnvironment(
+          const history = yield* phoneCommand(syncVoiceHistoryCommand, {
             environmentId,
-            requestGuarded(WS_METHODS.serverSyncVoiceHistory, { lines: [] }),
-          );
-          const connection = yield* onEnvironment(
+            input: { lines: [] },
+          });
+          const connection = yield* phoneCommand(createVoiceSessionCommand, {
             environmentId,
-            requestGuarded(WS_METHODS.serverCreateVoiceSession, {}),
-          );
+            input: {},
+          });
           if (connection.transport !== "websocket")
             return yield* Effect.fail(
               new Error(
                 "Choose a WebSocket voice provider in your phone's voice settings for watch conversations.",
               ),
             );
+          // A watch can enable the same opted-in presence while the phone stays locked.
+          yield* Effect.tryPromise(() => bridge().setConnectionReady(true));
           yield* Effect.tryPromise(() =>
             bridge().startVoiceRelay(
               nodeId,
@@ -181,10 +207,10 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
       if (!entries.get(request.environmentId)?.enabled)
         return yield* Effect.fail(new Error("This environment is not enabled on your phone."));
       if (request.operation === "voiceHistory") {
-        const history = yield* onEnvironment(
-          request.environmentId,
-          requestGuarded(WS_METHODS.serverSyncVoiceHistory, { lines: request.lines }),
-        );
+        const history = yield* phoneCommand(syncVoiceHistoryCommand, {
+          environmentId: request.environmentId,
+          input: { lines: request.lines },
+        });
         return { history };
       }
       if (request.operation === "voiceTool") {
@@ -258,10 +284,10 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
         attachments: [],
         dispatchMode: { type: request.busy ? "queue_after_active" : "start_immediately" },
       });
-      yield* onEnvironment(
-        request.environmentId,
-        requestGuarded(ORCHESTRATION_V2_WS_METHODS.dispatchCommand, command),
-      );
+      yield* phoneCommand(sendWatchMessage, {
+        environmentId: request.environmentId,
+        input: command,
+      });
       return { accepted: true };
     }).pipe(Effect.scoped, Effect.timeout("50 seconds")),
 });
