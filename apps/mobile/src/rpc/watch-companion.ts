@@ -234,13 +234,18 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
           check();
           return Effect.sync(() => dispose.forEach((unsubscribe) => unsubscribe()));
         }).pipe(Effect.timeout("15 seconds"));
-        const runTool = createVoiceToolRunner(
-          createVoiceActions(request.environmentId, async () => {
-            throw new Error(
-              "Open the thread on your phone or Mac; the watch can read and manage it here.",
+        // Creating a thread succeeds without navigation; opening an existing one
+        // cannot drive an unmounted phone screen from a headless request.
+        const actions = createVoiceActions(request.environmentId, async () => {});
+        const runTool = createVoiceToolRunner((action) => {
+          if (action.action === "open_thread")
+            return Promise.reject(
+              new Error(
+                "Open the thread on your phone or Mac; the watch can read and manage it here.",
+              ),
             );
-          }),
-        );
+          return actions(action);
+        });
         const output = yield* Effect.tryPromise(() =>
           runTool({ call_id: request.callId, name: request.name, arguments: request.arguments }),
         );
