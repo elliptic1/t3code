@@ -3,17 +3,18 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import { runMigrations } from "../Migrations.ts";
-import workflows from "./062_Workflows.ts";
+import workflows from "./063_Workflows.ts";
 
-it.effect.each([false, true])("preserves workflows when migration 61 was local: %s", (local) =>
+it.effect.each([null, 61, 62])("preserves workflows from fork migration %s", (local) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* runMigrations({ toMigrationInclusive: 60 });
+    yield* runMigrations({ toMigrationInclusive: local === 62 ? 61 : 60 });
     if (local) {
       yield* workflows;
-      yield* sql`DROP TABLE pull_request_review_guides`;
+      if (local === 61) yield* sql`DROP TABLE pull_request_review_guides`;
+      yield* sql`DROP INDEX orchestration_v2_projection_turn_items_failed_error_idx`;
       yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at)
-        VALUES (61, 'Workflows', CURRENT_TIMESTAMP)`;
+        VALUES (${local}, 'Workflows', CURRENT_TIMESTAMP)`;
       yield* sql`INSERT INTO workflows
         (workflow_id, thread_id, status, state_json, summary_json, updated_at)
         VALUES ('existing', 'thread', 'running', '{}', '{}', '2026-10-14')`;

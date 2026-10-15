@@ -1,11 +1,15 @@
 import * as Effect from "effect/Effect";
 import ensureReviewGuides from "./061_PullRequestReviewGuides.ts";
+import ensureFailureIndex from "./062_ThreadFailureLookupIndex.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   // Local builds used migration 61 for workflows before upstream assigned it.
   yield* ensureReviewGuides;
+  const failureIndexes = yield* sql`SELECT name FROM sqlite_master
+    WHERE type = 'index' AND name = 'orchestration_v2_projection_turn_items_failed_error_idx'`;
+  if (failureIndexes.length === 0) yield* ensureFailureIndex;
   yield* sql`CREATE TABLE IF NOT EXISTS workflows (
     workflow_id TEXT PRIMARY KEY,
     thread_id TEXT NOT NULL,

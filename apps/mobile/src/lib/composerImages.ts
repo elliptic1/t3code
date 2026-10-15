@@ -20,6 +20,7 @@ import {
 } from "./composerAttachmentFiles";
 import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
+import { fitComposerImage, renderPhoto } from "./composerImageFit";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
 import { writeFileAtomically } from "./atomic-file";
@@ -560,14 +561,20 @@ export async function pickComposerMedia(input: {
     try {
       if (originalMimeType !== null) {
         const { File } = await import("expo-file-system");
+        const base64 = await new File(asset.uri).base64();
+        const fitted = await fitComposerImage({
+          uri: asset.uri,
+          mimeType: originalMimeType,
+          base64,
+        });
         image = {
-          base64: await new File(asset.uri).base64(),
+          base64: fitted?.base64 ?? base64,
           mimeType: originalMimeType,
           name,
-          previewUri: asset.uri,
+          previewUri: fitted?.uri ?? asset.uri,
         };
       } else {
-        const rendered = await renderPhotoAsJpeg(asset.uri);
+        const rendered = await renderPhoto(asset.uri);
         image = {
           base64: rendered.base64,
           mimeType: "image/jpeg",
@@ -646,7 +653,14 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
       };
     }
 
-    const base64 = image.data.split(",")[1] ?? "";
+    const pastedBase64 = image.data.split(",")[1] ?? "";
+    const fitted = await fitComposerImage({
+      uri: image.data,
+      mimeType: "image/png",
+      base64: pastedBase64,
+    });
+    const base64 = fitted?.base64 ?? pastedBase64;
+    const dataUrl = fitted ? `data:image/png;base64,${base64}` : image.data;
     const sizeBytes = estimateBase64ByteSize(base64);
     if (sizeBytes <= 0 || sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
       return {
@@ -664,8 +678,8 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
           name: "pasted-image.png",
           mimeType: "image/png",
           sizeBytes,
-          dataUrl: image.data,
-          previewUri: image.data,
+          dataUrl,
+          previewUri: dataUrl,
         },
       ],
       text: null,
@@ -737,12 +751,14 @@ export async function convertPastedImagesToAttachments(input: {
         continue;
       }
       const file = new File(uri);
-      const base64 = await file.base64();
+      const mimeType = mimeTypeFromUri(uri);
+      const pastedBase64 = await file.base64();
+      const fitted = await fitComposerImage({ uri, mimeType, base64: pastedBase64 });
+      const base64 = fitted?.base64 ?? pastedBase64;
       const sizeBytes = estimateBase64ByteSize(base64);
       if (sizeBytes <= 0 || sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
         continue;
       }
-      const mimeType = mimeTypeFromUri(uri);
       results.push({
         id: uuidv4(),
         type: "image",
@@ -750,7 +766,7 @@ export async function convertPastedImagesToAttachments(input: {
         mimeType,
         sizeBytes,
         dataUrl: `data:${mimeType};base64,${base64}`,
-        previewUri: ownedTemporaryFile ? `data:${mimeType};base64,${base64}` : uri,
+        previewUri: ownedTemporaryFile ? `data:${mimeType};base64,${base64}` : (fitted?.uri ?? uri),
       });
     } catch (error) {
       console.warn("Failed to read pasted image", uri, error);

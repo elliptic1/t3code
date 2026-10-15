@@ -39,14 +39,19 @@ swap() { # file, exact text, replacement
 }
 swap apps/desktop/src/app/DesktopStatePaths.ts 'input.joinPath(input.homeDirectory, ".t3")' 'input.joinPath(input.homeDirectory, ".t3-fork")'
 swap apps/desktop/src/app/DesktopUserData.ts '{ current: "t3code-v2",' '{ current: "t3code-fork",'
-swap apps/desktop/src/app/DesktopEnvironment.ts 'displayName: `${APP_BASE_NAME} (${stageLabel})`' 'displayName: `${APP_BASE_NAME} (${stageLabel === "Alpha" ? "Fork" : stageLabel})`'
+swap apps/desktop/src/app/DesktopEnvironment.ts 'displayName: `${APP_BASE_NAME} (${stageLabel})`' 'displayName: `${APP_BASE_NAME} (${stageLabel === "Alpha" ? "Fork" : "Fork Nightly"})`'
 swap apps/desktop/package.json '"productName": "T3 Code (Alpha)"' '"productName": "T3 Code (Fork)"'
 swap scripts/build-desktop-artifact.ts 'const DESKTOP_APP_ID = "com.t3tools.t3code";' 'const DESKTOP_APP_ID = "com.t3tools.t3code.fork";'
+swap scripts/build-desktop-artifact.ts '? "T3 Code (Nightly)"' '? "T3 Code (Fork Nightly)"'
 
-# A `-pr.` version ships without an update feed, so the app never replaces
-# itself with an upstream release.
-BASE_VERSION="$(node -p 'require("./apps/desktop/package.json").version')"
-VERSION="${BASE_VERSION}-pr.0.$(date +%Y%m%d%H%M)"
+# Follow the newest nightly source merged into this fork, with its blue branding.
+# No upstream update feed may replace the custom features in this build.
+NIGHTLY_TAG="$(git describe --tags --match 'v*-nightly.*' --abbrev=0)"
+BASE_VERSION="${NIGHTLY_TAG#v}"
+BASE_VERSION="${BASE_VERSION%%-nightly.*}"
+VERSION="${BASE_VERSION}-nightly.$(date -u +%Y%m%d).$(date -u +%Y%m%d%H%M)"
+export T3CODE_DESKTOP_UPDATE_REPOSITORY=""
+export GITHUB_REPOSITORY=""
 node scripts/build-desktop-artifact.ts --platform mac --target dmg --arch arm64 \
   --build-version "$VERSION" --output-dir release "$@"
 echo "fork-build: built $VERSION in release/"

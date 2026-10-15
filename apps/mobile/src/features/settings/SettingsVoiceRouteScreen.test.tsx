@@ -62,7 +62,7 @@ import { SettingsVoiceRouteScreen } from "./SettingsVoiceRouteScreen";
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   harness.settings = DEFAULT_SERVER_SETTINGS;
   harness.update.mockReset();
   container = document.createElement("div");
