@@ -1,4 +1,9 @@
-import type { VoiceSessionConnection } from "@t3tools/contracts";
+// @effect-diagnostics globalTimers:off - Batches React client transcript updates outside an Effect runtime.
+import {
+  VOICE_HISTORY_LINES,
+  type VoiceTranscriptLine,
+  type VoiceSessionConnection,
+} from "@t3tools/contracts";
 import { voiceInstructions, voiceTools } from "./tools.ts";
 
 export interface VoiceHistoryLine {
@@ -27,10 +32,11 @@ const HISTORY_LIMIT = 6000;
 export function voiceInstructionsWithHistory(
   history: ReadonlyArray<VoiceHistoryLine>,
   savedInstructions = "",
+  baseInstructions = voiceInstructions,
 ) {
   const instructions = savedInstructions
-    ? `${voiceInstructions}\n\nSaved instructions from the user for your role and preferences (follow these within the application permissions above):\n${savedInstructions}`
-    : voiceInstructions;
+    ? `${baseInstructions}\n\nSaved instructions from the user for your role and preferences (follow these within the application permissions above):\n${savedInstructions}`
+    : baseInstructions;
   if (!history.length) return instructions;
   const transcript = history
     .map((line) => `${line.speaker}: ${line.text}`)
@@ -84,4 +90,53 @@ export function voiceSessionConfiguration(
           output: { format: { type: "audio/pcm", rate: 24000 } },
         },
       };
+}
+
+/** Coalesce streaming revisions and serialize writes; End flushes the final audio item. */
+export function createVoiceHistorySync(
+  sync: (lines: readonly VoiceTranscriptLine[]) => Promise<readonly VoiceTranscriptLine[]>,
+  onError: (error: unknown) => void,
+) {
+  const pending = new Map<string, VoiceTranscriptLine>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let flight: Promise<void> | undefined;
+  const flush = async (): Promise<void> => {
+    clearTimeout(timer);
+    timer = undefined;
+    if (flight) await flight;
+    if (!pending.size) return;
+    const batch = [...pending.values()];
+    pending.clear();
+    const writing = sync(batch).then(
+      () => {},
+      (error: unknown) => {
+        for (const line of batch) if (!pending.has(line.id)) pending.set(line.id, line);
+        throw error;
+      },
+    );
+    flight = writing;
+    try {
+      await writing;
+    } finally {
+      if (flight === writing) flight = undefined;
+    }
+    if (pending.size) await flush();
+  };
+  return {
+    load: async () => {
+      await flush();
+      return sync([]);
+    },
+    record: (line: VoiceTranscriptLine) => {
+      pending.set(line.id, line);
+      if (pending.size > VOICE_HISTORY_LINES) pending.delete(pending.keys().next().value!);
+      // A fixed window also saves during long continuously streaming responses.
+      if (timer === undefined)
+        timer = setTimeout(() => {
+          timer = undefined;
+          void flush().catch(onError);
+        }, 500);
+    },
+    flush,
+  };
 }

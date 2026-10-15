@@ -1,3 +1,4 @@
+import * as VoiceHistory from "./voice/history.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import * as Clock from "effect/Clock";
@@ -548,6 +549,7 @@ const layerProviderInstallationRefresh = Layer.effectDiscard(
 );
 
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+  VoiceHistory.layer,
   AgentAwarenessRelay.layer,
   UsageResetReminders.layerWorker.pipe(Layer.provide(Scheduler.layer)),
   // Asks T3 Connect to deliver webhooks it held while this environment was offline.

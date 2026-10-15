@@ -14,16 +14,17 @@ import {
   waitForThreadShell,
 } from "../state/entities";
 
-export const { createVoiceActions, createVoiceSessionCommand } = createVoiceActionBindings({
-  connectionAtomRuntime,
-  appAtomRegistry,
-  serverEnvironment,
-  projectEnvironment,
-  threadEnvironment,
-  randomUUID,
-  readProjects,
-  readThreadShell,
-  readThreadShells,
-  waitForProject,
-  waitForThreadShell,
-});
+export const { createVoiceActions, createVoiceSessionCommand, syncVoiceHistoryCommand } =
+  createVoiceActionBindings({
+    connectionAtomRuntime,
+    appAtomRegistry,
+    serverEnvironment,
+    projectEnvironment,
+    threadEnvironment,
+    randomUUID,
+    readProjects,
+    readThreadShell,
+    readThreadShells,
+    waitForProject,
+    waitForThreadShell,
+  });

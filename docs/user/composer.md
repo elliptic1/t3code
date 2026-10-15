@@ -205,8 +205,11 @@ A conversation controls the environment shown in its panel. On web and desktop,
 switching environments ends it; on mobile, end the conversation before switching.
 Mute pauses microphone input; **End** closes the connection and releases the microphone.
 Audio and requested project/thread context are sent to your configured provider.
-Provider API usage is billed separately from coding-agent subscriptions. The local
-conversation transcript is cleared when you start another conversation.
+Provider API usage is billed separately from coding-agent subscriptions. The
+recent voice transcript is saved on the connected server. New conversations on
+web, desktop, and mobile use that history, so you can end on one device and continue
+on another connected to the same environment. Wait for **Ended** before switching
+devices; a save error means the latest words have not reached the server.
 
 To talk without a voice provider or API key, set **Conversation engine** to
 **Coding agent**. Your browser transcribes what you say and reads replies aloud, and

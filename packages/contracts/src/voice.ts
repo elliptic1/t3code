@@ -57,6 +57,17 @@ export const VOICE_CONNECTION_PRESETS = {
   },
 } as const satisfies Record<string, VoiceConnectionSettings>;
 
+export const VOICE_HISTORY_LINES = 40;
+export const VoiceTranscriptLine = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  speaker: Schema.Literals(["You", "T3"]),
+  text: Schema.String.check(Schema.isMaxLength(16000)),
+});
+export type VoiceTranscriptLine = typeof VoiceTranscriptLine.Type;
+export const VoiceConversationHistory = Schema.Array(VoiceTranscriptLine).check(
+  Schema.isMaxLength(VOICE_HISTORY_LINES),
+);
+
 export const VoiceSessionConnection = Schema.Struct({
   instructions: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   protocol: VoiceConnectionSettings.fields.protocol,

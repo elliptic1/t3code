@@ -12,7 +12,7 @@ import {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
 } from "./orchestrationV2.ts";
-import { VoiceSessionConnection, VoiceSessionError } from "./voice.ts";
+import { VoiceSessionConnection, VoiceSessionError, VoiceConversationHistory } from "./voice.ts";
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import {
   McpAppCallToolInput,
@@ -495,6 +495,7 @@ export const WS_METHODS = {
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetSettings: "server.getSettings",
   serverCreateVoiceSession: "server.createVoiceSession",
+  serverSyncVoiceHistory: "server.syncVoiceHistory",
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverSearchAcpRegistry: "server.searchAcpRegistry",
@@ -763,6 +764,12 @@ const WsServerCommitDesktopUpdateRpc = Rpc.make(WS_METHODS.serverCommitDesktopUp
   payload: DesktopUpdateCommitInput,
   success: ServerSelfUpdateResult,
   error: Schema.Union([ServerSelfUpdateError, EnvironmentAuthorizationError]),
+});
+
+const WsServerSyncVoiceHistoryRpc = Rpc.make(WS_METHODS.serverSyncVoiceHistory, {
+  payload: Schema.Struct({ lines: VoiceConversationHistory }),
+  success: VoiceConversationHistory,
+  error: Schema.Union([VoiceSessionError, EnvironmentAuthorizationError]),
 });
 
 const WsServerCreateVoiceSessionRpc = Rpc.make(WS_METHODS.serverCreateVoiceSession, {
@@ -1950,6 +1957,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpsertKeybindingRpc,
   WsServerRemoveKeybindingRpc,
   WsServerCreateVoiceSessionRpc,
+  WsServerSyncVoiceHistoryRpc,
   WsServerRunStorageCleanupRpc,
   WsServerGetStorageCleanupReportRpc,
   WsServerGetSettingsRpc,

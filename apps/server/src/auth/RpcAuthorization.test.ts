@@ -1,3 +1,4 @@
+import { clientRpcRequiredScopes } from "@t3tools/contracts";
 import {
   AuthEnvironmentMaintainScope,
   AuthDiagnosticsReadScope,
@@ -34,6 +35,15 @@ import * as RpcAuthorization from "./RpcAuthorization.ts";
 describe("RPC authorization scopes", () => {
   it("declares exactly one scope for every RPC in the server group", () => {
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
+  });
+
+  it("protects shared voice transcripts with operate access on client and server", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.serverSyncVoiceHistory)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(clientRpcRequiredScopes(WS_METHODS.serverSyncVoiceHistory, { lines: [] })).toEqual([
+      AuthOrchestrationOperateScope,
+    ]);
   });
 
   it("requires operate access to stop a workflow", () => {

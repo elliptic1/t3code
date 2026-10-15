@@ -1,4 +1,5 @@
 import * as Workflows from "./workflows/WorkflowService.ts";
+import * as VoiceHistory from "./voice/history.ts";
 import { createVoiceSession } from "./voice/session.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
@@ -1302,6 +1303,7 @@ const layerWsRpc = (
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
+      const voiceHistory = yield* VoiceHistory.VoiceHistory;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
@@ -2420,6 +2422,7 @@ const layerWsRpc = (
             const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
             return { keybindings: keybindingsConfig, issues: [] };
           }),
+        [WS_METHODS.serverSyncVoiceHistory]: ({ lines }) => voiceHistory.sync(lines),
         [WS_METHODS.serverCreateVoiceSession]: () =>
           serverSettings.getSettings.pipe(
             Effect.flatMap((settings) =>

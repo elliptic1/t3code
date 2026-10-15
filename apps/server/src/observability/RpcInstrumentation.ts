@@ -56,6 +56,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverUpsertKeybinding]: "server",
   [WS_METHODS.serverRemoveKeybinding]: "server",
   [WS_METHODS.serverCreateVoiceSession]: "server",
+  [WS_METHODS.serverSyncVoiceHistory]: "server",
   [WS_METHODS.serverRunStorageCleanup]: "server",
   [WS_METHODS.serverGetStorageCleanupReport]: "server",
   [WS_METHODS.serverGetSettings]: "server",

@@ -5,17 +5,25 @@ import { useNavigation, type NavigationState } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { randomUUID } from "expo-crypto";
 import Constants from "expo-constants";
-import type { EnvironmentId } from "@t3tools/contracts";
-import { updateVoiceTranscript } from "@t3tools/client-runtime/voice-conversation/session";
+import { VOICE_HISTORY_LINES, type EnvironmentId } from "@t3tools/contracts";
+import {
+  createVoiceHistorySync,
+  updateVoiceTranscript,
+} from "@t3tools/client-runtime/voice-conversation/session";
 import { AppText as Text } from "../../components/AppText";
 import { T3Wordmark } from "../../components/T3Wordmark";
 import { useEnvironments } from "../../state/environments";
 import { useThreadShells } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
-import { createVoiceActions, createVoiceSessionCommand, voiceResult } from "./actions";
+import {
+  createVoiceActions,
+  createVoiceSessionCommand,
+  syncVoiceHistoryCommand,
+  voiceResult,
+} from "./actions";
 import type { VoiceConnection } from "./connection";
-import { loadVoiceHistory, saveVoiceHistory, VOICE_HISTORY_LINES } from "./voiceHistory";
+import { syncVoiceHistoryToWatch } from "./voiceHistory";
 
 type SessionOwner = { abort: AbortController; connection?: VoiceConnection };
 
@@ -84,19 +92,23 @@ function VoiceSession(props: {
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<{ message: string; details: string } | null>(null);
   const [lines, setLines] = useState<Array<{ id: string; speaker: string; text: string }>>([]);
-  // Null until the stored history has loaded; nothing is written back before then.
-  const history = useRef<Promise<void> | null>(null);
-  const linesRef = useRef(lines);
-  useEffect(() => {
-    history.current = loadVoiceHistory().then((stored) => {
-      setLines((current) => [...stored, ...current].slice(-VOICE_HISTORY_LINES));
-    });
-  }, []);
-  useEffect(() => {
-    const loaded = linesRef.current !== lines;
-    linesRef.current = lines;
-    if (loaded) void saveVoiceHistory(lines).catch(() => {});
-  }, [lines]);
+  const syncHistory = useAtomCommand(syncVoiceHistoryCommand, { reportFailure: false });
+  const [historySync] = useState(() =>
+    createVoiceHistorySync(
+      async (lines) => {
+        const stored = voiceResult(
+          await syncHistory({ environmentId: props.environmentId, input: { lines } }),
+        );
+        void syncVoiceHistoryToWatch(stored).catch(() => {});
+        return stored;
+      },
+      () =>
+        setError({
+          message: "Voice history could not be saved. End the conversation to retry.",
+          details: "Voice history sync failed.",
+        }),
+    ),
+  );
   const focused = useRef(props.focusedThread);
   useEffect(() => {
     focused.current = props.focusedThread;
@@ -110,7 +122,18 @@ function VoiceSession(props: {
     setRunning(false);
     setConnected(false);
     setMuted(false);
-    setStatus("Ended");
+    setStatus("Saving conversation");
+    void historySync.flush().then(
+      () => setStatus("Ended"),
+      () => {
+        setStatus("History not saved");
+        setError({
+          message:
+            "Voice history could not be saved. Check your connection before switching devices.",
+          details: "Voice history sync failed.",
+        });
+      },
+    );
     props.onStopped();
   };
   const stopRef = useRef(stop);
@@ -128,8 +151,9 @@ function VoiceSession(props: {
       session.current = null;
       owner?.abort.abort();
       void Promise.resolve(owner?.connection?.close()).catch(() => {});
+      void historySync.flush().catch(() => {});
     };
-  }, []);
+  }, [historySync]);
   const shells = useThreadShells();
   const observed = useRef(new Map<string, string>());
   useEffect(() => {
@@ -184,16 +208,18 @@ function VoiceSession(props: {
       30000,
     );
     try {
+      const history = await historySync.load();
+      owner.abort.signal.throwIfAborted();
+      setLines([...history]);
       const connection = voiceResult(
         await createSession({ environmentId: props.environmentId, input: {} }),
       );
       transport = `${connection.protocol} over ${connection.transport}, ${connection.endpoint}, model ${connection.model || "default"}`;
       owner.abort.signal.throwIfAborted();
       const { connectNativeVoice } = await import("./nativeSession");
-      await history.current;
       owner.connection = await connectNativeVoice({
         connection,
-        history: linesRef.current,
+        history,
         signal: owner.abort.signal,
         execute: createVoiceActions(
           props.environmentId,
@@ -208,14 +234,14 @@ function VoiceSession(props: {
         },
         onError: fail,
         onTranscript: (speaker, text, id) => {
-          if (session.current === owner)
-            setLines((previous) =>
-              updateVoiceTranscript(
-                previous,
-                { id: id ? `${transcriptSessionId}:${id}` : randomUUID(), speaker, text },
-                VOICE_HISTORY_LINES,
-              ),
-            );
+          if (session.current !== owner) return;
+          const line = {
+            id: `${transcriptSessionId}:${id ?? randomUUID()}`,
+            speaker,
+            text: text.slice(-16000),
+          };
+          historySync.record(line);
+          setLines((previous) => updateVoiceTranscript(previous, line, VOICE_HISTORY_LINES));
         },
       });
       if (owner.abort.signal.aborted) await owner.connection.close();

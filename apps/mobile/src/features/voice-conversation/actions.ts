@@ -28,16 +28,17 @@ function waitForThreadShell(ref: ScopedThreadRef): Promise<boolean> {
     check();
   });
 }
-export const { createVoiceActions, createVoiceSessionCommand } = createVoiceActionBindings({
-  connectionAtomRuntime,
-  appAtomRegistry,
-  serverEnvironment,
-  projectEnvironment,
-  threadEnvironment,
-  randomUUID,
-  waitForProject,
-  waitForThreadShell,
-  readProjects: () => appAtomRegistry.get(environmentProjects.projectsAtom),
-  readThreadShells: () => appAtomRegistry.get(environmentThreadShells.threadShellsAtom),
-  readThreadShell: (ref) => appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref)),
-});
+export const { createVoiceActions, createVoiceSessionCommand, syncVoiceHistoryCommand } =
+  createVoiceActionBindings({
+    connectionAtomRuntime,
+    appAtomRegistry,
+    serverEnvironment,
+    projectEnvironment,
+    threadEnvironment,
+    randomUUID,
+    waitForProject,
+    waitForThreadShell,
+    readProjects: () => appAtomRegistry.get(environmentProjects.projectsAtom),
+    readThreadShells: () => appAtomRegistry.get(environmentThreadShells.threadShellsAtom),
+    readThreadShell: (ref) => appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref)),
+  });
