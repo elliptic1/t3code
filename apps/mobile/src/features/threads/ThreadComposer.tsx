@@ -5,6 +5,7 @@ import {
   AuthOrchestrationOperateScope,
   type OrchestrationV2ModelFallback,
 } from "@t3tools/contracts";
+import * as Dialog from "../../components/ui/Dialog";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -40,7 +41,7 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { Alert, Keyboard, Platform, Pressable, View, type ViewStyle } from "react-native";
+import { Keyboard, Platform, Pressable, View, type ViewStyle } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
@@ -74,14 +75,14 @@ import type { ComposerDocumentAttachment } from "../../lib/composerContext";
 import { useProject, useThreadShells } from "../../state/entities";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 
-import { AppText as Text } from "../../components/AppText";
-import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
+import { AppText as Text } from "../../components/ui/AppText";
+import { ComposerAttachmentButton } from "./ComposerAttachmentButton";
 import {
   ComposerAttachmentStrip,
   ComposerAttachmentThumbnail,
 } from "../../components/ComposerAttachmentStrip";
 import { VideoPreviewModal, type VideoPreviewSource } from "../../components/VideoPreviewModal";
-import { GlassSurface } from "../../components/GlassSurface";
+import { GlassSurface } from "../../components/ui/GlassSurface";
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import { fileRoutePathSegments } from "../files/filePath";
 import {
@@ -104,7 +105,7 @@ import {
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
-import { ControlPillMenu } from "../../components/ControlPill";
+import { Menu } from "../../components/ui/Menu";
 import type { ActiveTurnComposerAction } from "@t3tools/client-runtime/state/composer-dispatch";
 import type { FollowUpBehavior } from "../../lib/followUpBehavior";
 import {
@@ -303,7 +304,7 @@ function SendActionButton(props: {
   }
   const actions = presentation.choices;
   return (
-    <ControlPillMenu
+    <Menu
       accessibilityLabel="Choose how to send this message"
       shouldOpenOnLongPress
       actions={actions.map((action) => ({
@@ -318,7 +319,7 @@ function SendActionButton(props: {
       }}
     >
       {button}
-    </ControlPillMenu>
+    </Menu>
   );
 }
 
@@ -515,7 +516,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     );
     onShowUsageLimits(report);
     if (!report) {
-      Alert.alert("Usage limits unavailable", "This provider does not currently report limits.");
+      Dialog.alert("Usage limits unavailable", "This provider does not currently report limits.");
     }
     return report !== null;
   }, [currentModelSelection.instanceId, onShowUsageLimits, props.serverConfig]);
@@ -1039,7 +1040,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                     } else if (!wouldExceedInputLimit) {
                       insertPaste();
                     } else {
-                      Alert.alert(
+                      Dialog.alert(
                         wouldExceedInputLimit
                           ? "Pasted text is too large for this message"
                           : "Could not attach pasted text",
