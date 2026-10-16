@@ -308,7 +308,6 @@ export function useThreadComposerState() {
       ? EMPTY_QUEUE_WORKFLOW_ATOM
       : environmentThreadDetails.queueWorkflowAtom(selectedThreadDetailRef),
   );
-  const canSteerActiveTurn = queueWorkflow?.canPromoteToSteer === true;
   const canStartParallelAgent =
     queueWorkflow?.activeRun?.rootNodeId != null && queueWorkflow.activeRun.status !== "preparing";
   const queuedRunEdit = useQueuedRunEdit(selectedThreadKey);
@@ -397,6 +396,8 @@ export function useThreadComposerState() {
     selectedThreadRuntime,
     selectedThreadVisibleTurnItems,
   ]);
+  // A compacting turn cannot take steering input, so follow-ups queue meanwhile.
+  const canSteerActiveTurn = queueWorkflow?.canPromoteToSteer === true && !isCompacting;
 
   const runlessWorkStartedAt = useMemo(
     () =>

@@ -11266,6 +11266,7 @@ export default function ChatView(props: ChatViewProps) {
                                 composerActiveRun?.rootNodeId != null &&
                                 composerActiveRun.status !== "preparing"
                               }
+                              isCompacting={isCompacting}
                               canInterrupt={canInterruptRunningThread}
                               isConnecting={isConnecting}
                               isSendBusy={
