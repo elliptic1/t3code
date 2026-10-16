@@ -15,7 +15,6 @@ export function useNavigateBack() {
   }, [canGoBack, navigate]);
 }
 
-/** Enables page-level Escape navigation, letting controls consume Escape first. */
 export function useEscapeToGoBack(onEscape?: () => void) {
   const navigateBack = useNavigateBack();
   const handleEscape = onEscape ?? navigateBack;

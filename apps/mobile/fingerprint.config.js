@@ -17,7 +17,6 @@ if (!majorVersion) {
 }
 
 module.exports = {
-  // Hash the pinned Screens fork's native source, rather than only its version.
   nativeModuleSourceType: "files",
   // The build label is JS metadata, not a change to the native runtime.
   /**
