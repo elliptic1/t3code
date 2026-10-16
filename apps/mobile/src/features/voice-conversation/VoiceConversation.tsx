@@ -1,4 +1,4 @@
-import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
+import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { VoiceButton } from "./VoiceButton";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +12,7 @@ import {
   createVoiceHistorySync,
   updateVoiceTranscript,
 } from "@t3tools/client-runtime/voice-conversation/session";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { T3Wordmark } from "../../components/T3Wordmark";
 import { useEnvironments } from "../../state/environments";
 import { useThreadShells } from "../../state/entities";

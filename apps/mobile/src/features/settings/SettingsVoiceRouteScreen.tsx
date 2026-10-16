@@ -5,7 +5,7 @@ import {
   type VoiceConnectionSettings,
   type EnvironmentId,
 } from "@t3tools/contracts";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";

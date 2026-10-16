@@ -1,5 +1,5 @@
 import { Pressable } from "react-native";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 export function VoiceButton(props: { label: string; onPress: () => void; disabled?: boolean }) {
   return (
     <Pressable
