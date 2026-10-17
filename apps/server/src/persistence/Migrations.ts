@@ -65,7 +65,9 @@ import Migration0059 from "./Migrations/059_McpAppModelContext.ts";
 import Migration0060 from "./Migrations/060_ThreadSnapshotWindowIndexes.ts";
 import Migration0061 from "./Migrations/061_PullRequestReviewGuides.ts";
 import Migration0062 from "./Migrations/062_ThreadFailureLookupIndex.ts";
-import Migration0063 from "./Migrations/063_Workflows.ts";
+import Migration0063DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
+import Migration0064Workflows from "./Migrations/063_Workflows.ts";
+import Migration0065DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -131,7 +133,13 @@ export const migrationEntries = [
   [60, "ThreadSnapshotWindowIndexes", Migration0060],
   [61, "PullRequestReviewGuides", Migration0061],
   [62, "ThreadFailureLookupIndex", Migration0062],
-  [63, "Workflows", Migration0063],
+  // Upstream and the fork both used migration id 63. Preserve the upstream
+  // cleanup at 63, then ensure fork workflows at 64 for either ledger history.
+  // Re-run the idempotent cleanup at 65 for fork databases whose 63 is already
+  // recorded as Workflows and therefore skips the upstream 63 migration.
+  [63, "DropUnusedV1Projections", Migration0063DropUnusedV1Projections],
+  [64, "Workflows", Migration0064Workflows],
+  [65, "DropUnusedV1ProjectionsAfterForkWorkflows", Migration0065DropUnusedV1Projections],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -146,6 +154,10 @@ const makeMigrationLoader = (throughId?: number) =>
   );
 
 const FIRST_V2_MIGRATION_ID = 55;
+
+const isMigrationNameCompatible = (id: number, expected: string, recorded: string | undefined) =>
+  recorded === expected ||
+  (id === 63 && expected === "DropUnusedV1Projections" && recorded === "Workflows");
 
 // Earlier fork builds assigned workflows ids that upstream later used for other tables.
 // Repair only these known collisions before the general migration-history guard runs.
@@ -204,7 +216,7 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
     )
       return [];
     const recordedName = recordedNames.get(id);
-    if (recordedName === name) return [];
+    if (isMigrationNameCompatible(id, name, recordedName)) return [];
     return [`${id}_${name} (recorded: ${recordedName ?? "nothing"})`];
   });
   if (skipped.length === 0) return;
@@ -250,7 +262,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     if (expected === undefined) {
       return [`${row.migration_id}:${row.name} (unknown to this build)`];
     }
-    return expected === row.name
+    return isMigrationNameCompatible(row.migration_id, expected, row.name)
       ? []
       : [`${row.migration_id}:${row.name} (this build: ${expected})`];
   });
