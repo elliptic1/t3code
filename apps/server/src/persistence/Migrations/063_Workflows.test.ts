@@ -3,6 +3,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import { runMigrations } from "../Migrations.ts";
+import dropUnusedV1Projections from "./063_DropUnusedV1Projections.ts";
 import workflows from "./063_Workflows.ts";
 
 it.effect.each([null, 61, 62])("preserves workflows from fork migration %s", (local) =>
@@ -30,4 +31,37 @@ it.effect.each([null, 61, 62])("preserves workflows from fork migration %s", (lo
     const rows = yield* sql<{ workflow_id: string }>`SELECT workflow_id FROM workflows`;
     assert.deepEqual(rows, local ? [{ workflow_id: "existing" }] : []);
   }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+);
+
+it.effect.each(["Workflows", "DropUnusedV1Projections"] as const)(
+  "upgrades databases that already recorded migration 63 as %s",
+  (legacyName) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 62 });
+      if (legacyName === "Workflows") {
+        yield* workflows;
+        yield* sql`INSERT INTO workflows
+          (workflow_id, thread_id, status, state_json, summary_json, updated_at)
+          VALUES ('existing', 'thread', 'running', '{}', '{}', '2026-10-17')`;
+      } else {
+        yield* dropUnusedV1Projections;
+      }
+      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at)
+        VALUES (63, ${legacyName}, CURRENT_TIMESTAMP)`;
+
+      assert.deepEqual(yield* runMigrations(), [
+        [64, "Workflows"],
+        [65, "DropUnusedV1ProjectionsAfterForkWorkflows"],
+      ]);
+      const tables = yield* sql<{ name: string }>`SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name IN ('workflows', 'workflow_commands') ORDER BY name`;
+      assert.deepEqual(
+        tables.map((table) => table.name),
+        ["workflow_commands", "workflows"],
+      );
+      const rows = yield* sql<{ workflow_id: string }>`SELECT workflow_id FROM workflows`;
+      assert.deepEqual(rows, legacyName === "Workflows" ? [{ workflow_id: "existing" }] : []);
+      assert.deepEqual(yield* runMigrations(), []);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
 );
