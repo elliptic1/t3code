@@ -59,7 +59,7 @@ class T3WorkspaceNavigationModule : Module() {
   }
 }
 
-/** One Material3 selection surface moves from below the list to its leading edge. */
+/** Material3 navigation switches between a bottom bar and a rail on wider workspaces. */
 class T3WorkspaceNavigationView(
   context: Context,
   appContext: AppContext
