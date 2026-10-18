@@ -106,6 +106,10 @@ import {
   threadSupportsActiveSteering,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
+import {
+  resolveWorkflowOpening,
+  workflowOpeningParentThreadId,
+} from "@t3tools/client-runtime/state/subagentRuntime";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
 import { HandoffRow } from "./chat/V2LifecycleRow";
 import {
@@ -1500,6 +1504,28 @@ export default function ChatView(props: ChatViewProps) {
     return scopeThreadRef(parentSubagentEnvironmentId, parentSubagentThreadId);
   })();
   const parentSubagentThread = useQuietThreadShell(parentSubagentThreadRef);
+  // A workflow coordinator's thread opens with its script; the plan that replaces it lives on
+  // the parent's coordinator row, so the parent's detail loads only for such a thread.
+  const workflowOpeningParentId =
+    serverProjection === null
+      ? null
+      : workflowOpeningParentThreadId({
+          thread: serverProjection.thread,
+          messages: serverProjection.messages,
+        });
+  const workflowOpeningParentProjection = useThreadProjection(
+    workflowOpeningParentId === null || parentSubagentEnvironmentId === null
+      ? null
+      : scopeThreadRef(parentSubagentEnvironmentId, workflowOpeningParentId),
+  );
+  const workflowOpening =
+    serverProjection === null || workflowOpeningParentId === null
+      ? null
+      : resolveWorkflowOpening({
+          thread: serverProjection.thread,
+          messages: serverProjection.messages,
+          parentSubagents: workflowOpeningParentProjection?.projection.subagents ?? null,
+        });
   const parentThreadLink =
     parentSubagentThreadRef === null
       ? null
@@ -8020,6 +8046,7 @@ export default function ChatView(props: ChatViewProps) {
                 }
                 onOpenThread={onOpenRelatedThreadStable}
                 parentThreadLink={paintOnlyDisplayedTimeline ? null : parentThreadLink}
+                workflowOpening={paintOnlyDisplayedTimeline ? null : workflowOpening}
                 onForkFromRun={paintOnlyDisplayedTimeline ? async () => {} : onForkFromRunStable}
                 onRollbackCheckpoint={onTimelineRollbackCheckpointStable}
                 supportsConversationRollback={
