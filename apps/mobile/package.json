@@ -133,6 +133,7 @@
     "uniwind": "1.12.1"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
     "@config-plugins/react-native-webrtc": "15.0.2",
     "@effect/vitest": "catalog:",
     "@pierre/trees": "1.0.0-beta.6",
