@@ -68,6 +68,7 @@ import Migration0062 from "./Migrations/062_ThreadFailureLookupIndex.ts";
 import Migration0063DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
 import Migration0064Workflows from "./Migrations/063_Workflows.ts";
 import Migration0065DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
+import Migration0066CanonicalizeThreadPullRequestLinks from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -140,6 +141,9 @@ export const migrationEntries = [
   [63, "DropUnusedV1Projections", Migration0063DropUnusedV1Projections],
   [64, "Workflows", Migration0064Workflows],
   [65, "DropUnusedV1ProjectionsAfterForkWorkflows", Migration0065DropUnusedV1Projections],
+  // The fork shipped Workflows at 64 before upstream used that id. Keep both
+  // histories intact and apply upstream's id-64 migration after the fork's 65.
+  [66, "CanonicalizeThreadPullRequestLinks", Migration0066CanonicalizeThreadPullRequestLinks],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
