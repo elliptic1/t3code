@@ -1,7 +1,11 @@
 import * as Dialog from "../../components/ui/Dialog";
 import { ConnectionTraceId } from "./ConnectionTraceId";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { connectionDiagnostics, connectionStatusText } from "@t3tools/client-runtime/connection";
+import {
+  connectionDiagnostics,
+  connectionStatusText,
+  hasSavedBearerRoute,
+} from "@t3tools/client-runtime/connection";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import { type EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -79,6 +83,7 @@ export function ConnectionEnvironmentRow(props: {
     else Dialog.alert("Could not copy diagnostics", "Please try again.");
   }
   const unsupported = props.environment.connectionState === "unsupported";
+  const canRetry = presentation !== null && hasSavedBearerRoute(presentation.entry);
   const enabled = props.environment.isEnabled && !unsupported;
   const statusLabel = connectionStatusLabel(props.environment);
   const statusTraceId = enabled ? props.environment.connectionErrorTraceId : null;
@@ -163,7 +168,7 @@ export function ConnectionEnvironmentRow(props: {
         <ThemedSwitch
           accessibilityLabel={`Enable ${props.environment.environmentLabel}`}
           style={{ alignSelf: "center" }}
-          disabled={unsupported}
+          disabled={unsupported && !canRetry}
           onValueChange={(next) => props.onSetEnabled(props.environment.environmentId, next)}
           value={enabled}
         />
