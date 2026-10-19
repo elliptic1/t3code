@@ -211,6 +211,7 @@ const config: ExpoConfig = {
       },
     ],
     "expo-asset",
+    "react-native-pdf-jsi",
     [
       "expo-font",
       {
