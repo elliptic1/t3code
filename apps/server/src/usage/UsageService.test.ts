@@ -542,6 +542,7 @@ describe("UsageService", () => {
               .join("\n") + "\n",
           );
         });
+        const resolvedDir = yield* Effect.promise(() => NodeFSP.realpath(dir));
         yield* Effect.gen(function* () {
           const service = yield* UsageService.make;
           const summary = yield* service.readSummary(WINDOW);
@@ -551,7 +552,7 @@ describe("UsageService", () => {
           assert.strictEqual(
             summary.sources.find((source) => source.fingerprint.provider === "pi")?.fingerprint
               .resolvedHomePath,
-            dir,
+            resolvedDir,
           );
         }).pipe(
           Effect.scoped,
