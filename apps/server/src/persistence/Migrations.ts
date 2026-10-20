@@ -214,7 +214,7 @@ const reconcileUpstreamMigrationIds = Effect.gen(function* () {
     rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],
   );
   if (pending.length === 0) return;
-  const movingSources = new Set(pending.map(({ from }) => from));
+  const movingSources = new Set<number>(pending.map(({ from }) => from));
   const invalidTarget = pending.find(({ to, name }) => {
     const target = rows.find((row) => row.migration_id === to);
     return (
