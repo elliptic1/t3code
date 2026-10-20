@@ -117,7 +117,7 @@
     "react-native": "0.88.0",
     "react-native-audio-api": "0.13.6",
     "react-native-blob-util": "0.25.1",
-    "react-native-enriched-markdown": "file:deps/react-native-enriched-markdown-1.2.0-t3.15.tgz",
+    "react-native-enriched-markdown": "file:deps/react-native-enriched-markdown-1.2.0-t3.15-fee84114.tgz",
     "react-native-gesture-handler": "~3.3.0",
     "react-native-image-viewing": "^0.2.2",
     "react-native-keyboard-controller": "1.22.7",
@@ -125,7 +125,7 @@
     "react-native-pdf-jsi": "5.0.0",
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.10.1",
-    "react-native-screens": "file:deps/react-native-screens-5.0.0-t3.27.tgz",
+    "react-native-screens": "file:deps/react-native-screens-5.0.0-t3.29.tgz",
     "react-native-shiki-engine": "^0.3.12",
     "react-native-svg": "15.16.0",
     "react-native-webrtc": "124.0.8",
@@ -153,7 +153,7 @@
     "typescript": "catalog:"
   },
   "enriched-markdown": {
-    "enableMath": false,
+    "enableMath": true,
     "enableVideo": false
   },
   "expo": {
@@ -173,7 +173,8 @@
         "react-native-screens",
         "react-native-reanimated",
         "@react-native-menu/menu",
-        "expo-audio"
+        "expo-audio",
+        "expo-network"
       ]
     }
   },
