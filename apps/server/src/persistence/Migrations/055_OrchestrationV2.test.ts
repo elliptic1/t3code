@@ -8,6 +8,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { migrationEntries, runMigrations } from "../Migrations.ts";
 import CanonicalizeThreadPullRequestLinks from "../Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
 import CodexUsageNativeTurnIndex from "../Migrations/065_CodexUsageNativeTurnIndex.ts";
+import RepairClientSettlementTimestamps from "../Migrations/066_RepairClientSettlementTimestamps.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -18,7 +19,7 @@ layer("055_OrchestrationV2", (it) => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         migrationEntries.map(([id]) => id),
-        Array.from({ length: 67 }, (_, index) => index + 1),
+        Array.from({ length: 68 }, (_, index) => index + 1),
       );
     }),
   );
@@ -44,6 +45,7 @@ layer("055_OrchestrationV2", (it) => {
         [65, "DropUnusedV1ProjectionsAfterForkWorkflows"],
         [66, "CanonicalizeThreadPullRequestLinks"],
         [67, "CodexUsageNativeTurnIndex"],
+        [68, "RepairClientSettlementTimestamps"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
 
@@ -77,6 +79,7 @@ layer("055_OrchestrationV2", (it) => {
         { migration_id: 65, name: "DropUnusedV1ProjectionsAfterForkWorkflows" },
         { migration_id: 66, name: "CanonicalizeThreadPullRequestLinks" },
         { migration_id: 67, name: "CodexUsageNativeTurnIndex" },
+        { migration_id: 68, name: "RepairClientSettlementTimestamps" },
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`
@@ -159,6 +162,7 @@ layer("055_OrchestrationV2", (it) => {
         loader: Migrator.fromRecord({
           "64_CanonicalizeThreadPullRequestLinks": CanonicalizeThreadPullRequestLinks,
           "65_CodexUsageNativeTurnIndex": CodexUsageNativeTurnIndex,
+          "66_RepairClientSettlementTimestamps": RepairClientSettlementTimestamps,
         }),
       });
 

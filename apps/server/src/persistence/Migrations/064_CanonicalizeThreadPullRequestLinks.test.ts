@@ -126,6 +126,7 @@ layer("064_CanonicalizeThreadPullRequestLinks", (it) => {
       assert.deepEqual(yield* runMigrations(), [
         [66, "CanonicalizeThreadPullRequestLinks"],
         [67, "CodexUsageNativeTurnIndex"],
+        [68, "RepairClientSettlementTimestamps"],
       ]);
       assert.deepEqual(yield* runMigrations(), []);
       const rows = yield* sql<{ readonly thread_id: string; readonly payload_json: string }>`
