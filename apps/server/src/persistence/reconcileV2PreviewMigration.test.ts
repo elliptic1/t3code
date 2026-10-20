@@ -46,6 +46,7 @@ describe("V2 preview upgrade", () => {
         [64, "Workflows"],
         [65, "DropUnusedV1ProjectionsAfterForkWorkflows"],
         [66, "CanonicalizeThreadPullRequestLinks"],
+        [67, "CodexUsageNativeTurnIndex"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -135,6 +136,7 @@ describe("V2 preview upgrade", () => {
         [64, "Workflows"],
         [65, "DropUnusedV1ProjectionsAfterForkWorkflows"],
         [66, "CanonicalizeThreadPullRequestLinks"],
+        [67, "CodexUsageNativeTurnIndex"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

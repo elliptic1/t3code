@@ -69,6 +69,7 @@ import Migration0063DropUnusedV1Projections from "./Migrations/063_DropUnusedV1P
 import Migration0064Workflows from "./Migrations/063_Workflows.ts";
 import Migration0065DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
 import Migration0066CanonicalizeThreadPullRequestLinks from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
+import Migration0067CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -144,6 +145,8 @@ export const migrationEntries = [
   // The fork shipped Workflows at 64 before upstream used that id. Keep both
   // histories intact and apply upstream's id-64 migration after the fork's 65.
   [66, "CanonicalizeThreadPullRequestLinks", Migration0066CanonicalizeThreadPullRequestLinks],
+  // Upstream used id 65 before the fork reserved 64/65 for Workflows cleanup.
+  [67, "CodexUsageNativeTurnIndex", Migration0067CodexUsageNativeTurnIndex],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -187,6 +190,75 @@ const reconcileForkWorkflowMigration = Effect.gen(function* () {
           yield* sql`UPDATE effect_sql_migrations SET name = 'ThreadFailureLookupIndex'
           WHERE migration_id = 62 AND name = 'Workflows'`;
         }
+      }
+    }),
+  );
+});
+
+// Upstream released canonicalization and the Codex native-turn index at 64/65.
+// The fork needs 64/65 for its workflow migration and cleanup, so move those
+// upstream ledger entries to 66/67. An upstream database will otherwise make
+// the migrator skip the fork's 64/65 schema changes, so apply and record those
+// fork migrations in the same transaction before relocating the upstream rows.
+const reconcileUpstreamMigrationIds = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledger.length === 0) return;
+  const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+    SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id IN (64, 65, 66, 67)
+  `;
+  const moves = [
+    [64, 66, "CanonicalizeThreadPullRequestLinks"],
+    [65, 67, "CodexUsageNativeTurnIndex"],
+  ] as const;
+  const pending = moves.flatMap(([from, to, name]) =>
+    rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],
+  );
+  if (pending.length === 0) return;
+  const invalidTarget = pending.find(({ to, name }) => {
+    const target = rows.find((row) => row.migration_id === to);
+    return target !== undefined && target.name !== name;
+  });
+  if (invalidTarget) {
+    return yield* new Migrator.MigrationError({
+      kind: "BadState",
+      message: `Cannot remap upstream migration ${invalidTarget.name} from ${invalidTarget.from}; migration ${invalidTarget.to} is already recorded with a different name.`,
+    });
+  }
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* Migration0064Workflows;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* Migration0065DropUnusedV1Projections;
+      }
+      for (const { from, to, name } of pending) {
+        if (rows.some((row) => row.migration_id === to && row.name === name)) {
+          yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = ${from} AND name = ${name}`;
+        } else {
+          yield* sql`UPDATE effect_sql_migrations SET migration_id = ${to}
+            WHERE migration_id = ${from} AND name = ${name}`;
+        }
+      }
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (64, 'Workflows')`;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
+          VALUES (65, 'DropUnusedV1ProjectionsAfterForkWorkflows')`;
       }
     }),
   );
@@ -243,6 +315,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
   if (includesV2) {
+    yield* reconcileUpstreamMigrationIds;
     yield* reconcileForkWorkflowMigration;
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
