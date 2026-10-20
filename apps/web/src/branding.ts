@@ -38,3 +38,4 @@ export const APP_BUILD_DATE_LABEL = Number.isNaN(appBuildDate.getTime())
     });
 export const APP_BUILD_DATE_TITLE =
   APP_BUILD_DATE_LABEL === null ? undefined : appBuildDate.toString();
+export const DESKTOP_DOWNLOAD_URL = "https://t3.codes/download";

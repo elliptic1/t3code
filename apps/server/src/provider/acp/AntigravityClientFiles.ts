@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import type * as Path from "effect/Path";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
@@ -42,10 +43,24 @@ const resolveClientFilePath = Effect.fn("AntigravityClientFiles.resolveClientFil
             Effect.orElseSucceed(() => true),
           );
           if (entryExists) return yield* outside;
-          const parent = yield* input.fileSystem
-            .realPath(path.dirname(resolved))
-            .pipe(Effect.orElseSucceed(() => path.dirname(resolved)));
-          return path.join(parent, path.basename(resolved));
+          let ancestor = path.dirname(resolved);
+          const missingSegments = [path.basename(resolved)];
+          while (true) {
+            const realAncestor = yield* input.fileSystem.realPath(ancestor).pipe(Effect.option);
+            if (Option.isSome(realAncestor)) {
+              return path.join(realAncestor.value, ...missingSegments);
+            }
+            const ancestorExists = yield* input.fileSystem.readLink(ancestor).pipe(
+              Effect.as(true),
+              Effect.catch(() => input.fileSystem.exists(ancestor)),
+              Effect.orElseSucceed(() => true),
+            );
+            if (ancestorExists) return yield* outside;
+            const parent = path.dirname(ancestor);
+            if (parent === ancestor) return yield* outside;
+            missingSegments.unshift(path.basename(ancestor));
+            ancestor = parent;
+          }
         }),
       ),
     );

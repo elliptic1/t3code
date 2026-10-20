@@ -69,6 +69,8 @@ import Migration0063DropUnusedV1Projections from "./Migrations/063_DropUnusedV1P
 import Migration0064Workflows from "./Migrations/063_Workflows.ts";
 import Migration0065DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
 import Migration0066CanonicalizeThreadPullRequestLinks from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
+import Migration0067CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
+import Migration0068RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettlementTimestamps.ts";
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -134,16 +136,13 @@ export const migrationEntries = [
   [60, "ThreadSnapshotWindowIndexes", Migration0060],
   [61, "PullRequestReviewGuides", Migration0061],
   [62, "ThreadFailureLookupIndex", Migration0062],
-  // Upstream and the fork both used migration id 63. Preserve the upstream
-  // cleanup at 63, then ensure fork workflows at 64 for either ledger history.
-  // Re-run the idempotent cleanup at 65 for fork databases whose 63 is already
-  // recorded as Workflows and therefore skips the upstream 63 migration.
+  // Preserve both branches' released migration histories after their shared id 63.
   [63, "DropUnusedV1Projections", Migration0063DropUnusedV1Projections],
   [64, "Workflows", Migration0064Workflows],
   [65, "DropUnusedV1ProjectionsAfterForkWorkflows", Migration0065DropUnusedV1Projections],
-  // The fork shipped Workflows at 64 before upstream used that id. Keep both
-  // histories intact and apply upstream's id-64 migration after the fork's 65.
   [66, "CanonicalizeThreadPullRequestLinks", Migration0066CanonicalizeThreadPullRequestLinks],
+  [67, "CodexUsageNativeTurnIndex", Migration0067CodexUsageNativeTurnIndex],
+  [68, "RepairClientSettlementTimestamps", Migration0068RepairClientSettlementTimestamps],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -187,6 +186,84 @@ const reconcileForkWorkflowMigration = Effect.gen(function* () {
           yield* sql`UPDATE effect_sql_migrations SET name = 'ThreadFailureLookupIndex'
           WHERE migration_id = 62 AND name = 'Workflows'`;
         }
+      }
+    }),
+  );
+});
+
+// Upstream released migration ids 64-66 for canonical links, Codex usage, and
+// settlement repair. The fork uses 64/65 for Workflows and its cleanup, so a
+// legacy upstream ledger must apply those fork migrations first, then move the
+// upstream rows to 66-68 in one transaction. Applying both before remapping is
+// essential because the migrator skips every id up to the highest recorded id.
+const reconcileUpstreamMigrationIds = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledger.length === 0) return;
+  const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+    SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id IN (64, 65, 66, 67, 68)
+  `;
+  const moves = [
+    [64, 66, "CanonicalizeThreadPullRequestLinks"],
+    [65, 67, "CodexUsageNativeTurnIndex"],
+    [66, 68, "RepairClientSettlementTimestamps"],
+  ] as const;
+  const pending = moves.flatMap(([from, to, name]) =>
+    rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],
+  );
+  if (pending.length === 0) return;
+  const movingSources = new Set<number>(pending.map(({ from }) => from));
+  const invalidTarget = pending.find(({ to, name }) => {
+    const target = rows.find((row) => row.migration_id === to);
+    return (
+      target !== undefined &&
+      target.name !== name &&
+      !(
+        movingSources.has(to) &&
+        pending.some((move) => move.from === to && move.name === target.name)
+      )
+    );
+  });
+  if (invalidTarget) {
+    return yield* new Migrator.MigrationError({
+      kind: "BadState",
+      message: `Cannot remap upstream migration ${invalidTarget.name} from ${invalidTarget.from}; migration ${invalidTarget.to} is already recorded with a different name.`,
+    });
+  }
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* Migration0064Workflows;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* Migration0065DropUnusedV1Projections;
+      }
+      for (const { from, to, name } of pending.toSorted((a, b) => b.from - a.from)) {
+        if (rows.some((row) => row.migration_id === to && row.name === name)) {
+          yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = ${from} AND name = ${name}`;
+        } else {
+          yield* sql`UPDATE effect_sql_migrations SET migration_id = ${to}
+            WHERE migration_id = ${from} AND name = ${name}`;
+        }
+      }
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (64, 'Workflows')`;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
+          VALUES (65, 'DropUnusedV1ProjectionsAfterForkWorkflows')`;
       }
     }),
   );
@@ -243,6 +320,9 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
   if (includesV2) {
+    if (toMigrationInclusive === undefined) {
+      yield* reconcileUpstreamMigrationIds;
+    }
     yield* reconcileForkWorkflowMigration;
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }

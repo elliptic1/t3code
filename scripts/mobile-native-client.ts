@@ -17,6 +17,7 @@ const NativeClientRecord = Schema.Struct({ fingerprint: Schema.String, binary: S
 const encodeRecord = Schema.encodeEffect(Schema.fromJsonString(NativeClientRecord));
 const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(NativeClientRecord));
 const encodeOutput = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const isNotLink = Schema.is(Schema.Struct({ code: Schema.Literal("EINVAL") }));
 export type NativeClientRecord = typeof NativeClientRecord.Type;
 export type NativeClientStatus = "compatible" | "missing" | "unknown" | "stale";
 export class NativeClientError extends Schema.TaggedError<NativeClientError>()(
@@ -79,6 +80,49 @@ const digest = Effect.fn("nativeClient.digest")(function* (value: string | Uint8
   );
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 });
+
+/** Hash fixed-size chunks to bound memory, including resources and symlink targets. */
+export const hashBundle = Effect.fn("hashBundle")(function* (root: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const entries: string[] = [];
+  const visit = Effect.fn("mobile-native-client.visit")(function* (
+    relative: string,
+  ): Effect.fn.Return<void, FileSystemError, FileSystem.FileSystem | Crypto.Crypto> {
+    const names = (yield* fs.readDirectory(path.join(root, relative))).sort((a, b) =>
+      a.localeCompare(b, "en"),
+    );
+    for (const name of names) {
+      const key = path.join(relative, name);
+      const absolute = path.join(root, key);
+      // FileSystem.stat follows links; readLink distinguishes them without following a cycle.
+      const link = yield* fs.readLink(absolute).pipe(
+        Effect.catchIf(
+          (error) => isNotLink(error.reason.cause),
+          () => Effect.succeed(null),
+        ),
+      );
+      if (link !== null) {
+        entries.push(`link:${key}:${link}`);
+        continue;
+      }
+      const info = yield* fs.stat(absolute);
+      if (info.type === "Directory") {
+        entries.push(`directory:${key}`);
+        yield* visit(key);
+      } else {
+        const chunks = yield* fs.stream(absolute, { chunkSize: 65536 }).pipe(
+          Stream.mapEffect((chunk) => digest(chunk)),
+          Stream.runCollect,
+        );
+        entries.push(`file:${key}:${yield* digest(chunks.join("\n"))}`);
+      }
+    }
+  });
+  yield* visit("");
+  return yield* digest(entries.map((entry) => `${entry.length}:${entry}`).join(""));
+});
+type FileSystemError = import("effect/PlatformError").PlatformError;
 
 const bundleId = "com.t3tools.t3code.dev";
 const roots = Effect.gen(function* () {
