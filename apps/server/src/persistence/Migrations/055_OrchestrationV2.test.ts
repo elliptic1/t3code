@@ -9,6 +9,7 @@ import { migrationEntries, runMigrations } from "../Migrations.ts";
 import CanonicalizeThreadPullRequestLinks from "../Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
 import CodexUsageNativeTurnIndex from "../Migrations/065_CodexUsageNativeTurnIndex.ts";
 import RepairClientSettlementTimestamps from "../Migrations/066_RepairClientSettlementTimestamps.ts";
+import WebhookDedupe from "../Migrations/067_WebhookDedupe.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -19,7 +20,7 @@ layer("055_OrchestrationV2", (it) => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         migrationEntries.map(([id]) => id),
-        Array.from({ length: 68 }, (_, index) => index + 1),
+        Array.from({ length: 69 }, (_, index) => index + 1),
       );
     }),
   );
@@ -46,6 +47,7 @@ layer("055_OrchestrationV2", (it) => {
         [66, "CanonicalizeThreadPullRequestLinks"],
         [67, "CodexUsageNativeTurnIndex"],
         [68, "RepairClientSettlementTimestamps"],
+        [69, "WebhookDedupe"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
 
@@ -80,6 +82,7 @@ layer("055_OrchestrationV2", (it) => {
         { migration_id: 66, name: "CanonicalizeThreadPullRequestLinks" },
         { migration_id: 67, name: "CodexUsageNativeTurnIndex" },
         { migration_id: 68, name: "RepairClientSettlementTimestamps" },
+        { migration_id: 69, name: "WebhookDedupe" },
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`
@@ -95,7 +98,9 @@ layer("055_OrchestrationV2", (it) => {
             'orchestration_v2_projection_provider_session_bindings',
             'orchestration_v2_thread_launch_workflows',
             'orchestration_v2_legacy_imports',
-            'scheduled_tasks'
+            'scheduled_tasks',
+            'scheduled_task_webhook_pending',
+            'scheduled_task_webhook_replay_keys'
           )
         ORDER BY name
       `;
@@ -110,9 +115,16 @@ layer("055_OrchestrationV2", (it) => {
           "orchestration_v2_projection_threads",
           "orchestration_v2_thread_launch_workflows",
           "orchestration_v2_turn_item_positions",
+          "scheduled_task_webhook_pending",
+          "scheduled_task_webhook_replay_keys",
           "scheduled_tasks",
         ],
       );
+
+      const scheduledTaskColumns = yield* sql<{ readonly name: string }>`
+        PRAGMA table_info(scheduled_tasks)
+      `;
+      assert.ok(scheduledTaskColumns.some(({ name }) => name === "last_run_webhook_delivery_id"));
 
       const eventColumns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info(orchestration_events)
@@ -154,7 +166,7 @@ layer("055_OrchestrationV2", (it) => {
     }),
   );
 
-  it.effect("preserves upstream migration 64/65 history while applying fork migrations", () =>
+  it.effect("preserves upstream migration 64-67 history while applying fork migrations", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 63 });
@@ -163,11 +175,11 @@ layer("055_OrchestrationV2", (it) => {
           "64_CanonicalizeThreadPullRequestLinks": CanonicalizeThreadPullRequestLinks,
           "65_CodexUsageNativeTurnIndex": CodexUsageNativeTurnIndex,
           "66_RepairClientSettlementTimestamps": RepairClientSettlementTimestamps,
+          "67_WebhookDedupe": WebhookDedupe,
         }),
       });
 
-      // The reconciliation applies and records fork 64/65 before the migrator
-      // sees the upstream ledger's higher ids.
+      // The reconciliation applies fork 64/65 before moving upstream ids to 66-69.
       assert.deepStrictEqual(yield* runMigrations(), []);
       const history = yield* sql<{
         readonly migration_id: number;

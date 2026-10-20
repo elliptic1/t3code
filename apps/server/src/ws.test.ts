@@ -603,7 +603,6 @@ it.effect(
         Layer.mock(WorkflowService.WorkflowService)({}),
         Layer.mock(VoiceHistory.VoiceHistory)({}),
       );
-      // @ts-expect-error -- The full WS handler graph exceeds TS instantiation depth; this test uses one RPC.
       const configRpcLayer = layerWsRpc(
         {
           sessionId: AuthSessionId.make("config-test"),

@@ -71,6 +71,10 @@ import Migration0065DropUnusedV1Projections from "./Migrations/063_DropUnusedV1P
 import Migration0066CanonicalizeThreadPullRequestLinks from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
 import Migration0067CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 import Migration0068RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettlementTimestamps.ts";
+import Migration0069WebhookDedupeSource from "./Migrations/067_WebhookDedupe.ts";
+
+const Migration0069WebhookDedupe: typeof Migration0068RepairClientSettlementTimestamps =
+  Migration0069WebhookDedupeSource;
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -143,6 +147,7 @@ export const migrationEntries = [
   [66, "CanonicalizeThreadPullRequestLinks", Migration0066CanonicalizeThreadPullRequestLinks],
   [67, "CodexUsageNativeTurnIndex", Migration0067CodexUsageNativeTurnIndex],
   [68, "RepairClientSettlementTimestamps", Migration0068RepairClientSettlementTimestamps],
+  [69, "WebhookDedupe", Migration0069WebhookDedupe],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -191,10 +196,10 @@ const reconcileForkWorkflowMigration = Effect.gen(function* () {
   );
 });
 
-// Upstream released migration ids 64-66 for canonical links, Codex usage, and
+// Upstream released migration ids 64-67 for canonical links, Codex usage, and
 // settlement repair. The fork uses 64/65 for Workflows and its cleanup, so a
 // legacy upstream ledger must apply those fork migrations first, then move the
-// upstream rows to 66-68 in one transaction. Applying both before remapping is
+// upstream rows to 66-69 in one transaction. Applying both before remapping is
 // essential because the migrator skips every id up to the highest recorded id.
 const reconcileUpstreamMigrationIds = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -209,6 +214,7 @@ const reconcileUpstreamMigrationIds = Effect.gen(function* () {
     [64, 66, "CanonicalizeThreadPullRequestLinks"],
     [65, 67, "CodexUsageNativeTurnIndex"],
     [66, 68, "RepairClientSettlementTimestamps"],
+    [67, 69, "WebhookDedupe"],
   ] as const;
   const pending = moves.flatMap(([from, to, name]) =>
     rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],
