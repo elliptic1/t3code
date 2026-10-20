@@ -1022,7 +1022,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.propertyVal(
         macInfo,
         "NSMicrophoneUsageDescription",
-        "T3 Code uses your microphone for voice conversations with your configured voice provider.",
+        "T3 Code uses the microphone for voice conversations and when commands run by terminals and coding agents access audio input.",
       );
       for (const config of [linux, win]) {
         assert.deepStrictEqual(config.electronLanguages, DESKTOP_ELECTRON_LANGUAGES);
@@ -2236,6 +2236,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.include(entitlements, "<string>webcredentials:example.clerk.accounts.dev</string>");
     assert.include(entitlements, "<key>com.apple.security.device.audio-input</key>\n    <true/>");
     assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");
+    assert.match(entitlements, /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\/>/u);
+    assert.match(entitlements, /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u);
     assert.notInclude(entitlements, "keychain-access-groups");
     assert.notInclude(entitlements, "com.apple.developer.web-browser.public-key-credential");
   });

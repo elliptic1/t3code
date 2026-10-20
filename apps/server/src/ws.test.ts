@@ -27,12 +27,14 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { Headers } from "effect/http";
-import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
+import { Rpc, RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
 import { ChildProcessSpawner } from "effect/process";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
+import * as WorkflowService from "./workflows/WorkflowService.ts";
+import * as VoiceHistory from "./voice/history.ts";
 import * as AcpRegistryRuntimeCoordinator from "@t3tools/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
@@ -48,8 +50,6 @@ import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
-import * as WorkflowService from "./workflows/WorkflowService.ts";
-import * as VoiceHistory from "./voice/history.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
@@ -467,8 +467,6 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(DeviceService.DeviceService)({}),
   Layer.mock(EnvironmentTheme.EnvironmentThemeService)({}),
   Layer.mock(GitWorkflowService.GitWorkflowService)({}),
-  Layer.mock(WorkflowService.WorkflowService)({}),
-  Layer.mock(VoiceHistory.VoiceHistory)({}),
   Layer.mock(HostResources.HostResources)({}),
   Layer.mock(McpAppRequests.McpAppRequests)({}),
   Layer.mock(ModelManifest.ModelManifest)({}),
@@ -602,7 +600,26 @@ it.effect(
           streamChanges: Stream.unwrap(settingsChanges),
           subscribeChanges: settingsChanges,
         }),
+        Layer.mock(WorkflowService.WorkflowService)({}),
+        Layer.mock(VoiceHistory.VoiceHistory)({}),
       );
+      // @ts-expect-error -- The full WS handler graph exceeds TS instantiation depth; this test uses one RPC.
+      const configRpcLayer = layerWsRpc(
+        {
+          sessionId: AuthSessionId.make("config-test"),
+          subject: "config-test",
+          method: "browser-session-cookie",
+          scopes: [],
+        },
+        {},
+        {},
+        yield* PreviewAutomationBroker.PreviewAutomationBroker,
+        yield* ServerBrowser.ServerBrowser,
+      ).pipe(Layer.provide(configRpcServices)) as unknown as Layer.Layer<
+        Rpc.ToHandler<typeof WsSubscribeServerConfigRpc>,
+        never,
+        never
+      >;
       const server = yield* RpcServer.makeNoSerialization(
         RpcGroup.make(WsSubscribeServerConfigRpc),
         {
@@ -614,22 +631,7 @@ it.effect(
                 })
               : Effect.void,
         },
-      ).pipe(
-        Effect.provide(
-          layerWsRpc(
-            {
-              sessionId: AuthSessionId.make("config-test"),
-              subject: "config-test",
-              method: "browser-session-cookie",
-              scopes: [],
-            },
-            {},
-            {},
-            yield* PreviewAutomationBroker.PreviewAutomationBroker,
-            yield* ServerBrowser.ServerBrowser,
-          ).pipe(Layer.provide(configRpcServices)),
-        ),
-      );
+      ).pipe(Effect.provide(configRpcLayer));
       const requestId = RpcMessage.RequestId("config");
       const acknowledge = server.write(0, { _tag: "Ack", requestId });
       yield* server.write(0, {

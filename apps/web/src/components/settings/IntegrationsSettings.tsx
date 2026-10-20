@@ -4,6 +4,7 @@ import { DeviceToolVersions } from "../device/DeviceToolVersions";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { DeviceHostsSettings } from "./DeviceHostsSettings";
+import { EasDeviceHostsSettings } from "./EasDeviceHostsSettings";
 import {
   AuthSettingsWriteScope,
   BrowserImportFailureReason,
@@ -1069,6 +1070,7 @@ export function DeviceIntegrationControls({
         />
       ) : null}
       <DeviceHostsSettings environmentId={environmentId} />
+      {state.supportsEasHosts ? <EasDeviceHostsSettings environmentId={environmentId} /> : null}
     </>
   );
 }
