@@ -315,7 +315,9 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
   if (includesV2) {
-    yield* reconcileUpstreamMigrationIds;
+    if (toMigrationInclusive === undefined) {
+      yield* reconcileUpstreamMigrationIds;
+    }
     yield* reconcileForkWorkflowMigration;
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }

@@ -83,6 +83,7 @@ import {
   setComposerDraftText,
   updateComposerDraftSettings,
   useComposerDraft,
+  useComposerDraftSettings,
 } from "./use-composer-drafts";
 import {
   resolveComposerDispatchMode,
@@ -320,29 +321,28 @@ export function useThreadComposerState() {
         ? selectedThreadKey
         : queuedEditDraftKey(selectedThreadKey, queuedRunEdit.runId);
   const editedDraft = composerDraftKey ? composerDrafts[composerDraftKey] : null;
-  const selectedDraft = selectedThreadKey ? composerDrafts[selectedThreadKey] : null;
+  const selectedDraft = useComposerDraftSettings(selectedThreadKey);
   const draftMessage = editedDraft?.text ?? "";
   const draftAttachments = editedDraft?.attachments ?? [];
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadShell;
-  const modelSelection = selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null;
-  const pendingHandoff = useMemo(
-    () =>
-      resolvePendingHandoff(
-        selectedThreadProjection?.projection,
-        modelSelection,
-        selectedEnvironmentRuntime?.serverConfig?.providers ?? [],
-      ),
-    [modelSelection, selectedThreadProjection, selectedEnvironmentRuntime?.serverConfig?.providers],
+  const modelSelection = selectedDraft.modelSelection ?? selectedThread?.modelSelection ?? null;
+  const serverConfig = selectedEnvironmentRuntime?.serverConfig;
+  const pendingHandoff = resolvePendingHandoff(
+    selectedThreadProjection?.projection,
+    isModelSelectionUnavailable(serverConfig, modelSelection, selectedThread?.projectId ?? null)
+      ? null
+      : modelSelection,
+    serverConfig?.providers ?? [],
   );
-  const runtimeMode = selectedDraft?.runtimeMode ?? selectedThread?.runtimeMode ?? null;
+  const runtimeMode = selectedDraft.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const selectedProvider = selectedEnvironmentRuntime?.serverConfig?.providers.find(
     (provider) => provider.instanceId === modelSelection?.instanceId,
   );
   const interactionMode = selectedThread
     ? resolveProviderInteractionMode(
         selectedProvider,
-        selectedDraft?.interactionMode ?? selectedThread.interactionMode,
+        selectedDraft.interactionMode ?? selectedThread.interactionMode,
       )
     : null;
   const canSwitchThreadProvider = useMemo(
