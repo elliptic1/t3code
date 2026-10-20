@@ -2,6 +2,7 @@ import {
   AntigravitySettings,
   ClaudeSettings,
   CodexSettings,
+  EasDeviceHostConfig,
   type ServerSettings,
   UsageLimitSourceConfig,
   secretSettingsFields,
@@ -33,6 +34,7 @@ const providerSecretFields = new Map([
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 /** Store key the realtime voice API key has always used; kept so saved keys survive. */
 const VOICE_CONNECTION_SECRET_NAME = "voice-connection-api-key";
+const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -155,6 +157,23 @@ export function mapSettingsSecrets(
     ...settings.voiceConnection,
     apiKey: voiceKey.redacted ? SECRET_REDACTED : voiceKey.value,
   };
+  const easDeviceHosts = settings.easDeviceHosts.map(
+    (host) =>
+      mapFields(
+        host,
+        easDeviceHostSecretFields,
+        (field, serverHost) =>
+          `device-host-${encode(host.id)}-${encode(field)}` +
+          (serverHost === null ? "" : `-${encode(serverHost)}`),
+      ) as EasDeviceHostConfig,
+  );
 
-  return { ...settings, providerInstances, sourceControlHosts, usageLimitSources, voiceConnection };
+  return {
+    ...settings,
+    providerInstances,
+    sourceControlHosts,
+    usageLimitSources,
+    voiceConnection,
+    easDeviceHosts,
+  };
 }

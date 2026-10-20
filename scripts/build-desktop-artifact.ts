@@ -1408,6 +1408,14 @@ ${associatedDomains}
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
+    <!-- The hardened runtime denies camera and microphone to the app and every
+         child process, with no prompt, unless the app claims these. Terminals
+         and coding agents inherit the app's TCC identity, so without these a
+         command like ffmpeg or imagesnap gets silent access-denied. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
   </dict>
 </plist>
 `;
@@ -2879,14 +2887,16 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
       extendInfo: {
-        NSMicrophoneUsageDescription:
-          "T3 Code uses your microphone for voice conversations with your configured voice provider.",
         // macOS 26 offers Messages/Mail codes in every text field unless opted out.
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
         NSLocalNetworkUsageDescription:
           "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
         NSScreenCaptureUsageDescription:
           "T3 Code captures the active window when you use the window capture shortcut.",
+        NSCameraUsageDescription:
+          "T3 Code lets commands run by terminals and coding agents use the camera.",
+        NSMicrophoneUsageDescription:
+          "T3 Code uses the microphone for voice conversations and when commands run by terminals and coding agents access audio input.",
         // macOS lists an app under Default web browser only when it opens web
         // pages as documents as well as http and https links (see protocols).
         CFBundleDocumentTypes: [

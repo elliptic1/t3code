@@ -337,7 +337,11 @@ const main = Command.make(
           ["exec", "expo", "prebuild", "--clean", "--platform", platform, "--no-install"],
           true,
         ).pipe(Effect.asVoid);
-        yield* platform === "android" ? prebuildAndroid((yield* roots).mobile, prebuild) : prebuild;
+        if (platform === "android") {
+          yield* prebuildAndroid((yield* roots).mobile, prebuild);
+        } else {
+          yield* prebuild;
+        }
         if (platform === "ios") {
           const output = yield* fs.makeTempDirectoryScoped({ prefix: "t3-native-client-" });
           const { mobile } = yield* roots;
