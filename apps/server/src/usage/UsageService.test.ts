@@ -1943,17 +1943,20 @@ describe("UsageService", () => {
           };
           const open = vi.spyOn(NodeFSP, "open");
           open.mockClear();
+          const canonicalTranscript = yield* Effect.promise(() => NodeFSP.realpath(transcript));
+          const transcriptWasOpened = () =>
+            open.mock.calls.some(([path]) => path === canonicalTranscript);
           yield* Effect.addFinalizer(() => Effect.sync(() => open.mockRestore()));
           const first = yield* UsageService.make;
           const cold = yield* first.readSummary(WINDOW);
-          assert.isTrue(open.mock.calls.some(([path]) => path === transcript));
+          assert.isTrue(transcriptWasOpened());
           verify(cold, 20, 20, 1);
           yield* first.awaitPersisted;
           const restarted = yield* UsageService.make;
           open.mockClear();
           verify(yield* first.readSummary(WINDOW), 20, 20, 1);
           verify(yield* restarted.readSummary(WINDOW), 20, 20, 1);
-          assert.isFalse(open.mock.calls.some(([path]) => path === transcript));
+          assert.isFalse(transcriptWasOpened());
           open.mockRestore();
 
           const append = "\n" + counted(10, 2, 140, 30) + "\n";
