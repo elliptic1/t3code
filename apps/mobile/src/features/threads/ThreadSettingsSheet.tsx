@@ -22,9 +22,7 @@ import type {
   RuntimeMode,
   ServerSettings,
 } from "@t3tools/contracts";
-import type { LegendListRenderItemProps } from "@legendapp/list/react-native";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import {
   getProviderOptionCurrentLabel,
   getProviderOptionCurrentValue,
@@ -44,7 +42,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Platform, Pressable, RefreshControl, ScrollView, TextInput, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  TextInput,
+  View,
+  type ListRenderItemInfo,
+} from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -114,10 +120,6 @@ const PRIMARY_PROVIDER_DRIVERS: ReadonlySet<string> = new Set([
  * Keep measured row changes stable, but let catalog mutations use the list's
  * native bounds so a filtered catalog that underflows returns to the top.
  */
-const THREAD_SETTINGS_MAINTAIN_VISIBLE_CONTENT_POSITION = {
-  data: false,
-  size: true,
-} as const;
 const THREAD_SETTINGS_CATALOG_LAYOUT_TRANSITION = LinearTransition.duration(180);
 const THREAD_SETTINGS_CATALOG_ENTER_TRANSITION = FadeIn.duration(140);
 const THREAD_SETTINGS_CATALOG_EXIT_TRANSITION = FadeOut.duration(120);
@@ -1115,7 +1117,7 @@ function ThreadSettingsMainContent(props: {
     [catalogItems, session.choosingFallback],
   );
   const renderCatalogItem = useCallback(
-    (itemProps: LegendListRenderItemProps<ThreadSettingsCatalogItem>) => {
+    (itemProps: ListRenderItemInfo<ThreadSettingsCatalogItem>) => {
       const item = itemProps.item;
       let content: ReactNode;
 
@@ -1172,108 +1174,110 @@ function ThreadSettingsMainContent(props: {
     ],
   );
 
+  // A plain FlatList: LegendList's recycled-row measurement looped forever here
+  // ("Maximum update depth exceeded") with animated rows. The catalog is short.
   return (
-    <AnimatedLegendList
-      alwaysBounceVertical
-      automaticallyAdjustsScrollIndicatorInsets
-      className="flex-1 bg-sheet"
-      style={
-        Platform.OS === "android"
-          ? { width: "100%", maxWidth: 720, alignSelf: "center" }
-          : undefined
-      }
-      contentContainerStyle={{ paddingTop: 4 }}
-      contentInsetAdjustmentBehavior="automatic"
-      data={listItems}
-      estimatedItemSize={Platform.OS === "android" ? 56 : 48}
-      extraData={animationsReady}
-      getItemType={(item) => item.kind}
-      itemLayoutAnimation={THREAD_SETTINGS_CATALOG_LAYOUT_TRANSITION}
-      keyExtractor={(item) => item.key}
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
-      maintainVisibleContentPosition={THREAD_SETTINGS_MAINTAIN_VISIBLE_CONTENT_POSITION}
-      ListHeaderComponent={
-        <>
-          {session.onModelFallbackChange ? (
-            <View className="mx-4 my-2 gap-2">
-              <Text className="text-sm text-muted-foreground">
-                {session.choosingFallback
-                  ? "Choose the model to use when your preferred provider hits its usage limit."
-                  : session.modelFallback
-                    ? `Preferred: ${session.modelFallback.preferred.model} · Fallback: ${session.modelFallback.fallback.model}`
-                    : "Automatically continue with another model when usage runs out."}
-              </Text>
-              <Button
-                label={
-                  session.choosingFallback
-                    ? "Cancel fallback selection"
+    <View className="flex-1 bg-sheet">
+      <Animated.FlatList
+        alwaysBounceVertical
+        automaticallyAdjustsScrollIndicatorInsets
+        style={[
+          { flex: 1 },
+          Platform.OS === "android" ? { width: "100%", maxWidth: 720, alignSelf: "center" } : null,
+        ]}
+        contentContainerStyle={{ paddingTop: 4 }}
+        contentInsetAdjustmentBehavior="automatic"
+        data={listItems}
+        extraData={animationsReady}
+        itemLayoutAnimation={THREAD_SETTINGS_CATALOG_LAYOUT_TRANSITION}
+        keyExtractor={(item) => item.key}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <>
+            {session.onModelFallbackChange ? (
+              <View className="mx-4 my-2 gap-2">
+                <Text className="text-sm text-muted-foreground">
+                  {session.choosingFallback
+                    ? "Choose the model to use when your preferred provider hits its usage limit."
                     : session.modelFallback
-                      ? "Change fallback"
-                      : "Set fallback model"
-                }
-                onPress={session.toggleFallbackPicker}
-              />
-              {session.modelFallback ? (
+                      ? `Preferred: ${session.modelFallback.preferred.model} · Fallback: ${session.modelFallback.fallback.model}`
+                      : "Automatically continue with another model when usage runs out."}
+                </Text>
                 <Button
-                  label="Disable auto switching"
-                  onPress={() => {
-                    session.onModelFallbackChange?.(null);
-                    if (session.choosingFallback) session.toggleFallbackPicker();
-                  }}
+                  label={
+                    session.choosingFallback
+                      ? "Cancel fallback selection"
+                      : session.modelFallback
+                        ? "Change fallback"
+                        : "Set fallback model"
+                  }
+                  onPress={session.toggleFallbackPicker}
                 />
-              ) : null}
-            </View>
-          ) : null}
-          {Platform.OS === "android" ? (
-            <View className="px-4 pb-2 pt-3">
-              <View
-                className="flex-row items-center rounded-full bg-input px-2"
-                style={{ minHeight: 56 }}
-              >
-                <View pointerEvents="none" className="px-2">
-                  <SymbolView
-                    name="magnifyingglass"
-                    size={24}
-                    tintColorClassName="accent-icon-subtle"
-                  />
-                </View>
-                <TextInput
-                  accessibilityLabel="Find a model"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  className="min-w-0 flex-1 px-2 py-0 text-base text-foreground"
-                  style={{ minHeight: 56, includeFontPadding: false, textAlignVertical: "center" }}
-                  onChangeText={session.setSearchQuery}
-                  placeholder="Find a model"
-                  placeholderTextColorClassName="accent-placeholder"
-                  selectionColorClassName="accent-focus/32"
-                  cursorColorClassName="accent-focus"
-                  selectionHandleColorClassName="accent-focus"
-                  value={session.searchQuery}
-                />
-                {session.searchQuery.length > 0 ? (
-                  <IconButton
-                    accessibilityLabel="Clear model search"
-                    icon="xmark"
-                    onPress={() => session.setSearchQuery("")}
+                {session.modelFallback ? (
+                  <Button
+                    label="Disable auto switching"
+                    onPress={() => {
+                      session.onModelFallbackChange?.(null);
+                      if (session.choosingFallback) session.toggleFallbackPicker();
+                    }}
                   />
                 ) : null}
               </View>
-            </View>
-          ) : null}
-        </>
-      }
-      recycleItems
-      refreshControl={
-        session.environmentId ? (
-          <RefreshControl refreshing={isRefreshingProviders} onRefresh={refreshProviders} />
-        ) : undefined
-      }
-      onLoad={() => setAnimationsReady(true)}
-      renderItem={renderCatalogItem}
-      showsVerticalScrollIndicator={false}
-    />
+            ) : null}
+            {Platform.OS === "android" ? (
+              <View className="px-4 pb-2 pt-3">
+                <View
+                  className="flex-row items-center rounded-full bg-input px-2"
+                  style={{ minHeight: 56 }}
+                >
+                  <View pointerEvents="none" className="px-2">
+                    <SymbolView
+                      name="magnifyingglass"
+                      size={24}
+                      tintColorClassName="accent-icon-subtle"
+                    />
+                  </View>
+                  <TextInput
+                    accessibilityLabel="Find a model"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    className="min-w-0 flex-1 px-2 py-0 text-base text-foreground"
+                    style={{
+                      minHeight: 56,
+                      includeFontPadding: false,
+                      textAlignVertical: "center",
+                    }}
+                    onChangeText={session.setSearchQuery}
+                    placeholder="Find a model"
+                    placeholderTextColorClassName="accent-placeholder"
+                    selectionColorClassName="accent-focus/32"
+                    cursorColorClassName="accent-focus"
+                    selectionHandleColorClassName="accent-focus"
+                    value={session.searchQuery}
+                  />
+                  {session.searchQuery.length > 0 ? (
+                    <IconButton
+                      accessibilityLabel="Clear model search"
+                      icon="xmark"
+                      onPress={() => session.setSearchQuery("")}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+          </>
+        }
+        refreshControl={
+          session.environmentId ? (
+            <RefreshControl refreshing={isRefreshingProviders} onRefresh={refreshProviders} />
+          ) : undefined
+        }
+        onLayout={() => setAnimationsReady(true)}
+        renderItem={renderCatalogItem}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 }
 
