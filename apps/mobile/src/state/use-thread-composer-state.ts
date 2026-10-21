@@ -266,38 +266,29 @@ export function useThreadComposerState() {
   // cannot be an either/or with the loaded messages.
   const pendingCreationMessage = selectedThreadCreation?.message ?? null;
   const [feedCache] = useState(createThreadFeedCache);
-  const selectedThreadFeed = useMemo(() => {
-    const pendingCreation =
-      pendingCreationMessage !== null &&
-      !selectedThreadMessages?.some((message) => message.id === pendingCreationMessage.messageId)
-        ? [pendingThreadCreationMessage(pendingCreationMessage)]
-        : [];
-    const feed = buildThreadFeed(selectedThreadVisibleTurnItems, {
-      anchoredMessages: pendingCreation,
-      attempts: selectedThreadAttempts,
-      nodes: selectedThreadNodes,
-      checkpointSummaries,
-      cache: feedCache,
-    });
-    const pendingAcknowledgments = acknowledgedMessages.filter(
-      (message) =>
-        scopedThreadKey(message.environmentId, message.threadId) === selectedThreadKey &&
-        !selectedThreadQueuedMessages.some((queued) => queued.messageId === message.messageId),
-    );
-    if (pendingAcknowledgments.length === 0) return feed;
-    return appendPendingThreadMessages(feed, feed, pendingAcknowledgments).map((entry) =>
-      entry.pendingMessage ? { ...entry, acknowledged: true } : entry,
-    );
-  }, [
-    selectedThreadMessages,
-    selectedThreadAttempts,
-    selectedThreadNodes,
-    selectedThreadVisibleTurnItems,
-    pendingCreationMessage,
-    selectedThreadKey,
-    selectedThreadQueuedMessages,
-    acknowledgedMessages,
-  ]);
+  const pendingCreation =
+    pendingCreationMessage !== null &&
+    !selectedThreadMessages?.some((message) => message.id === pendingCreationMessage.messageId)
+      ? [pendingThreadCreationMessage(pendingCreationMessage)]
+      : [];
+  const feed = buildThreadFeed(selectedThreadVisibleTurnItems, {
+    anchoredMessages: pendingCreation,
+    attempts: selectedThreadAttempts,
+    nodes: selectedThreadNodes,
+    checkpointSummaries,
+    cache: feedCache,
+  });
+  const pendingAcknowledgments = acknowledgedMessages.filter(
+    (message) =>
+      scopedThreadKey(message.environmentId, message.threadId) === selectedThreadKey &&
+      !selectedThreadQueuedMessages.some((queued) => queued.messageId === message.messageId),
+  );
+  const selectedThreadFeed =
+    pendingAcknowledgments.length === 0
+      ? feed
+      : appendPendingThreadMessages(feed, feed, pendingAcknowledgments).map((entry) =>
+          entry.pendingMessage ? { ...entry, acknowledged: true } : entry,
+        );
   useEffect(() => {
     const echoedIds = new Set(selectedThreadMessages?.map((message) => message.id));
     if (acknowledgedMessages.some((message) => echoedIds.has(message.messageId))) {
@@ -528,50 +519,71 @@ export function useThreadComposerState() {
     }
     savingQueuedEditRef.current = true;
     setIsSavingQueuedEdit(true);
-    try {
-      const capabilities = selectedEnvironmentRuntime?.serverConfig?.environment.capabilities;
-      const prepared = await prepareTurnAttachments({
-        environmentId: thread.environmentId,
-        attachments: draft.attachments,
-        supportsImageUploads: capabilities?.attachmentUploads === true,
-      });
-      if (prepared.status !== "ready") return;
-      const payload = resolveQueuedEditPayload({
-        edit,
-        draftContext: draft.context,
-        draftAttachments: draft.attachments,
-        uploaded: prepared.attachments,
-      });
-      const result = await editQueuedRun({
-        environmentId: thread.environmentId,
-        input: {
-          threadId: thread.id,
-          runId: edit.runId,
-          text,
-          edit: {
-            messageId: edit.messageId,
-            attachments: payload.attachments,
-            ...(payload.context ? { context: payload.context } : {}),
-          },
-        },
-      });
-      if (result._tag !== "Success") {
-        Dialog.alert(
-          "Could not save the queued message",
-          "It may have already started. Your edit is still in the composer.",
-        );
-        return;
-      }
-      endQueuedRunEdit(threadKey, { deferAttachmentCleanup: true });
-      scheduleUnusedComposerAttachmentCleanup(draft.attachments);
-    } finally {
+    const finishSavingQueuedEdit = () => {
       savingQueuedEditRef.current = false;
       setIsSavingQueuedEdit(false);
+    };
+    const capabilities = selectedEnvironmentRuntime?.serverConfig?.environment.capabilities;
+    const prepared = await prepareTurnAttachments({
+      environmentId: thread.environmentId,
+      attachments: draft.attachments,
+      supportsImageUploads: capabilities?.attachmentUploads === true,
+    }).catch((error: unknown) => {
+      setPendingConnectionError(
+        error instanceof Error ? error.message : "Could not prepare the queued message.",
+      );
+      return null;
+    });
+    if (prepared === null || prepared.status !== "ready") {
+      finishSavingQueuedEdit();
+      return;
     }
+    const payload = resolveQueuedEditPayload({
+      edit,
+      draftContext: draft.context,
+      draftAttachments: draft.attachments,
+      uploaded: prepared.attachments,
+    });
+    const result = await editQueuedRun({
+      environmentId: thread.environmentId,
+      input: {
+        threadId: thread.id,
+        runId: edit.runId,
+        text,
+        edit: {
+          messageId: edit.messageId,
+          attachments: payload.attachments,
+          ...(payload.context ? { context: payload.context } : {}),
+        },
+      },
+    }).catch((error: unknown) => {
+      setPendingConnectionError(
+        error instanceof Error ? error.message : "Could not save the queued message.",
+      );
+      return null;
+    });
+    if (result === null) {
+      finishSavingQueuedEdit();
+      return;
+    }
+    if (result._tag !== "Success") {
+      Dialog.alert(
+        "Could not save the queued message",
+        "It may have already started. Your edit is still in the composer.",
+      );
+      finishSavingQueuedEdit();
+      return;
+    }
+    endQueuedRunEdit(threadKey, { deferAttachmentCleanup: true });
+    scheduleUnusedComposerAttachmentCleanup(draft.attachments);
+    finishSavingQueuedEdit();
   }, [editQueuedRun, selectedEnvironmentRuntime?.serverConfig, selectedThreadShell]);
 
   const onSendMessage = useCallback(
-    async (followUpOverride?: ActiveTurnComposerAction) => {
+    async (
+      followUpOverride?: ActiveTurnComposerAction,
+      beforeDispatch?: () => Promise<boolean>,
+    ) => {
       if (
         selectedThreadShell &&
         selectedEnvironmentRuntime?.connectionState === "connected" &&
@@ -688,18 +700,40 @@ export function useThreadComposerState() {
         return null;
       }
 
+      if (beforeDispatch !== undefined) {
+        if (!(await beforeDispatch())) return null;
+        // A context paste still landing, or any draft or settings change while approvals were
+        // declined, means this snapshot is no longer what the user sent.
+        if (appAtomRegistry.get(composerContextImportsAtom)[threadKey]) return null;
+        const current = getComposerDraftSnapshot(threadKey);
+        if (
+          current.text !== draft.text ||
+          JSON.stringify(current.context) !== JSON.stringify(draft.context) ||
+          JSON.stringify(current.modelSelection) !== JSON.stringify(draft.modelSelection) ||
+          current.runtimeMode !== draft.runtimeMode ||
+          current.interactionMode !== draft.interactionMode ||
+          current.attachments.length !== attachments.length ||
+          current.attachments.some((attachment, index) => attachment.id !== attachments[index]?.id)
+        )
+          return null;
+      }
+
       // Resolved here rather than at drain time: the outbox can deliver minutes
       // later, and the choice belongs to the moment the user pressed send.
       // Steering travels as "auto" so a turn that ends in the meantime degrades
       // to a queued run on the server instead of failing the delivery and
       // bouncing the message back into the draft.
+      // Declining approvals redirects the message into the waiting turn by default.
+      const activeTurnDefault = beforeDispatch !== undefined ? "steer" : followUpBehavior;
       const followUpAction =
-        followUpOverride ??
-        resolveComposerDispatchMode({
-          running: activeThreadBusy && canSteerActiveTurn,
-          alternateModifier: false,
-          activeTurnDefault: followUpBehavior,
-        });
+        followUpOverride === "parallel"
+          ? "parallel"
+          : resolveComposerDispatchMode({
+              running: activeThreadBusy && canSteerActiveTurn,
+              alternateModifier:
+                followUpOverride !== undefined && followUpOverride !== activeTurnDefault,
+              activeTurnDefault,
+            });
       if (followUpAction === "parallel" && !canStartParallelAgent) {
         setThreadComposerError(threadKey, "Parallel work needs an active turn.");
         return null;
