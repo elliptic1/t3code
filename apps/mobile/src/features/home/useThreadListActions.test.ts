@@ -326,10 +326,7 @@ describe("pinned thread operation permissions", () => {
 });
 
 describe("thread action undo", () => {
-  it.each([
-    ["settleThread", "settle", "Settled", "unsettle"],
-    ["snoozeThread", "snooze", "Snoozed", "unsnooze"],
-  ] as const)(
+  it.each([["snoozeThread", "snooze", "Snoozed", "unsnooze"]] as const)(
     "%s keeps the successful request's undo when a duplicate is rejected",
     async (handler, action, notice, inverse) => {
       const actions = useThreadListActions();
@@ -367,28 +364,9 @@ describe("thread action undo", () => {
     expect(state.archivedRefreshes).toEqual([primaryEnvironmentId]);
   });
 
-  it("restores pin placement and snooze after settling, only once", async () => {
-    const thread = makeThread({
-      pinnedAt: "2026-09-02T00:00:00.000Z",
-      pinOrderKey: "m",
-      snoozedUntil: "2099-01-01T09:00:00.000Z",
-    });
-    expect(await useThreadListActions().settleThread(thread)).toBe(true);
-    const undo = readThreadUndoNotice()!.undo;
-    expect(readThreadUndoNotice()?.action).toBe("Settled");
-    await undo();
-    await undo();
-    expect(state.requests.map(({ action }) => action)).toEqual([
-      "settle",
-      "unsettle",
-      "pin",
-      "snooze",
-    ]);
-    expect(state.requests[2]?.input).toEqual({ threadId: thread.id, orderKey: "m" });
-    expect(state.requests[3]?.input).toEqual({
-      threadId: thread.id,
-      snoozedUntil: thread.snoozedUntil,
-    });
+  it("settles without offering an undo notice", async () => {
+    await useThreadListActions().unpinThread(makeThread());
+    expect(await useThreadListActions().settleThread(makeThread())).toBe(true);
     expect(readThreadUndoNotice()).toBeNull();
   });
 
@@ -459,21 +437,11 @@ describe("thread action undo", () => {
 
   // regression: #21401 restore archive and thread action undo
   it("does not offer undo for a failed action", async () => {
-    state.failedAction = "settle";
-    expect(await useThreadListActions().settleThread(makeThread())).toBe(false);
+    state.failedAction = "snooze";
+    expect(
+      await useThreadListActions().snoozeThread(makeThread(), "2099-01-01T09:00:00.000Z"),
+    ).toBe(false);
     expect(readThreadUndoNotice()).toBeNull();
-  });
-
-  it("stops restoring after a failed inverse command", async () => {
-    const thread = makeThread({
-      pinnedAt: "2026-09-02T00:00:00.000Z",
-      snoozedUntil: "2099-01-01T09:00:00.000Z",
-    });
-    await useThreadListActions().settleThread(thread);
-    state.failedAction = "unsettle";
-    await readThreadUndoNotice()!.undo();
-    expect(state.requests.map(({ action }) => action)).toEqual(["settle", "unsettle"]);
-    expect(state.alerts.at(-1)?.title).toBe("Could not un-settle thread");
   });
 
   it("rechecks the destination permission before undoing", async () => {

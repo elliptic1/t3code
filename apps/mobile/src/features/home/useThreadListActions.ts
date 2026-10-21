@@ -254,7 +254,7 @@ export function useThreadListActions(options: { readonly dismissRows?: boolean }
   const archiveThread = (thread: EnvironmentThreadShell) => executeAction("archive", thread);
   const offerUndo = (
     thread: EnvironmentThreadShell,
-    action: "Settled" | "Snoozed" | "Unpinned",
+    action: "Snoozed" | "Unpinned",
     claim: ReturnType<typeof ThreadUndo.begin>,
     plan: ThreadUndo.ThreadUndoPlan,
   ) =>
@@ -304,19 +304,12 @@ export function useThreadListActions(options: { readonly dismissRows?: boolean }
       },
     });
   const settleThread = async (thread: EnvironmentThreadShell) => {
+    // Settling is quiet on mobile: no undo notice. It still voids pending pin/snooze undos.
     const key = scopedThreadKey(thread.environmentId, thread.id);
-    const plan = ThreadUndo.planThreadUndo("settle", thread);
-    let claim: ReturnType<typeof ThreadUndo.begin> | undefined;
-    const succeeded = await executeAction("settle", thread, () => {
+    return executeAction("settle", thread, () => {
       ThreadUndo.invalidate("pin", key);
       ThreadUndo.invalidate("snooze", key);
-      claim = ThreadUndo.begin("settle", key);
     });
-    if (claim) {
-      if (succeeded) offerUndo(thread, "Settled", claim, plan);
-      else claim.finish();
-    }
-    return succeeded;
   };
   const snoozeThread = async (thread: EnvironmentThreadShell, snoozedUntil: string) => {
     if (!checkThreadOperationPermission(thread, "Could not snooze thread")) return false;
