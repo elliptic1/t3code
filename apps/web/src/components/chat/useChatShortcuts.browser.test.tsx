@@ -1,11 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { expect, it } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../../test/render";
-import { useChatShortcuts } from "./useChatShortcuts";
 import type { ChatComposerHandle } from "./ChatComposer";
-import type { BranchToolbarHandle } from "../BranchToolbar";
+import { useChatShortcuts } from "./useChatShortcuts";
 
 const shortcutContext = {
   terminalFocus: false,
@@ -46,21 +45,22 @@ function Launcher(props: { keys: string; received: string[] }) {
 // The chat's shortcut listener registers when the chat mounts, so a launcher that opens
 // later registers after it. Tests mount the chat first and add the launcher by rerendering.
 function Chat(props: { composerKeys: string[]; launcher?: { keys: string; received: string[] } }) {
-  const composerRef = useRef<ChatComposerHandle | null>({
-    insertTextAtEnd: (key: string) => {
-      props.composerKeys.push(key);
-      return true;
-    },
-  } as ChatComposerHandle);
-  const branchToolbarRef = useRef<BranchToolbarHandle | null>(null);
   useChatShortcuts({
     enabled: true,
     keybindings: [],
     scriptKeybindings: [],
     getShortcutContext: () => shortcutContext,
     threadFindActive: false,
-    composerRef,
-    branchToolbarRef,
+    // Type-to-focus only calls insertTextAtEnd, so the stand-in composer implements just that.
+    composerRef: {
+      current: {
+        insertTextAtEnd: (key: string) => {
+          props.composerKeys.push(key);
+          return true;
+        },
+      } as Partial<ChatComposerHandle> as ChatComposerHandle,
+    },
+    branchToolbarRef: { current: null },
     closeThreadFind: () => {},
     commands: {},
     fallback: () => undefined,
