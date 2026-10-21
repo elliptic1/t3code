@@ -484,6 +484,9 @@ const NewTaskSheetStack = createNativeStackNavigator({
       linking: "draft",
       options: {
         headerBackVisible: false,
+        // Android draws its own app bar. Hidden only from inside the screen, the native
+        // one could stay up and push the composer off the bottom of the screen.
+        headerShown: Platform.OS !== "android",
         title: "",
       },
     }),
