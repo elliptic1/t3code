@@ -1,4 +1,7 @@
+import { useAtomValue } from "@effect/atom-react";
+import { collectLimitAccounts, collectLimitPools } from "@t3tools/shared/usageLimits";
 import { requireNativeView } from "expo";
+import { useEffect, useState } from "react";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import {
   Keyboard,
@@ -12,7 +15,9 @@ import { useKeyboardState } from "react-native-keyboard-controller";
 
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
+import { environmentPresentations } from "../../state/presentation";
 import { useWorkspaceConnectionState } from "../../state/workspace";
+import { usageTabLines } from "../usage/usageTabSummary";
 import { androidWorkspaceNavigationColors } from "./android-workspace-navigation-colors";
 import {
   androidWorkspaceTabNavigationState,
@@ -31,6 +36,7 @@ interface NativeNavigationProps extends ViewProps {
   readonly dark: boolean;
   readonly textScale: number;
   readonly newEnabled: boolean;
+  readonly usageLines: readonly string[];
   readonly safeAreaTop: number;
   readonly safeAreaBottom: number;
   readonly headerHeight: number;
@@ -54,6 +60,17 @@ function nativeColor(value: string) {
   return typeof color === "number" ? color : 0;
 }
 
+/** Quota left per subscription, recomputed each minute so passed resets show as refilled. */
+function useUsageTabLines() {
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return usageTabLines(collectLimitPools(collectLimitAccounts(presentations), now));
+}
+
 export function AndroidWorkspaceNavigation(props: {
   readonly rail?: boolean;
   readonly onSelect?: () => void;
@@ -69,12 +86,12 @@ export function AndroidWorkspaceNavigation(props: {
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const { themeAppearance, themeVariables: colors } = useAppearancePreferences();
   const { scale } = useAndroidControlSizing();
+  const usageLines = useUsageTabLines();
   const rail = Boolean(props.rail);
   const { containerColor, indicatorColor, selectedColor, unselectedColor } =
     androidWorkspaceNavigationColors(colors, rail);
-  const selectedTab: AndroidWorkspaceNavigationTab = root?.settingsOpen
-    ? "settings"
-    : workspace.state.selectedTab;
+  const selectedTab: AndroidWorkspaceNavigationTab =
+    root?.settingsTab ?? workspace.state.selectedTab;
   if (!rail && keyboardVisible) return null;
 
   return (
@@ -91,6 +108,7 @@ export function AndroidWorkspaceNavigation(props: {
         dark={themeAppearance === "dark"}
         textScale={scale}
         newEnabled={connectionState.hasConnections}
+        usageLines={usageLines}
         safeAreaTop={toolbar.paddingTop}
         safeAreaBottom={insets.bottom}
         headerHeight={toolbar.height}
@@ -104,7 +122,7 @@ export function AndroidWorkspaceNavigation(props: {
           Keyboard.dismiss();
           const tab = event.nativeEvent.tab;
           if (tab !== selectedTab) {
-            if (tab !== "settings") workspace.dispatch({ type: "select", tab });
+            if (tab !== "settings" && tab !== "usage") workspace.dispatch({ type: "select", tab });
             // Reset the root stack even when a nested settings navigator has focus.
             if (root) {
               navigation.dispatch({
