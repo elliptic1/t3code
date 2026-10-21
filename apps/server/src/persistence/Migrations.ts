@@ -76,7 +76,7 @@ import Migration0069WebhookDedupeSource from "./Migrations/067_WebhookDedupe.ts"
 const Migration0069WebhookDedupe: typeof Migration0068RepairClientSettlementTimestamps =
   Migration0069WebhookDedupeSource;
 
-export const migrationEntries = [
+const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
   [3, "CheckpointDiffBlobs", Migration0003],

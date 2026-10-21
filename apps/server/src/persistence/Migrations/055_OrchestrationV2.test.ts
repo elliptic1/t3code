@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
 import * as Migrator from "effect/sql/Migrator";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { migrationEntries, runMigrations } from "../Migrations.ts";
+import { migrationManifest, runMigrations } from "../Migrations.ts";
 import CanonicalizeThreadPullRequestLinks from "../Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
 import CodexUsageNativeTurnIndex from "../Migrations/065_CodexUsageNativeTurnIndex.ts";
 import RepairClientSettlementTimestamps from "../Migrations/066_RepairClientSettlementTimestamps.ts";
@@ -19,7 +19,7 @@ layer("055_OrchestrationV2", (it) => {
   it.effect("keeps released migrations contiguous", () =>
     Effect.sync(() => {
       assert.deepStrictEqual(
-        migrationEntries.map(([id]) => id),
+        migrationManifest.map(([id]) => id),
         Array.from({ length: 69 }, (_, index) => index + 1),
       );
     }),
@@ -187,7 +187,7 @@ layer("055_OrchestrationV2", (it) => {
       }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
       assert.deepStrictEqual(
         history.map((row) => [row.migration_id, row.name] as const),
-        migrationEntries.map(([id, name]) => [id, name] as const),
+        migrationManifest.map(([id, name]) => [id, name] as const),
       );
       assert.deepStrictEqual(yield* runMigrations(), []);
     }),

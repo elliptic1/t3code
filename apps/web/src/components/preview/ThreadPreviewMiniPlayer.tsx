@@ -1,5 +1,3 @@
-"use client";
-
 import { FILL_PREVIEW_VIEWPORT, type ScopedThreadRef } from "@t3tools/contracts";
 import { GripHorizontal, PanelRightIcon, PictureInPicture2, XIcon } from "lucide-react";
 import { previewPdfAssetUrl } from "@t3tools/shared/preview";

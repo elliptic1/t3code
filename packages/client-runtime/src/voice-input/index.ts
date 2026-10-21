@@ -4,7 +4,6 @@ export {
   releaseVoiceInputSession,
   VOICE_RECORDING_LIMIT_SECONDS,
   voiceInputBlocksSubmission,
-  voiceInputFreezesEditor,
   type VoiceDraftSnapshot,
   type SystemVoiceDictation,
   type VoiceInputControllerDependencies,
