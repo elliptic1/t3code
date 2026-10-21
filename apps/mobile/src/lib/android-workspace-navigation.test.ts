@@ -290,8 +290,8 @@ describe("Android Settings tab", () => {
   it("stays selected under a nested settings page until a list tab returns to Home", () => {
     const previous = legacyHistory();
     const settings = openTab(previous, "settings");
-    // Usage pushes inside the nested settings navigator, which the root router never sees.
-    const usage: State = {
+    // About pushes inside the nested settings navigator, which the root router never sees.
+    const about: State = {
       ...settings,
       routes: settings.routes.map((route) =>
         route.name === "SettingsSheet"
@@ -301,7 +301,7 @@ describe("Android Settings tab", () => {
                 routes: [
                   {
                     name: "SettingsContent",
-                    state: { index: 1, routes: [{ name: "Settings" }, { name: "SettingsUsage" }] },
+                    state: { index: 1, routes: [{ name: "Settings" }, { name: "SettingsAbout" }] },
                   },
                 ],
               },
@@ -309,10 +309,41 @@ describe("Android Settings tab", () => {
           : route,
       ),
     };
-    expect(selectedTab(usage, "threads")).toBe("settings");
-    const list = openTab(usage, "pullRequests");
+    expect(selectedTab(about, "threads")).toBe("settings");
+    const list = openTab(about, "pullRequests");
     expect(names(list)).toEqual(["Home"]);
     expect(list.routes[0]?.key).toBe(previous.routes[0]?.key);
     expect(selectedTab(list, "pullRequests")).toBe("pullRequests");
+  });
+
+  it("opens Usage above the Settings index and selects Usage until Back reaches Settings", () => {
+    const usage = openTab(legacyHistory(), "usage");
+    expect(names(usage)).toEqual(["Home", "SettingsSheet"]);
+    expect(usage.routes[1]?.params).toEqual({
+      screen: "SettingsContent",
+      params: { screen: "SettingsUsage", initial: false },
+    });
+    expect(selectedTab(usage, "threads")).toBe("usage");
+    const mounted = (index: number): State => ({
+      ...usage,
+      routes: usage.routes.map((route) =>
+        route.name === "SettingsSheet"
+          ? {
+              ...route,
+              state: {
+                routes: [
+                  {
+                    name: "SettingsContent",
+                    state: { index, routes: [{ name: "Settings" }, { name: "SettingsUsage" }] },
+                  },
+                ],
+              },
+            }
+          : route,
+      ),
+    });
+    expect(selectedTab(mounted(1), "usage")).toBe("usage");
+    expect(selectedTab(mounted(0), "usage")).toBe("settings");
+    expect(selectedTab(openTab(usage, "threads"), "usage")).toBe("threads");
   });
 });

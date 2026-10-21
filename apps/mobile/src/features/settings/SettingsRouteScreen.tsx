@@ -170,6 +170,11 @@ function SettingsIndexSections() {
         <SettingsRow icon="clock" label="Scheduled tasks" target="SettingsScheduledTasks" />
       </SettingsSection>
 
+      <SettingsSection title="App">
+        <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
+        <SettingsRow icon="info.circle" label="About T3 Code" target="SettingsAbout" />
+      </SettingsSection>
+
       <SettingsSection title="Projects & threads">
         {selectedProjectKey !== null ? (
           <SettingsRow
@@ -216,11 +221,6 @@ function SettingsIndexSections() {
           target="SettingsEnvironmentMaintenance"
           disabled={noServerTargets}
         />
-      </SettingsSection>
-
-      <SettingsSection title="App">
-        <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
-        <SettingsRow icon="info.circle" label="About T3 Code" target="SettingsAbout" />
       </SettingsSection>
     </>
   );

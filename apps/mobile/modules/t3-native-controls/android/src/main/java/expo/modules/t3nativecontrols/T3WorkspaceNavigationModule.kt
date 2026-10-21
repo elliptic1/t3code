@@ -63,7 +63,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 
-private val TABS = listOf("threads", "pullRequests", "settings")
+private val TABS = listOf("threads", "pullRequests", "usage", "settings")
 
 class T3WorkspaceNavigationModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -77,6 +77,9 @@ class T3WorkspaceNavigationModule : Module() {
       Prop("textScale") { view: T3WorkspaceNavigationView, value: Float -> view.textScale = value }
       Prop("newEnabled") { view: T3WorkspaceNavigationView, value: Boolean ->
         view.newEnabled = value
+      }
+      Prop("usageLines") { view: T3WorkspaceNavigationView, value: List<String> ->
+        view.usageLines = value
       }
       Prop("safeAreaTop") { view: T3WorkspaceNavigationView, value: Float ->
         view.safeAreaTop = value
@@ -126,6 +129,7 @@ class T3WorkspaceNavigationView(
   var dark by mutableStateOf(false)
   var textScale by mutableStateOf(1f)
   var newEnabled by mutableStateOf(false)
+  var usageLines by mutableStateOf(emptyList<String>())
   var safeAreaTop by mutableStateOf(0f)
   var safeAreaBottom by mutableStateOf(0f)
   var headerHeight by mutableStateOf(56f)
@@ -179,7 +183,10 @@ class T3WorkspaceNavigationView(
                   NavigationBarItem(
                     selected = selectedTab == tab,
                     onClick = { onTabSelected(mapOf("tab" to tab)) },
-                    icon = { Icon(tabIconPainter(tab), contentDescription = null) },
+                    icon = {
+                      if (tab == "usage" && usageLines.isNotEmpty()) usageSummary()
+                      else Icon(tabIconPainter(tab), contentDescription = null)
+                    },
                     label = { Text(tabTitle(tab), fontSize = (12 * textScale).sp) },
                     colors = NavigationBarItemDefaults.colors(
                       selectedIconColor = Color(selectedColor),
@@ -197,6 +204,26 @@ class T3WorkspaceNavigationView(
       },
       LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     )
+  }
+
+  /** Each subscription's quota left, in place of the Usage icon. Inherits the item's tint. */
+  @Composable
+  private fun usageSummary() {
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      modifier = Modifier.semantics { contentDescription = usageLines.joinToString() + " left" },
+    ) {
+      usageLines.forEach { line ->
+        Text(
+          line,
+          Modifier.clearAndSetSemantics {},
+          fontSize = (11 * textScale).sp,
+          lineHeight = (12 * textScale).sp,
+          maxLines = 1,
+          softWrap = false,
+        )
+      }
+    }
   }
 
   @Composable
@@ -357,6 +384,7 @@ class T3WorkspaceNavigationView(
   private fun tabTitle(tab: String) = when (tab) {
     "threads" -> "Chats"
     "pullRequests" -> "PRs"
+    "usage" -> "Usage"
     else -> "Settings"
   }
 
@@ -368,6 +396,7 @@ class T3WorkspaceNavigationView(
     when (tab) {
       "threads" -> R.drawable.t3_chats
       "pullRequests" -> R.drawable.t3_pull_requests
+      "usage" -> R.drawable.t3_usage
       else -> R.drawable.t3_settings
     }
   )

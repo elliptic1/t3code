@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { Platform } from "react-native";
-import { androidWorkspaceSettingsOpen } from "./android-workspace-tabs";
+import { androidWorkspaceSettingsTab } from "./android-workspace-tabs";
 import { WorkspaceTabsProvider } from "./WorkspaceTabsContext";
 
 interface AndroidWorkspaceRoot {
@@ -22,8 +22,8 @@ interface AndroidWorkspaceRoot {
    */
   readonly key: string;
   readonly getState: () => NavigationState;
-  /** Settings is derived from navigation rather than kept in the tab reducer. */
-  readonly settingsOpen: boolean;
+  /** Settings and Usage are derived from navigation rather than kept in the tab reducer. */
+  readonly settingsTab: ReturnType<typeof androidWorkspaceSettingsTab>;
 }
 
 const AndroidWorkspaceRootContext = createContext<AndroidWorkspaceRoot | null>(null);
@@ -43,8 +43,8 @@ export function AndroidWorkspaceTabsProvider(props: {
   }, [props.state]);
   const getState = useCallback(() => stateRef.current, []);
   const key = props.state.key;
-  const settingsOpen = Platform.OS === "android" && androidWorkspaceSettingsOpen(props.state);
-  const root = useMemo(() => ({ key, getState, settingsOpen }), [key, getState, settingsOpen]);
+  const settingsTab = Platform.OS === "android" ? androidWorkspaceSettingsTab(props.state) : null;
+  const root = useMemo(() => ({ key, getState, settingsTab }), [key, getState, settingsTab]);
   return Platform.OS === "android" ? (
     <WorkspaceTabsProvider>
       <AndroidWorkspaceRootContext value={root}>{props.children}</AndroidWorkspaceRootContext>
