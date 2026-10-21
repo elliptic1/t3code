@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { toastManager } from "../components/ui/toast";
 
@@ -31,7 +31,7 @@ export function useDesktopDictation(focusEditor: () => boolean) {
     };
   }, []);
 
-  const toggle = useCallback(async () => {
+  const toggle = async () => {
     const bridge = window.desktopBridge;
     if (pending.current || !bridge?.startDictation || !focusEditor()) return;
     const stopping = active.current;
@@ -40,27 +40,30 @@ export function useDesktopDictation(focusEditor: () => boolean) {
     pending.current = true;
     cancelled.current = false;
     setIsPending(true);
-    try {
-      if (!(await action())) throw new Error("System Dictation action was unavailable.");
-      // Escape or a thread change can happen while the native start is in flight.
-      if (!stopping && cancelled.current) {
-        await bridge.stopDictation?.();
-        return;
-      }
-      active.current = !stopping && bridge.stopDictation !== undefined;
-      if (mounted.current) setIsActive(active.current);
-    } catch {
+    const succeeded = await action().catch(() => false);
+    if (!succeeded) {
       if (mounted.current) {
         toastManager.add({
           type: "error",
           title: `Could not ${stopping ? "stop" : "start"} dictation`,
         });
       }
-    } finally {
       pending.current = false;
       if (mounted.current) setIsPending(false);
+      return;
     }
-  }, [focusEditor]);
+    // Escape or a thread change can happen while the native start is in flight.
+    if (!stopping && cancelled.current) {
+      await bridge.stopDictation?.().catch(() => false);
+      pending.current = false;
+      if (mounted.current) setIsPending(false);
+      return;
+    }
+    active.current = !stopping && bridge.stopDictation !== undefined;
+    if (mounted.current) setIsActive(active.current);
+    pending.current = false;
+    if (mounted.current) setIsPending(false);
+  };
 
   return { isActive, isPending, toggle };
 }
