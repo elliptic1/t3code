@@ -111,8 +111,8 @@ const sendWatchMessage = createEnvironmentRpcCommand(connectionAtomRuntime, {
 
 const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "watch companion request",
-  execute: ({ request, nodeId }: { request: WatchCompanionRequest; nodeId: string }) =>
-    Effect.gen(function* () {
+  execute: Effect.fn("Watch.handleRequest")(
+    function* ({ request, nodeId }: { request: WatchCompanionRequest; nodeId: string }) {
       const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
       const entries = yield* SubscriptionRef.get(registry.entries);
       if (request.operation === "voiceStart") {
@@ -294,10 +294,13 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
         input: command,
       });
       return { accepted: true };
-    }).pipe(Effect.scoped, Effect.timeout("50 seconds")),
+    },
+    Effect.scoped,
+    Effect.timeout("50 seconds"),
+  ),
 });
 
-async function restorePhoneCloudSession() {
+export async function restorePhoneCloudSession() {
   const publishableKey = resolveCloudPublicConfig().clerk.publishableKey;
   if (!publishableKey) return;
   const clerk = getClerkInstance({ publishableKey, tokenCache });
@@ -362,16 +365,15 @@ export async function handleWatchRequest(input: { nodeId: string; request: strin
 
 const presenceCommand = createRuntimeCommand(connectionAtomRuntime, {
   label: "background voice connection",
-  execute: () =>
-    Effect.gen(function* () {
-      // Construct and retain the same registry, routes and credential stores used by the UI.
-      yield* EnvironmentRegistry.EnvironmentRegistry;
-      yield* Effect.tryPromise(() =>
-        requireNativeModule<{
-          awaitConnectionStopped: () => Promise<void>;
-        }>("T3WearDataLayer").awaitConnectionStopped(),
-      );
-    }),
+  execute: Effect.fn("Watch.keepConnectionsAlive")(function* () {
+    // Construct and retain the same registry, routes and credential stores used by the UI.
+    yield* EnvironmentRegistry.EnvironmentRegistry;
+    yield* Effect.tryPromise(() =>
+      requireNativeModule<{
+        awaitConnectionStopped: () => Promise<void>;
+      }>("T3WearDataLayer").awaitConnectionStopped(),
+    );
+  }),
 });
 
 export async function keepPhoneConnectionsAlive() {

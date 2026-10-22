@@ -22,6 +22,11 @@ class AgentMessagingService : ExpoFirebaseMessagingService() {
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
     if (remoteMessage.data["t3_kind"] == "agent_activity") {
       AgentNotifications.receive(this, remoteMessage.data)
+      if (remoteMessage.priority == RemoteMessage.PRIORITY_HIGH) {
+        AgentNotifications.runningUsageWakeScheme(this, remoteMessage.data)?.let {
+          RunningUsageNotifications.wake(this, it)
+        }
+      }
     } else {
       super.onMessageReceived(remoteMessage)
     }
@@ -51,6 +56,16 @@ object AgentNotifications {
   private const val MAX_MESSAGE_AGE_MS = 10 * 60 * 1000L
   private const val RUNNING_LIFETIME_MS = 2 * 60 * 60 * 1000L
   private const val MAX_LIFETIME_MS = 24 * 60 * 60 * 1000L
+
+  internal fun runningUsageWakeScheme(context: Context, data: Map<String, String>): String? {
+    if (data["active"] != "true") return null
+    val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+    val updatedAt = data["updated_at"]?.toLongOrNull() ?: return null
+    if (!prefs.getBoolean("enabled", false) || data["device_id"] != prefs.getString("deviceId", null) ||
+      data["user_id"] != prefs.getString("userId", null) ||
+      System.currentTimeMillis() - updatedAt !in -MAX_MESSAGE_AGE_MS..MAX_MESSAGE_AGE_MS) return null
+    return prefs.getString("scheme", "t3code")
+  }
 
   @Synchronized
   fun configure(

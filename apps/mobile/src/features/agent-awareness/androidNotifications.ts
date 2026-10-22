@@ -9,6 +9,8 @@ interface AndroidAgentNotifications {
   setThreadOnScreen?(path: string | null): void;
   openLiveUpdateSettings?(): boolean;
   showShowcaseActivity?(scheme: string, data: Record<string, string>): void;
+  updateRunningUsage?(payload: string | null, scheme: string): boolean;
+  awaitRunningUsageStopped?(): Promise<void>;
 }
 
 const native =
@@ -45,6 +47,24 @@ export function showAndroidShowcaseAgentActivity(data: Record<string, string>): 
 
 export function clearAndroidAgentNotifications(): void {
   native?.clear?.();
+}
+
+export function supportsAndroidRunningUsage(): boolean {
+  return (
+    typeof native?.updateRunningUsage === "function" &&
+    typeof native?.awaitRunningUsageStopped === "function"
+  );
+}
+
+export function updateAndroidRunningUsage(payload: object | null): boolean {
+  return (
+    native?.updateRunningUsage?.(payload === null ? null : JSON.stringify(payload), appScheme()) ??
+    false
+  );
+}
+
+export async function awaitAndroidRunningUsageStopped(): Promise<void> {
+  await native?.awaitRunningUsageStopped?.();
 }
 
 export function setAndroidThreadOnScreen(path: string | null): void {
