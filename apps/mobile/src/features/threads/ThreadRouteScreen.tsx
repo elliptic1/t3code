@@ -101,6 +101,8 @@ import {
 } from "./thread-inspector-content-stack";
 import { threadRouteIsHydrating } from "./thread-route-hydration";
 import { useThreadPromptLink } from "../prompt-links/useThreadPromptLink";
+import { ThreadProviderUsageSheet } from "./ThreadProviderUsageSheet";
+import { threadModelUsageRemainingPercent } from "./threadModelUsage";
 import { ThreadHeader } from "./ThreadHeader";
 import {
   useAndroidWorkspaceBack,
@@ -307,7 +309,10 @@ function ThreadRouteContent(
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
   const navigation = useNavigation();
-  const { settleThread, unsettleThread } = useThreadListActions({ dismissRows: false });
+  const [usageThreadKey, setUsageThreadKey] = useState<string | null>(null);
+  const { settleThread, unsettleThread, renameThread } = useThreadListActions({
+    dismissRows: false,
+  });
   const threadSettled = selectedThread?.settledOverride === "settled";
   const settleTargetRef = useRef(selectedThread);
   useLayoutEffect(() => {
@@ -984,6 +989,15 @@ function ThreadRouteContent(
           connectionState: routeConnectionState,
         });
   const serverConfig = routeEnvironmentRuntime?.serverConfig ?? null;
+  const headerModelSelection = composer.modelSelection ?? selectedThread?.modelSelection;
+  const headerUsagePercent =
+    selectedThread && headerModelSelection
+      ? threadModelUsageRemainingPercent(
+          selectedThread.environmentId,
+          headerModelSelection,
+          serverConfig,
+        )
+      : null;
   const renderThreadRouteBody = () => (
     <>
       <GitActionProgressOverlay
@@ -997,6 +1011,16 @@ function ThreadRouteContent(
           header={
             <ThreadHeader
               title={selectedThread.title}
+              onRename={canOperateThread ? () => renameThread(selectedThread) : undefined}
+              onOpenUsage={() =>
+                setUsageThreadKey(scopedThreadKey(selectedThread.environmentId, selectedThread.id))
+              }
+              usageBadge={headerUsagePercent === null ? undefined : `${headerUsagePercent}%`}
+              usageAccessibilityLabel={
+                headerUsagePercent === null
+                  ? "Selected provider usage"
+                  : `Selected provider usage: ${headerUsagePercent}% left`
+              }
               subtitle={headerSubtitle}
               headerColor={headerColor}
               usesNativeHeaderGlass={usesNativeHeaderGlass}
@@ -1119,6 +1143,16 @@ function ThreadRouteContent(
       {activeInspectorRenderer ? <InspectorPaneRoleActivation /> : null}
 
       {renderThreadRouteBody()}
+      {selectedThread &&
+      headerModelSelection &&
+      usageThreadKey === scopedThreadKey(selectedThread.environmentId, selectedThread.id) ? (
+        <ThreadProviderUsageSheet
+          environmentId={selectedThread.environmentId}
+          selection={headerModelSelection}
+          config={serverConfig}
+          onClose={() => setUsageThreadKey(null)}
+        />
+      ) : null}
     </>
   );
 }

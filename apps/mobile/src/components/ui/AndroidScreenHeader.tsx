@@ -1,3 +1,4 @@
+import { AppText } from "./AppText";
 import { AppActivityIndicator } from "./AppActivityIndicator";
 import { Column, Row, Text as NativeText, RNHostView } from "@expo/ui/jetpack-compose";
 import { weight } from "@expo/ui/jetpack-compose/modifiers";
@@ -22,6 +23,8 @@ export interface AndroidHeaderAction {
   readonly selected?: boolean;
   readonly destructive?: boolean;
   readonly overflowOnly?: boolean;
+  readonly badge?: string;
+  readonly alwaysVisible?: boolean;
 }
 
 export function AndroidHeaderIconButton(props: {
@@ -155,14 +158,27 @@ export function AndroidScreenHeader(props: {
                     <AppActivityIndicator colorClassName="accent-header-foreground" />
                   </View>
                 ) : (
-                  <AndroidHeaderIconButton
-                    key={action.accessibilityLabel}
-                    accessibilityLabel={action.accessibilityLabel}
-                    disabled={action.disabled}
-                    selected={action.selected}
-                    icon={action.icon}
-                    onPress={action.onPress}
-                  />
+                  <View key={action.accessibilityLabel}>
+                    <AndroidHeaderIconButton
+                      accessibilityLabel={action.accessibilityLabel}
+                      disabled={action.disabled}
+                      selected={action.selected}
+                      icon={action.icon}
+                      onPress={action.onPress}
+                    />
+                    {action.badge ? (
+                      <View
+                        pointerEvents="none"
+                        accessible={false}
+                        importantForAccessibility="no-hide-descendants"
+                        className="absolute bottom-0 right-0 rounded bg-header px-0.5"
+                      >
+                        <AppText className="text-[10px] font-t3-medium text-header-foreground">
+                          {action.badge}
+                        </AppText>
+                      </View>
+                    ) : null}
+                  </View>
                 ),
               )}
               {overflowActions.length > 0 ? (

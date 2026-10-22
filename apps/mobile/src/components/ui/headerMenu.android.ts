@@ -42,13 +42,18 @@ export function findHeaderMenuAction(
   return undefined;
 }
 
-export function splitAndroidHeaderActions<Action extends { readonly overflowOnly?: boolean }>(
-  actions: ReadonlyArray<Action>,
-  wide: boolean,
-) {
+export function splitAndroidHeaderActions<
+  Action extends { readonly overflowOnly?: boolean; readonly alwaysVisible?: boolean },
+>(actions: ReadonlyArray<Action>, wide: boolean) {
   const inline = actions.filter((action) => !action.overflowOnly);
   const directCount = actions.length > 2 ? (wide ? 3 : 1) : inline.length;
-  const visibleActions = inline.slice(0, directCount);
+  const pinned = inline.filter((action) => action.alwaysVisible);
+  const regular = inline.filter((action) => !action.alwaysVisible);
+  const selected = new Set([
+    ...pinned,
+    ...regular.slice(0, Math.max(0, directCount - pinned.length)),
+  ]);
+  const visibleActions = inline.filter((action) => selected.has(action));
   return {
     visibleActions,
     overflowActions: actions.filter((action) => !visibleActions.includes(action)),
