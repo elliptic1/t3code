@@ -13,8 +13,8 @@ const pool = (driver: string, remaining: readonly number[]) =>
 describe("usageTabLines", () => {
   it("shows Claude then Codex with each one's tightest window", () => {
     expect(usageTabLines([pool("codex", [80, 35]), pool("claudeAgent", [12, 60])])).toEqual([
-      "Claude 12%",
-      "Codex 35%",
+      "claude 12%",
+      "codex 35%",
     ]);
   });
 

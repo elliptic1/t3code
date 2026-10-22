@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -206,25 +208,47 @@ class T3WorkspaceNavigationView(
     )
   }
 
-  /** Each subscription's quota left, in place of the Usage icon. Inherits the item's tint. */
+  /**
+   * Each subscription's quota left behind its logo, in place of the Usage icon. Lines arrive
+   * as "<provider> <percent>"; the percentages inherit the item's tint.
+   */
   @Composable
   private fun usageSummary() {
+    val rows = usageLines.map { it.substringBefore(' ') to it.substringAfter(' ') }
     Column(
-      horizontalAlignment = Alignment.CenterHorizontally,
-      modifier = Modifier.semantics { contentDescription = usageLines.joinToString() + " left" },
+      horizontalAlignment = Alignment.Start,
+      modifier = Modifier.semantics {
+        contentDescription = rows.joinToString { (provider, percent) ->
+          "${providerName(provider)} $percent"
+        } + " left"
+      },
     ) {
-      usageLines.forEach { line ->
-        Text(
-          line,
-          Modifier.clearAndSetSemantics {},
-          fontSize = (11 * textScale).sp,
-          lineHeight = (12 * textScale).sp,
-          maxLines = 1,
-          softWrap = false,
-        )
+      rows.forEach { (provider, percent) ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            painterResource(
+              if (provider == "claude") R.drawable.t3_provider_claude
+              else R.drawable.t3_provider_openai
+            ),
+            contentDescription = null,
+            // Claude keeps its brand orange; the OpenAI knot follows the item's tint.
+            tint = if (provider == "claude") Color.Unspecified else LocalContentColor.current,
+            modifier = Modifier.size((11 * textScale).dp),
+          )
+          Text(
+            percent,
+            Modifier.padding(start = 3.dp).clearAndSetSemantics {},
+            fontSize = (11 * textScale).sp,
+            lineHeight = (12 * textScale).sp,
+            maxLines = 1,
+            softWrap = false,
+          )
+        }
       }
     }
   }
+
+  private fun providerName(provider: String) = if (provider == "claude") "Claude" else "Codex"
 
   @Composable
   private fun rail() {
