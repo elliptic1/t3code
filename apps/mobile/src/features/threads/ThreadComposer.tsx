@@ -36,7 +36,15 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Keyboard, Platform, View, type ViewStyle } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
@@ -84,6 +92,7 @@ import { ComposerEditor, type ComposerEditorHandle } from "../../components/Comp
 import { fileRoutePathSegments } from "../files/filePath";
 import { ComposerActionButton, ComposerToolbarRow } from "../../components/ComposerToolbar";
 import { ComposerModelControl } from "../../components/ComposerModelControl";
+import { threadModelUsageRemainingPercent } from "./threadModelUsage";
 import {
   composerStripAttachments,
   type DraftComposerFileAttachment,
@@ -534,6 +543,15 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   });
   const sendLabel = sendPresentation.label;
   const currentModelSelection = props.selectedThread.modelSelection;
+  const usageRemainingPercent = useMemo(
+    () =>
+      threadModelUsageRemainingPercent(
+        props.environmentId,
+        currentModelSelection,
+        props.serverConfig,
+      ),
+    [props.environmentId, currentModelSelection, props.serverConfig],
+  );
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const modelUnavailable =
     props.connectionState === "connected" &&
@@ -899,6 +917,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           (draftMessage.length > 0 || stripAttachments.length > 0) && !compactEditor.isExpanded
         }
         statusSuffix={props.selectedThread.modelFallback ? " · Auto" : undefined}
+        usageRemainingPercent={usageRemainingPercent}
         onPress={openSettings}
       />
     </View>
