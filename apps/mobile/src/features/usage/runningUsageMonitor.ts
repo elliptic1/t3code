@@ -212,7 +212,7 @@ const holdConnection = createRuntimeCommand(connectionAtomRuntime, {
 export async function keepRunningUsageConnected() {
   // A push may have launched a cold runtime; restore the existing relay login too.
   const { restorePhoneCloudSession } = await import("../../rpc/watch-companion");
-  void restorePhoneCloudSession().catch(() => {});
+  await restorePhoneCloudSession().catch(() => {});
   const dispose = retainRunningUsageMonitor();
   try {
     await runAtomCommand(appAtomRegistry, holdConnection, undefined, {
