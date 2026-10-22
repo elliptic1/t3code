@@ -28,6 +28,7 @@ import {
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
 } from "@t3tools/shared/model";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { type NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
@@ -110,6 +111,11 @@ import {
   providerSectionIsCollapsed,
 } from "./thread-settings-sheet-state";
 import { formatProviderUpdateRequiredNotice } from "@t3tools/client-runtime/providerUpdateRequiredModels";
+import {
+  configuredDefaultModelSelection,
+  defaultModelSettingsPatch,
+  modelSelectionMatchesDefault,
+} from "./model-default";
 
 const PRIMARY_PROVIDER_DRIVERS: ReadonlySet<string> = new Set([
   "claudeAgent",
@@ -319,6 +325,8 @@ type ThreadSettingsSessionValue = {
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
   readonly favoriteKeys: ReadonlySet<string>;
   readonly favoritesLoaded: boolean;
+  readonly defaultModelSelection: ModelSelection | null;
+  readonly setDefaultModel: (option: ModelOption) => void;
   readonly toggleFavorite: (option: ModelOption) => void;
   readonly toggleHidden: (option: ModelOption) => void;
   readonly pendingHiddenKeys: ReadonlySet<string>;
@@ -399,6 +407,10 @@ function ThreadSettingsSessionProvider(
     favorites: legacyFavorites,
   }).favorites;
   const saveSettings = useAtomCommand(serverEnvironment.updateSettings, "model favorites update");
+  const defaultModelSelection = configuredDefaultModelSelection(
+    settings ?? DEFAULT_SERVER_SETTINGS,
+    props.projectId,
+  );
   useEffect(() => {
     if (
       !props.environmentId ||
@@ -495,6 +507,35 @@ function ThreadSettingsSessionProvider(
       }
     },
     [favoritesLoaded, legacyFavorites, props.environmentId, registry, saveSettings],
+  );
+  const setDefaultModel = useCallback(
+    async (option: ModelOption) => {
+      if (!props.environmentId) return;
+      const currentSettings = registry
+        .get(environmentServerConfigsAtom)
+        .get(props.environmentId)?.settings;
+      if (!currentSettings) return;
+      const result = await saveSettings({
+        environmentId: props.environmentId,
+        input: {
+          patch: defaultModelSettingsPatch(currentSettings, props.projectId, option.selection),
+        },
+      });
+      if (AsyncResult.isFailure(result)) {
+        const cause = squashAtomCommandFailure(result);
+        Dialog.alert(
+          "Could not set the default model",
+          cause instanceof Error ? cause.message : "Try again when the server is connected.",
+        );
+        return;
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Dialog.alert(
+        "Default model updated",
+        `${option.label} will be used for new threads${props.projectId ? " in this project" : " on this server"}.`,
+      );
+    },
+    [props.environmentId, props.projectId, registry, saveSettings],
   );
   const toggleHidden = useCallback(
     (option: ModelOption) => {
@@ -722,6 +763,8 @@ function ThreadSettingsSessionProvider(
       reportedModelSelection: pendingModel ? null : (props.reportedModelSelection ?? null),
       favoriteKeys,
       favoritesLoaded,
+      defaultModelSelection,
+      setDefaultModel,
       providerExpansionOverrides,
       hasLegacyModels,
       pendingModel,
@@ -772,6 +815,9 @@ function ThreadSettingsSessionProvider(
       showLegacyToggle,
       toggleProvider,
       toggleFavorite,
+      setManageHidden,
+      defaultModelSelection,
+      setDefaultModel,
     ],
   );
   return (
@@ -837,12 +883,21 @@ function ThreadSettingsModelListRow(props: {
     () => session.pressModel(props.option),
     [props.option, session.pressModel],
   );
+  const onLongPressDefault = useCallback(
+    () => session.setDefaultModel(props.option),
+    [props.option, session.setDefaultModel],
+  );
 
   return (
     <ModelRow
       isFirst={props.isFirst}
       isLast={props.isLast}
       onPress={onPress}
+      onLongPressDefault={onLongPressDefault}
+      isPreferredDefault={modelSelectionMatchesDefault(
+        props.option.selection,
+        session.defaultModelSelection,
+      )}
       isFavorite={session.favoriteKeys.has(props.option.key)}
       favoritesLoaded={session.favoritesLoaded}
       onToggleFavorite={() => session.toggleFavorite(props.option)}
@@ -1195,6 +1250,9 @@ function ThreadSettingsMainContent(props: {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <>
+            <Text className="mx-8 mb-2 mt-3 text-xs text-foreground-muted">
+              Tap a model to select it. Long press to set the default for new threads.
+            </Text>
             {session.onModelFallbackChange ? (
               <View className="mx-4 my-2 gap-2">
                 <Text className="text-sm text-muted-foreground">

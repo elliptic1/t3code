@@ -9,6 +9,8 @@ export type ModelRowProps = {
   readonly option: ModelOption;
   readonly selected: boolean;
   readonly onPress: () => void;
+  readonly onLongPressDefault?: () => void;
+  readonly isPreferredDefault?: boolean;
   readonly isFavorite: boolean;
   readonly favoritesLoaded: boolean;
   readonly onToggleFavorite: () => void;
@@ -56,8 +58,14 @@ export function ModelRowContent(
           checked: props.selected,
           disabled: props.option.isUnavailable === true || props.option.isHidden === true,
         }}
+        accessibilityHint={
+          props.onLongPressDefault
+            ? "Long press to make this the default model for new threads."
+            : undefined
+        }
         className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2 active:opacity-70"
         disabled={props.option.isUnavailable || props.option.isHidden}
+        onLongPress={props.onLongPressDefault}
         onPress={props.onPress}
       >
         {props.leadingSelection}
@@ -72,6 +80,11 @@ export function ModelRowContent(
             {props.option.isDefault ? (
               <View className="rounded-md bg-subtle-strong px-1.5 py-0.5">
                 <Text className="text-3xs font-t3-bold text-foreground-muted">Default</Text>
+              </View>
+            ) : null}
+            {props.isPreferredDefault ? (
+              <View className="rounded-md bg-subtle px-1.5 py-0.5">
+                <Text className="text-3xs font-t3-bold text-foreground-muted">New thread</Text>
               </View>
             ) : null}
             {props.option.isLegacy ? (
