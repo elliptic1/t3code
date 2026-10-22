@@ -7,11 +7,11 @@ import {
 } from "@t3tools/shared/usageLimits";
 
 /** The selected login's tightest allowance, rather than every login's combined balance. */
-export function threadModelUsageRemainingPercent(
+export function threadModelUsageSnapshot(
   environmentId: EnvironmentId,
   selection: ModelSelection,
   config: Pick<ServerConfig, "providers" | "usageLimitSources"> | null | undefined,
-): number | null {
+) {
   const provider = config?.providers.find((entry) => entry.instanceId === selection.instanceId);
   if (!provider) return null;
   const hasNativeLimits = provider.usageLimits && limitsNotice(provider.usageLimits) === null;
@@ -60,5 +60,30 @@ export function threadModelUsageRemainingPercent(
     (entry) => entry.driver === provider.driver,
   );
   const windows = pool ? displayLimitWindows(pool) : [];
-  return windows.length > 0 ? Math.min(...windows.map((window) => window.remainingPercent)) : null;
+  if (!pool || windows.length === 0) return null;
+  return {
+    identity: JSON.stringify([
+      provider.driver,
+      provider.auth.workspaceId,
+      ...pool.accounts
+        .map((account) =>
+          JSON.stringify([
+            account.email?.toLowerCase() ?? account.limits.credentialFingerprint ?? account.key,
+            account.environments.length === 0 ? account.key : null,
+          ]),
+        )
+        .sort(),
+    ]),
+    checkedAt: Math.min(...pool.accounts.map((account) => Date.parse(account.limits.checkedAt))),
+    windows,
+  };
+}
+
+export function threadModelUsageRemainingPercent(
+  environmentId: EnvironmentId,
+  selection: ModelSelection,
+  config: Pick<ServerConfig, "providers" | "usageLimitSources"> | null | undefined,
+): number | null {
+  const snapshot = threadModelUsageSnapshot(environmentId, selection, config);
+  return snapshot ? Math.min(...snapshot.windows.map((window) => window.remainingPercent)) : null;
 }

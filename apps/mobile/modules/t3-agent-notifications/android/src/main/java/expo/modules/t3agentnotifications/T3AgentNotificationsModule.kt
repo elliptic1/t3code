@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.Promise
 
 class T3AgentNotificationsModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -23,6 +24,12 @@ class T3AgentNotificationsModule : Module() {
     }
 
     Function("supportsUsageResetReminders") { true }
+
+    Function("updateRunningUsage") { payload: String?, scheme: String ->
+      appContext.reactContext?.let { RunningUsageNotifications.update(it, payload, scheme) } ?: false
+    }
+
+    AsyncFunction("awaitRunningUsageStopped") { promise: Promise -> RunningUsageService.awaitStop(promise) }
 
     Function("clear") {
       appContext.reactContext?.let { AgentNotifications.clear(it) }
