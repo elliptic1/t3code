@@ -1,8 +1,9 @@
 import type { ComposerMediaSource } from "../lib/composerImages";
+import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
+
 import * as Dialog from "../components/ui/Dialog";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "./session";
-import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
@@ -28,7 +29,6 @@ import {
   type RuntimeMode,
   type ThreadId,
 } from "@t3tools/contracts";
-import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { nextPastedTextFileName, pastedTextDisposition } from "@t3tools/client-runtime/text-paste";
 import {
@@ -1008,7 +1008,7 @@ export function useThreadComposerState() {
           environmentId: selectedThreadShell.environmentId,
           threadId: selectedThreadShell.id,
           uriCount: uris.length,
-          ...safeErrorLogAttributes(error),
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     },
