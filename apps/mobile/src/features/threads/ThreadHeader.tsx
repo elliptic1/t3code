@@ -10,6 +10,10 @@ import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 export function ThreadHeader(
   props: Parameters<typeof useThreadHeaderOptions>[0] & {
+    readonly onRename?: () => void;
+    readonly onOpenUsage?: () => void;
+    readonly usageBadge?: string;
+    readonly usageAccessibilityLabel?: string;
     readonly hasThreadCwd: boolean;
     readonly hasWorkspaceRoot: boolean;
     readonly fileInspectorSupported: boolean;
@@ -42,7 +46,25 @@ export function ThreadHeader(
         accessibilityLabel: filesVisible ? "Close files" : "Open files",
         selected: filesVisible,
         icon: "folder",
+        alwaysVisible: true,
         onPress: filesVisible ? toggleAuxiliaryPane : props.onOpenFilesInspector,
+      });
+    }
+    if (props.onOpenUsage) {
+      actions.push({
+        accessibilityLabel: props.usageAccessibilityLabel ?? "Selected provider usage",
+        icon: "chart.bar.xaxis",
+        badge: props.usageBadge,
+        alwaysVisible: true,
+        onPress: props.onOpenUsage,
+      });
+    }
+    if (props.onRename) {
+      actions.push({
+        accessibilityLabel: "Rename thread",
+        icon: "pencil",
+        overflowOnly: true,
+        onPress: props.onRename,
       });
     }
     if (props.hasWorkspaceRoot && props.gitControls.canOpenTerminal) {
@@ -73,6 +95,10 @@ export function ThreadHeader(
     }
     return actions;
   }, [
+    props.onRename,
+    props.onOpenUsage,
+    props.usageAccessibilityLabel,
+    props.usageBadge,
     props.settled,
     props.onToggleSettled,
     props.inspectorMode,
@@ -92,6 +118,7 @@ export function ThreadHeader(
     <>
       <AppBar
         title={props.title}
+        onTitlePress={props.onRename}
         subtitle={props.subtitle}
         sidebar={native.sidebar}
         options={native.options}

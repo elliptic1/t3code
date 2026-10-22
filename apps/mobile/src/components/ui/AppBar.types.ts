@@ -7,6 +7,9 @@ export interface AppBarAction {
   readonly accessibilityLabel: string;
   readonly icon: AppSymbolName;
   readonly onPress: () => void;
+  readonly badge?: string;
+  readonly alwaysVisible?: boolean;
+  readonly overflowOnly?: boolean;
   readonly disabled?: boolean;
   readonly loading?: boolean;
   readonly selected?: boolean;
@@ -55,6 +58,7 @@ export interface AppBarSearch {
 
 export interface AppBarProps {
   readonly title: string;
+  readonly onTitlePress?: () => void;
   readonly subtitle?: string;
   readonly actions?: ReadonlyArray<AppBarAction>;
   readonly menus?: ReadonlyArray<AppBarMenu>;

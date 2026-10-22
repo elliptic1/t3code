@@ -18,6 +18,8 @@ type NativeHeaderItems = ReadonlyArray<Record<string, unknown>>;
 
 export function useThreadHeaderOptions(props: {
   readonly title: string;
+  readonly onRename?: () => void;
+  readonly onOpenUsage?: () => void;
   readonly settled?: boolean;
   readonly onToggleSettled?: () => void;
   readonly subtitle: string;
@@ -88,7 +90,7 @@ export function useThreadHeaderOptions(props: {
 
   const threadActionItems = useMemo<NativeHeaderItems>(
     () =>
-      props.onToggleSettled
+      props.onToggleSettled || props.onRename || props.onOpenUsage
         ? [
             withNativeGlassHeaderItem({
               type: "menu" as const,
@@ -98,21 +100,45 @@ export function useThreadHeaderOptions(props: {
               menu: {
                 title: "Thread actions",
                 items: [
-                  {
-                    type: "action" as const,
-                    label: props.settled ? "Move out of settled" : "Settle thread",
-                    icon: {
-                      name: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
-                      type: "sfSymbol" as const,
-                    },
-                    onPress: props.onToggleSettled,
-                  },
+                  ...(props.onRename
+                    ? [
+                        {
+                          type: "action" as const,
+                          label: "Rename thread",
+                          icon: { name: "pencil", type: "sfSymbol" as const },
+                          onPress: props.onRename,
+                        },
+                      ]
+                    : []),
+                  ...(props.onOpenUsage
+                    ? [
+                        {
+                          type: "action" as const,
+                          label: "Selected provider usage",
+                          icon: { name: "chart.pie", type: "sfSymbol" as const },
+                          onPress: props.onOpenUsage,
+                        },
+                      ]
+                    : []),
+                  ...(props.onToggleSettled
+                    ? [
+                        {
+                          type: "action" as const,
+                          label: props.settled ? "Move out of settled" : "Settle thread",
+                          icon: {
+                            name: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
+                            type: "sfSymbol" as const,
+                          },
+                          onPress: props.onToggleSettled,
+                        },
+                      ]
+                    : []),
                 ],
               },
             }),
           ]
         : [],
-    [props.settled, props.onToggleSettled],
+    [props.settled, props.onToggleSettled, props.onRename, props.onOpenUsage],
   );
   const options: AppNativeStackNavigationOptions = {
     ...threadHeaderAppearance(props.usesNativeHeaderGlass),
