@@ -377,28 +377,18 @@ function ThreadSettingsSessionProvider(
     new Map<string, { favorite: boolean; settings: ServerSettings; pending: boolean }>(),
   );
   const [pendingHiddenKeys, setPendingHiddenKeys] = useState<ReadonlySet<string>>(() => new Set());
-  const providerGroups = useMemo(
-    () =>
-      manageHidden && config
-        ? groupByProvider(
-            buildModelOptions(
-              config,
-              props.selectedModel,
-              props.lockedProviderInstanceId,
-              props.projectId,
-              true,
-            ),
-          )
-        : props.providerGroups,
-    [
-      config,
-      manageHidden,
-      props.providerGroups,
-      props.selectedModel,
-      props.lockedProviderInstanceId,
-      props.projectId,
-    ],
-  );
+  const providerGroups =
+    manageHidden && config
+      ? groupByProvider(
+          buildModelOptions(
+            config,
+            props.selectedModel,
+            props.lockedProviderInstanceId,
+            props.projectId,
+            true,
+          ),
+        )
+      : props.providerGroups;
   const legacyFavorites = AsyncResult.isSuccess(preferences)
     ? (preferences.value.modelFavorites ?? EMPTY_MODEL_FAVORITES)
     : EMPTY_MODEL_FAVORITES;
@@ -442,16 +432,17 @@ function ThreadSettingsSessionProvider(
   );
   const toggleFavorite = useCallback(
     async (option: ModelOption) => {
-      if (!favoritesLoaded || !props.environmentId) return;
+      const environmentId = props.environmentId;
+      if (!favoritesLoaded || !environmentId) return;
       const currentSettings = registry
         .get(environmentServerConfigsAtom)
-        .get(props.environmentId)?.settings;
+        .get(environmentId)?.settings;
       if (!currentSettings) return;
       const favorites = resolveModelPreferences(currentSettings, {
         favorites: legacyFavorites,
       }).favorites;
       const key = JSON.stringify([
-        props.environmentId,
+        environmentId,
         option.selection.instanceId,
         option.selection.model,
       ]);
@@ -467,45 +458,46 @@ function ThreadSettingsSessionProvider(
       const pending = { favorite: !previousFavorite, settings: currentSettings, pending: true };
       pendingFavorites.current.set(key, pending);
       void Haptics.selectionAsync();
-      try {
-        const result = await saveSettings({
-          environmentId: props.environmentId,
-          input: {
-            patch: {
-              setModelFavorites: [
-                {
-                  provider: option.selection.instanceId,
-                  model: option.selection.model,
-                  favorite: pending.favorite,
-                },
-              ],
-              ...(currentSettings.favorites === null
-                ? { migrateModelPreferences: { favorites } }
-                : {}),
-            },
+      await saveSettings({
+        environmentId,
+        input: {
+          patch: {
+            setModelFavorites: [
+              {
+                provider: option.selection.instanceId,
+                model: option.selection.model,
+                favorite: pending.favorite,
+              },
+            ],
+            ...(currentSettings.favorites === null
+              ? { migrateModelPreferences: { favorites } }
+              : {}),
           },
-        });
-        if (
-          AsyncResult.isSuccess(result) &&
-          registry.get(environmentServerConfigsAtom).get(props.environmentId)?.settings
-            .favorites === currentSettings.favorites
-        ) {
-          pending.pending = false;
-        }
-      } finally {
-        if (pending.pending && pendingFavorites.current.get(key) === pending) {
+        },
+      })
+        .then((result) => {
           if (
-            previous &&
-            !previous.pending &&
-            registry.get(environmentServerConfigsAtom).get(props.environmentId)?.settings
-              .favorites === previous.settings.favorites
+            AsyncResult.isSuccess(result) &&
+            registry.get(environmentServerConfigsAtom).get(environmentId)?.settings.favorites ===
+              currentSettings.favorites
           ) {
-            pendingFavorites.current.set(key, previous);
-          } else {
-            pendingFavorites.current.delete(key);
+            pending.pending = false;
           }
-        }
-      }
+        })
+        .finally(() => {
+          if (pending.pending && pendingFavorites.current.get(key) === pending) {
+            if (
+              previous &&
+              !previous.pending &&
+              registry.get(environmentServerConfigsAtom).get(environmentId)?.settings.favorites ===
+                previous.settings.favorites
+            ) {
+              pendingFavorites.current.set(key, previous);
+            } else {
+              pendingFavorites.current.delete(key);
+            }
+          }
+        });
     },
     [favoritesLoaded, legacyFavorites, props.environmentId, registry, saveSettings],
   );
@@ -538,38 +530,35 @@ function ThreadSettingsSessionProvider(
     },
     [props.environmentId, props.projectId, registry, saveSettings],
   );
-  const toggleHidden = useCallback(
-    (option: ModelOption) => {
-      if (
-        !settings ||
-        !props.environmentId ||
-        !option.canHide ||
-        pendingHidden.current.has(option.key)
-      )
-        return;
-      pendingHidden.current.add(option.key);
-      setPendingHiddenKeys(new Set(pendingHidden.current));
-      void Haptics.selectionAsync();
-      void saveSettings({
-        environmentId: props.environmentId,
-        input: {
-          patch: {
-            setModelsHidden: [
-              {
-                provider: option.selection.instanceId,
-                model: option.selection.model,
-                hidden: !option.isHidden,
-              },
-            ],
-          },
+  const toggleHidden = (option: ModelOption) => {
+    if (
+      !settings ||
+      !props.environmentId ||
+      !option.canHide ||
+      pendingHidden.current.has(option.key)
+    )
+      return;
+    pendingHidden.current.add(option.key);
+    setPendingHiddenKeys(new Set(pendingHidden.current));
+    void Haptics.selectionAsync();
+    void saveSettings({
+      environmentId: props.environmentId,
+      input: {
+        patch: {
+          setModelsHidden: [
+            {
+              provider: option.selection.instanceId,
+              model: option.selection.model,
+              hidden: !option.isHidden,
+            },
+          ],
         },
-      }).then(() => {
-        pendingHidden.current.delete(option.key);
-        setPendingHiddenKeys(new Set(pendingHidden.current));
-      });
-    },
-    [props.environmentId, saveSettings, settings],
-  );
+      },
+    }).then(() => {
+      pendingHidden.current.delete(option.key);
+      setPendingHiddenKeys(new Set(pendingHidden.current));
+    });
+  };
   const [showLegacyToggle, setShowLegacyToggle] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -629,7 +618,7 @@ function ThreadSettingsSessionProvider(
     () => props.providerGroups.some((group) => group.models.some((model) => model.isLegacy)),
     [props.providerGroups],
   );
-  const commitPendingModel = useCallback(() => {
+  const commitPendingModel = () => {
     if (pendingModel) {
       if (!canCommitPendingModel(pendingModel, props.providerGroups)) {
         Dialog.alert(
@@ -657,63 +646,45 @@ function ThreadSettingsSessionProvider(
       }
     }
     return true;
-  }, [
-    pendingModel,
-    props.onSelectModel,
-    props.providerGroups,
-    choosingFallback,
-    props.onModelFallbackChange,
-    props.modelFallback,
-    props.selectedModel,
-  ]);
+  };
 
-  const applyOptionChange = useCallback(
-    (id: string, value: string | boolean) => {
-      const descriptor = displayedDescriptors.find((entry) => entry.id === id);
-      const change =
-        descriptor?.type === "select" && typeof value === "string"
-          ? getTraitSelectChange(
-              { ...promptTraits, descriptors: displayedDescriptors },
-              descriptor,
-              displayedPrompt,
-              value,
-            )
-          : null;
-      if (descriptor?.type === "select") {
-        if (!change) return;
-        if (change.prompt !== displayedPrompt) {
-          if (pendingModel) {
-            setPendingPrompt(change.prompt);
-          } else {
-            props.onPromptChange(change.prompt);
-          }
+  const applyOptionChange = (id: string, value: string | boolean) => {
+    const descriptor = displayedDescriptors.find((entry) => entry.id === id);
+    const change =
+      descriptor?.type === "select" && typeof value === "string"
+        ? getTraitSelectChange(
+            { ...promptTraits, descriptors: displayedDescriptors },
+            descriptor,
+            displayedPrompt,
+            value,
+          )
+        : null;
+    if (descriptor?.type === "select") {
+      if (!change) return;
+      if (change.prompt !== displayedPrompt) {
+        if (pendingModel) {
+          setPendingPrompt(change.prompt);
+        } else {
+          props.onPromptChange(change.prompt);
         }
-        if (!("modelOptions" in change)) return;
       }
-      const next =
-        change && "modelOptions" in change
-          ? (change.modelOptions ?? [])
-          : applyProviderOptionSelection(displayedDescriptors, { id, value });
-      if (!next) return;
-      if (pendingModel) {
-        rememberModelOptions(pendingModel.selection.instanceId, pendingModel.selection.model, next);
-        setPendingModel({
-          ...pendingModel,
-          selection: { ...pendingModel.selection, options: next },
-        });
-      } else {
-        props.onUpdateOptionSelections(next);
-      }
-    },
-    [
-      displayedDescriptors,
-      displayedPrompt,
-      pendingModel,
-      promptTraits,
-      props.onPromptChange,
-      props.onUpdateOptionSelections,
-    ],
-  );
+      if (!("modelOptions" in change)) return;
+    }
+    const next =
+      change && "modelOptions" in change
+        ? (change.modelOptions ?? [])
+        : applyProviderOptionSelection(displayedDescriptors, { id, value });
+    if (!next) return;
+    if (pendingModel) {
+      rememberModelOptions(pendingModel.selection.instanceId, pendingModel.selection.model, next);
+      setPendingModel({
+        ...pendingModel,
+        selection: { ...pendingModel.selection, options: next },
+      });
+    } else {
+      props.onUpdateOptionSelections(next);
+    }
+  };
   const toggleProvider = useCallback((providerKey: string) => {
     setProviderExpansionOverrides((current) => {
       const next = new Set(current);
@@ -880,21 +851,12 @@ function ThreadSettingsModelListRow(props: {
   readonly isLast: boolean;
 }) {
   const session = useThreadSettingsSession();
-  const onPress = useCallback(
-    () => session.pressModel(props.option),
-    [props.option, session.pressModel],
-  );
-  const onLongPressDefault = useCallback(
-    () => session.setDefaultModel(props.option),
-    [props.option, session.setDefaultModel],
-  );
-
   return (
     <ModelRow
       isFirst={props.isFirst}
       isLast={props.isLast}
-      onPress={onPress}
-      onLongPressDefault={onLongPressDefault}
+      onPress={() => session.pressModel(props.option)}
+      onLongPressDefault={() => session.setDefaultModel(props.option)}
       isPreferredDefault={modelSelectionMatchesDefault(
         props.option.selection,
         session.defaultModelSelection,
@@ -918,11 +880,6 @@ function ThreadSettingsProviderListHeader(props: {
   readonly provider: ThreadSettingsProviderCatalog;
 }) {
   const session = useThreadSettingsSession();
-  const onToggle = useCallback(
-    () => session.toggleProvider(props.provider.key),
-    [props.provider.key, session.toggleProvider],
-  );
-
   return (
     <ProviderHeader
       collapsible={props.provider.collapsible}
@@ -931,111 +888,95 @@ function ThreadSettingsProviderListHeader(props: {
       iconUrl={props.provider.iconUrl}
       label={props.provider.label}
       modelCount={props.provider.modelCount}
-      onToggle={onToggle}
+      onToggle={() => session.toggleProvider(props.provider.key)}
     />
   );
 }
 
-function useThreadSettingsCatalogItems(
+function getThreadSettingsCatalogItems(
   session: ThreadSettingsSessionValue,
 ): ReadonlyArray<ThreadSettingsCatalogItem> {
-  return useMemo(
-    () =>
-      session.providerGroups.flatMap((group) => {
-        if (
-          session.providerFilter !== null &&
-          session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
-          group.providerKey !== session.providerFilter
-        ) {
-          return [];
-        }
-        const driver = group.models[0]?.providerDriver ?? group.providerKey;
-        const catalogModels =
-          session.manageHidden ||
-          session.showLegacy ||
-          session.providerFilter === FAVORITES_PROVIDER_FILTER
-            ? group.models
-            : group.models.filter(
-                (model) =>
-                  !model.isLegacy ||
-                  session.isDisplayed(model) ||
-                  session.favoriteKeys.has(model.key),
-              );
-        const visibleModels = favoritesFirst(
-          catalogModels.filter(
+  return session.providerGroups.flatMap((group) => {
+    if (
+      session.providerFilter !== null &&
+      session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
+      group.providerKey !== session.providerFilter
+    ) {
+      return [];
+    }
+    const driver = group.models[0]?.providerDriver ?? group.providerKey;
+    const catalogModels =
+      session.manageHidden ||
+      session.showLegacy ||
+      session.providerFilter === FAVORITES_PROVIDER_FILTER
+        ? group.models
+        : group.models.filter(
             (model) =>
-              (session.providerFilter !== FAVORITES_PROVIDER_FILTER ||
-                session.favoriteKeys.has(model.key)) &&
-              modelMatchesCatalogQuery({
-                model,
-                providerLabel: group.providerLabel,
-                query: session.searchQuery,
-              }),
-          ),
-          session.favoriteKeys,
-        );
-        const updateRequiredNotice =
-          group.updateRequired && session.providerFilter !== FAVORITES_PROVIDER_FILTER
-            ? formatProviderUpdateRequiredNotice(group.updateRequired, session.searchQuery)
-            : null;
-        if (visibleModels.length === 0 && !updateRequiredNotice) {
-          return [];
-        }
-        const isPrimary = driver !== undefined && PRIMARY_PROVIDER_DRIVERS.has(driver);
-        const containsAppliedSelection = group.models.some(session.isApplied);
-        const isNarrowed = session.providerFilter !== null || session.searchQuery.trim().length > 0;
-        const collapsible = !isNarrowed;
-        const collapsed = providerSectionIsCollapsed({
-          defaultExpanded: isPrimary || containsAppliedSelection,
-          hasExpansionOverride: session.providerExpansionOverrides.has(group.providerKey),
-          isNarrowed,
-        });
-        const provider: ThreadSettingsProviderCatalog = {
-          key: group.providerKey,
-          driver,
-          iconUrl: group.models[0]?.providerIconUrl,
-          label: group.providerLabel,
-          collapsible,
-          collapsed,
-          modelCount: visibleModels.length,
-          models: collapsed ? [] : visibleModels,
-        };
-        return [
-          {
-            kind: "provider" as const,
-            key: `provider:${group.providerKey}`,
-            provider,
-          },
-          ...provider.models.map((option, index) => ({
-            kind: "model" as const,
-            key: `model:${option.key}`,
-            option,
-            isFirst: index === 0,
-            isLast: index === provider.models.length - 1,
-          })),
-          ...(!collapsed && updateRequiredNotice
-            ? [
-                {
-                  kind: "notice" as const,
-                  key: `notice:${group.providerKey}`,
-                  text: updateRequiredNotice,
-                },
-              ]
-            : []),
-        ];
-      }),
-    [
-      session.isApplied,
-      session.isDisplayed,
+              !model.isLegacy || session.isDisplayed(model) || session.favoriteKeys.has(model.key),
+          );
+    const visibleModels = favoritesFirst(
+      catalogModels.filter(
+        (model) =>
+          (session.providerFilter !== FAVORITES_PROVIDER_FILTER ||
+            session.favoriteKeys.has(model.key)) &&
+          modelMatchesCatalogQuery({
+            model,
+            providerLabel: group.providerLabel,
+            query: session.searchQuery,
+          }),
+      ),
       session.favoriteKeys,
-      session.providerExpansionOverrides,
-      session.providerFilter,
-      session.providerGroups,
-      session.searchQuery,
-      session.showLegacy,
-      session.manageHidden,
-    ],
-  );
+    );
+    const updateRequiredNotice =
+      group.updateRequired && session.providerFilter !== FAVORITES_PROVIDER_FILTER
+        ? formatProviderUpdateRequiredNotice(group.updateRequired, session.searchQuery)
+        : null;
+    if (visibleModels.length === 0 && !updateRequiredNotice) {
+      return [];
+    }
+    const isPrimary = driver !== undefined && PRIMARY_PROVIDER_DRIVERS.has(driver);
+    const containsAppliedSelection = group.models.some(session.isApplied);
+    const isNarrowed = session.providerFilter !== null || session.searchQuery.trim().length > 0;
+    const collapsible = !isNarrowed;
+    const collapsed = providerSectionIsCollapsed({
+      defaultExpanded: isPrimary || containsAppliedSelection,
+      hasExpansionOverride: session.providerExpansionOverrides.has(group.providerKey),
+      isNarrowed,
+    });
+    const provider: ThreadSettingsProviderCatalog = {
+      key: group.providerKey,
+      driver,
+      iconUrl: group.models[0]?.providerIconUrl,
+      label: group.providerLabel,
+      collapsible,
+      collapsed,
+      modelCount: visibleModels.length,
+      models: collapsed ? [] : visibleModels,
+    };
+    return [
+      {
+        kind: "provider" as const,
+        key: `provider:${group.providerKey}`,
+        provider,
+      },
+      ...provider.models.map((option, index) => ({
+        kind: "model" as const,
+        key: `model:${option.key}`,
+        option,
+        isFirst: index === 0,
+        isLast: index === provider.models.length - 1,
+      })),
+      ...(!collapsed && updateRequiredNotice
+        ? [
+            {
+              kind: "notice" as const,
+              key: `notice:${group.providerKey}`,
+              text: updateRequiredNotice,
+            },
+          ]
+        : []),
+    ];
+  });
 }
 
 function ThreadSettingsOptionsItem(props: {
@@ -1159,7 +1100,7 @@ function ThreadSettingsMainContent(props: {
       if (error) Dialog.alert("Could not refresh models", error);
     });
   }, [isRefreshingProviders, refreshProviderCatalog, session.environmentId]);
-  const catalogItems = useThreadSettingsCatalogItems(session);
+  const catalogItems = getThreadSettingsCatalogItems(session);
   const [animationsReady, setAnimationsReady] = useState(false);
   const hasActiveCatalogFilter =
     session.providerFilter !== null || session.searchQuery.trim().length > 0;

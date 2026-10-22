@@ -36,16 +36,8 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
-import { Keyboard, Platform, Pressable, View, type ViewStyle } from "react-native";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { Keyboard, Platform, View, type ViewStyle } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
@@ -772,60 +764,38 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     selections: currentModelSelection.options,
   });
   const settingsOwnerId = composerOwnerKey;
-  const settingsRouteSession = useMemo<ExistingThreadSettingsRouteSession>(
-    () => ({
-      ownerId: settingsOwnerId,
-      environmentId: props.environmentId,
-      projectId: props.selectedThread.projectId,
-      providerInstanceId: currentModelSelection.instanceId,
-      ...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {}),
-      providerGroups: threadProviderGroups,
-      selectedModel: currentModelSelection,
-      modelFallback: props.selectedThread.modelFallback ?? null,
-      ...(canConfigureFallback &&
-      props.canSwitchProvider &&
-      props.serverConfig?.environment.capabilities.modelFallback === true
-        ? { onModelFallbackChange }
-        : {}),
-      prompt: draftMessage,
-      onPromptChange: (text) => setComposerDraftText(composerDraftKey, text),
-      reportedModelSelection: props.reportedModelSelection,
-      onSelectModel: (option) =>
-        props.onUpdateModelSelection(withRememberedModelOptions(option.selection)),
-      restoreSelection: withRememberedModelOptions,
-      optionDescriptors: providerOptionDescriptors,
-      onUpdateOptionSelections: (options) => {
-        rememberModelOptions(
-          currentModelSelection.instanceId,
-          currentModelSelection.model,
-          options ?? [],
-        );
-        props.onUpdateModelSelection({ ...currentModelSelection, options });
-      },
-      runtimeMode: currentRuntimeMode,
-      onUpdateRuntimeMode: props.onUpdateRuntimeMode,
-    }),
-    [
-      currentModelSelection,
-      props.reportedModelSelection,
-      props.selectedThread.modelFallback,
-      props.canSwitchProvider,
-      canConfigureFallback,
-      props.serverConfig?.environment.capabilities.modelFallback,
-      onModelFallbackChange,
-      draftMessage,
-      composerDraftKey,
-      currentRuntimeMode,
-      props.onUpdateModelSelection,
-      props.onUpdateRuntimeMode,
-      providerOptionDescriptors,
-      settingsOwnerId,
-      lockedProviderInstanceId,
-      threadProviderGroups,
-      props.selectedThread.projectId,
-      props.environmentId,
-    ],
-  );
+  const settingsRouteSession: ExistingThreadSettingsRouteSession = {
+    ownerId: settingsOwnerId,
+    environmentId: props.environmentId,
+    projectId: props.selectedThread.projectId,
+    providerInstanceId: currentModelSelection.instanceId,
+    ...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {}),
+    providerGroups: threadProviderGroups,
+    selectedModel: currentModelSelection,
+    modelFallback: props.selectedThread.modelFallback ?? null,
+    ...(canConfigureFallback &&
+    props.canSwitchProvider &&
+    props.serverConfig?.environment.capabilities.modelFallback === true
+      ? { onModelFallbackChange }
+      : {}),
+    prompt: draftMessage,
+    onPromptChange: (text) => setComposerDraftText(composerDraftKey, text),
+    reportedModelSelection: props.reportedModelSelection,
+    onSelectModel: (option) =>
+      props.onUpdateModelSelection(withRememberedModelOptions(option.selection)),
+    restoreSelection: withRememberedModelOptions,
+    optionDescriptors: providerOptionDescriptors,
+    onUpdateOptionSelections: (options) => {
+      rememberModelOptions(
+        currentModelSelection.instanceId,
+        currentModelSelection.model,
+        options ?? [],
+      );
+      props.onUpdateModelSelection({ ...currentModelSelection, options });
+    },
+    runtimeMode: currentRuntimeMode,
+    onUpdateRuntimeMode: props.onUpdateRuntimeMode,
+  };
   const openSettings = () => {
     settingsRoutePresentation.present(settingsRouteSession);
     settingsSheetPresentation.open();
