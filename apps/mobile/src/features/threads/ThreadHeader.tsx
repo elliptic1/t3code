@@ -11,6 +11,8 @@ import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 export function ThreadHeader(
   props: Parameters<typeof useThreadHeaderOptions>[0] & {
     readonly onRename?: () => void;
+    readonly onRegenerateTitle?: () => void;
+    readonly regeneratingTitle?: boolean;
     readonly onOpenUsage?: () => void;
     readonly usageBadge?: string;
     readonly usageAccessibilityLabel?: string;
@@ -59,12 +61,13 @@ export function ThreadHeader(
         onPress: props.onOpenUsage,
       });
     }
-    if (props.onRename) {
+    if (props.onRegenerateTitle) {
       actions.push({
-        accessibilityLabel: "Rename thread",
-        icon: "pencil",
+        accessibilityLabel: props.regeneratingTitle ? "Regenerating title…" : "Regenerate title",
+        icon: "arrow.clockwise",
+        disabled: props.regeneratingTitle,
         overflowOnly: true,
-        onPress: props.onRename,
+        onPress: props.onRegenerateTitle,
       });
     }
     if (props.hasWorkspaceRoot && props.gitControls.canOpenTerminal) {
@@ -95,7 +98,8 @@ export function ThreadHeader(
     }
     return actions;
   }, [
-    props.onRename,
+    props.onRegenerateTitle,
+    props.regeneratingTitle,
     props.onOpenUsage,
     props.usageAccessibilityLabel,
     props.usageBadge,

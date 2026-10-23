@@ -27,6 +27,8 @@ export function useThreadHeaderOptions(props: {
   readonly usesNativeHeaderGlass: boolean;
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
+  readonly onRegenerateTitle?: () => void;
+  readonly regeneratingTitle?: boolean;
   readonly draft?: boolean;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
@@ -90,7 +92,7 @@ export function useThreadHeaderOptions(props: {
 
   const threadActionItems = useMemo<NativeHeaderItems>(
     () =>
-      props.onToggleSettled || props.onRename || props.onOpenUsage
+      props.onToggleSettled || props.onRegenerateTitle || props.onOpenUsage
         ? [
             withNativeGlassHeaderItem({
               type: "menu" as const,
@@ -100,13 +102,16 @@ export function useThreadHeaderOptions(props: {
               menu: {
                 title: "Thread actions",
                 items: [
-                  ...(props.onRename
+                  ...(props.onRegenerateTitle
                     ? [
                         {
                           type: "action" as const,
-                          label: "Rename thread",
-                          icon: { name: "pencil", type: "sfSymbol" as const },
-                          onPress: props.onRename,
+                          label: props.regeneratingTitle
+                            ? "Regenerating title…"
+                            : "Regenerate title",
+                          icon: { name: "arrow.clockwise", type: "sfSymbol" as const },
+                          disabled: props.regeneratingTitle,
+                          onPress: props.onRegenerateTitle,
                         },
                       ]
                     : []),
@@ -138,7 +143,13 @@ export function useThreadHeaderOptions(props: {
             }),
           ]
         : [],
-    [props.settled, props.onToggleSettled, props.onRename, props.onOpenUsage],
+    [
+      props.settled,
+      props.onToggleSettled,
+      props.onRegenerateTitle,
+      props.regeneratingTitle,
+      props.onOpenUsage,
+    ],
   );
   const options: AppNativeStackNavigationOptions = {
     ...threadHeaderAppearance(props.usesNativeHeaderGlass),

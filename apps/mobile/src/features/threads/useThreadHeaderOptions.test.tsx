@@ -85,7 +85,12 @@ function status(
   } as unknown as VcsStatusResult;
 }
 
-function Header(props: { readonly gitStatus: VcsStatusResult | null; readonly title?: string }) {
+function Header(props: {
+  readonly gitStatus: VcsStatusResult | null;
+  readonly title?: string;
+  readonly regeneratingTitle?: boolean;
+  readonly onRegenerateTitle?: () => void;
+}) {
   return (
     <ThreadHeader
       title={props.title ?? "Thread"}
@@ -93,6 +98,8 @@ function Header(props: { readonly gitStatus: VcsStatusResult | null; readonly ti
       headerColor="#000"
       usesNativeHeaderGlass
       settled={false}
+      regeneratingTitle={props.regeneratingTitle}
+      onRegenerateTitle={props.onRegenerateTitle}
       gitControls={{
         environmentId: "environment-1",
         threadId: "thread-1",
@@ -119,6 +126,18 @@ function Header(props: { readonly gitStatus: VcsStatusResult | null; readonly ti
       onOpenFilesInspector={() => {}}
     />
   );
+}
+
+function renderedThreadMenuItems(): Array<{
+  label?: unknown;
+  disabled?: unknown;
+  onPress?: () => void;
+}> {
+  const items = harness.renderedRightItems.at(-1) ?? [];
+  const thread = items.find((item) => item.identifier === "thread-right-actions") as
+    | { menu: { items: Array<{ label?: unknown; disabled?: unknown; onPress?: () => void }> } }
+    | undefined;
+  return thread?.menu.items ?? [];
 }
 
 function renderedGitMenuItems(): Array<{
@@ -154,6 +173,25 @@ afterEach(() => {
 });
 
 describe("ThreadHeader", () => {
+  it("regenerates the title from the thread actions menu", async () => {
+    const regenerate = vi.fn();
+    render(<Header gitStatus={status([])} onRegenerateTitle={regenerate} />);
+
+    const action = renderedThreadMenuItems().find((item) => item.label === "Regenerate title");
+    expect(action).toBeDefined();
+    expect(renderedThreadMenuItems().some((item) => item.label === "Rename thread")).toBe(false);
+
+    await act(async () => action?.onPress?.());
+    expect(regenerate).toHaveBeenCalledOnce();
+  });
+
+  it("shows progress and disables title regeneration while it is running", () => {
+    render(<Header gitStatus={status([])} onRegenerateTitle={() => {}} regeneratingTitle />);
+    expect(renderedThreadMenuItems()).toContainEqual(
+      expect.objectContaining({ label: "Regenerating title…", disabled: true }),
+    );
+  });
+
   it("re-applies native header items when Git status changes", () => {
     render(<Header gitStatus={status([])} />);
     expect(renderedGitStatusDescription()).toBe("Clean");
