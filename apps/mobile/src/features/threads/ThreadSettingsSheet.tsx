@@ -83,6 +83,7 @@ import { ChatGptSharingStatus } from "./ChatGptSharingStatus";
 import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentQuery } from "../../state/query";
 import { environmentServerConfigsAtom, serverEnvironment } from "../../state/server";
+import { threadModelUsageRemainingPercent } from "./threadModelUsage";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useNewTaskFlow } from "./new-task-flow-provider";
@@ -151,12 +152,20 @@ function ProviderHeader(props: {
   readonly collapsible: boolean;
   readonly collapsed: boolean;
   readonly modelCount: number;
+  readonly usageRemainingPercent?: number | null;
   readonly onToggle: () => void;
 }) {
+  const usageLabel =
+    props.usageRemainingPercent == null ? null : `${props.usageRemainingPercent}% left`;
   const content = (
     <>
       <ProviderIcon iconUrl={props.iconUrl} provider={props.driver} size={15} />
       <Text className="text-sm font-t3-medium text-foreground-muted">{props.label}</Text>
+      {usageLabel ? (
+        <Text className="text-2xs font-t3-medium tabular-nums text-foreground-muted">
+          {usageLabel}
+        </Text>
+      ) : null}
       {props.collapsible ? (
         <>
           <View className="flex-1" />
@@ -179,7 +188,7 @@ function ProviderHeader(props: {
   if (props.collapsible) {
     return (
       <Pressable
-        accessibilityLabel={`${props.label}, ${props.modelCount} models`}
+        accessibilityLabel={`${props.label}${usageLabel ? `, ${usageLabel}` : ""}, ${props.modelCount} models`}
         accessibilityRole="button"
         accessibilityState={{ expanded: !props.collapsed }}
         className="mx-4 mt-1 min-h-11 flex-row items-center gap-2 rounded-xl px-1 pt-2 active:opacity-60 android:min-h-12"
@@ -880,8 +889,25 @@ function ThreadSettingsProviderListHeader(props: {
   readonly provider: ThreadSettingsProviderCatalog;
 }) {
   const session = useThreadSettingsSession();
+  const configs = useAtomValue(environmentServerConfigsAtom);
+  // Limits can be per model (Claude's weekly Opus window, Antigravity's model families), so use
+  // the chosen model when it belongs to this provider and the provider's first model otherwise.
+  const providerSelection = props.provider.models[0]?.selection;
+  const usageSelection =
+    session.displayedModelSelection?.instanceId === providerSelection?.instanceId
+      ? session.displayedModelSelection
+      : providerSelection;
+  const usageRemainingPercent =
+    session.environmentId && usageSelection
+      ? threadModelUsageRemainingPercent(
+          session.environmentId,
+          usageSelection,
+          configs.get(session.environmentId),
+        )
+      : null;
   return (
     <ProviderHeader
+      usageRemainingPercent={usageRemainingPercent}
       collapsible={props.provider.collapsible}
       collapsed={props.provider.collapsed}
       driver={props.provider.driver}
