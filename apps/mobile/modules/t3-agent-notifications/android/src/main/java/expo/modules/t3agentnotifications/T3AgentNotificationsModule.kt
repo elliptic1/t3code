@@ -31,6 +31,14 @@ class T3AgentNotificationsModule : Module() {
 
     AsyncFunction("awaitRunningUsageStopped") { promise: Promise -> RunningUsageService.awaitStop(promise) }
 
+    Function("syncThreadInputs") { payload: String, scheme: String ->
+      appContext.reactContext?.let { ThreadInputNotifications.sync(it, payload, scheme) }
+    }
+
+    Function("completeThreadInputResponse") { key: String, success: Boolean ->
+      appContext.reactContext?.let { ThreadInputNotifications.complete(it, key, success) }
+    }
+
     Function("clear") {
       appContext.reactContext?.let { AgentNotifications.clear(it) }
     }
