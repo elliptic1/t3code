@@ -75,6 +75,14 @@ class ThreadInputNotificationsTest {
     assertTrue(card.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("Couldn't send"))
     assertNotNull(ThreadInputNotifications.beginResponse(context, intent))
   }
+  @Test fun reopeningAfterProcessDeathRestoresRetryInsteadOfLeavingSendingForever() {
+    sync(listOf(item()))
+    context.getSharedPreferences("t3-thread-input", 0).edit().putBoolean("sending:key-a", true).apply()
+    sync(listOf(item()))
+    val card = manager.activeNotifications.single().notification
+    assertTrue(card.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("Response interrupted"))
+    assertEquals(2, card.actions.size)
+  }
   @Test fun unknownAndEmptyRepliesCannotStartAResponse() {
     sync(listOf(item()))
     assertNull(ThreadInputNotifications.beginResponse(context, Intent().putExtra("key", "key-a").putExtra("action", "reply")))

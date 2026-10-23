@@ -71,7 +71,12 @@ object ThreadInputNotifications {
       keys.add(key)
       item.put("scheme", scheme)
       if (prefs(context).getStringSet("answered", emptySet()).orEmpty().contains(key)) continue
-      if (read(context, key)?.toString() != item.toString()) {
+      // A process death loses the in-memory task, but must not strand a sending card.
+      val interrupted = prefs(context).getBoolean("sending:$key", false) && key !in busy
+      if (interrupted) {
+        prefs(context).edit().putString("item:$key", item.toString()).remove("sending:$key").apply()
+        show(context, item, "Response interrupted. Retry, or tap to open the thread and check its status.")
+      } else if (read(context, key)?.toString() != item.toString()) {
         prefs(context).edit().putString("item:$key", item.toString()).apply()
         if (key !in busy) show(context, item)
       } else if (manager(context).activeNotifications.none { it.tag == "$TAG:$key" } &&
@@ -86,7 +91,7 @@ object ThreadInputNotifications {
       val environment = item.optString("environmentId")
       if (environment !in enabledIds || (environment in readyIds && key !in keys)) {
         manager(context).cancel("$TAG:$key", ID)
-        prefs(context).edit().remove(name).apply()
+        prefs(context).edit().remove(name).remove("sending:$key").apply()
       }
     }
   }
@@ -155,6 +160,7 @@ object ThreadInputNotifications {
       else actions != null && (0 until actions.length()).any { actions.getJSONObject(it).optString("id") == action }
     if (!allowed) return null
     busy.add(key)
+    prefs(context).edit().putBoolean("sending:$key", true).apply()
     val timeout = Runnable { complete(context.applicationContext, key, false) }
     timeouts[key] = timeout
     handler.postDelayed(timeout, 55000)
@@ -167,6 +173,7 @@ object ThreadInputNotifications {
   @Synchronized
   fun complete(context: Context, key: String, success: Boolean) {
     busy.remove(key)
+    prefs(context).edit().remove("sending:$key").apply()
     timeouts.remove(key)?.let { handler.removeCallbacks(it) }
     if (success) {
       val done = prefs(context).getStringSet("answered", emptySet()).orEmpty()

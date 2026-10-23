@@ -1,4 +1,7 @@
-import { Atom } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
+import * as Option from "effect/Option";
+import { AuthOrchestrationOperateScope, sessionGrantsScope } from "@t3tools/contracts";
+import { environmentSession } from "../../state/session";
 import { AppState } from "react-native";
 import { environmentCatalog } from "../../connection/catalog";
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -33,7 +36,15 @@ const snapshotAtom = Atom.make((get) => {
       incomplete.add(thread.environmentId);
       return [];
     }
-    return threadInputNotifications(thread, pending);
+    const result = get(environmentSession.sessionStateAtom(thread.environmentId));
+    const session = Option.getOrNull(AsyncResult.value(result));
+    const canRespond =
+      result._tag !== "Failure" &&
+      session !== null &&
+      sessionGrantsScope(session, AuthOrchestrationOperateScope);
+    return threadInputNotifications(thread, pending).map((item) =>
+      canRespond ? item : { ...item, actions: [], allowReply: false },
+    );
   });
   return {
     items,
