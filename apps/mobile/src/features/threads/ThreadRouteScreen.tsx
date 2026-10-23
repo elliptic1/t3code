@@ -310,9 +310,10 @@ function ThreadRouteContent(
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
   const navigation = useNavigation();
   const [usageThreadKey, setUsageThreadKey] = useState<string | null>(null);
-  const { settleThread, unsettleThread, renameThread } = useThreadListActions({
-    dismissRows: false,
-  });
+  const { settleThread, unsettleThread, renameThread, regenerateThreadTitle } =
+    useThreadListActions({
+      dismissRows: false,
+    });
   const threadSettled = selectedThread?.settledOverride === "settled";
   const settleTargetRef = useRef(selectedThread);
   useLayoutEffect(() => {
@@ -1012,6 +1013,10 @@ function ThreadRouteContent(
             <ThreadHeader
               title={selectedThread.title}
               onRename={canOperateThread ? () => renameThread(selectedThread) : undefined}
+              onRegenerateTitle={
+                canOperateThread ? () => void regenerateThreadTitle(selectedThread) : undefined
+              }
+              regeneratingTitle={selectedThread.titleRegeneration != null}
               onOpenUsage={() =>
                 setUsageThreadKey(scopedThreadKey(selectedThread.environmentId, selectedThread.id))
               }
