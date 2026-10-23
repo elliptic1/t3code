@@ -53,6 +53,11 @@ it.effect.each(["Workflows", "DropUnusedV1Projections"] as const)(
       assert.deepEqual(yield* runMigrations(), [
         [64, "Workflows"],
         [65, "DropUnusedV1ProjectionsAfterForkWorkflows"],
+        [66, "CanonicalizeThreadPullRequestLinks"],
+        [67, "CodexUsageNativeTurnIndex"],
+        [68, "RepairClientSettlementTimestamps"],
+        [69, "WebhookDedupe"],
+        [70, "ShellStopRequestIndex"],
       ]);
       const tables = yield* sql<{ name: string }>`SELECT name FROM sqlite_master
         WHERE type = 'table' AND name IN ('workflows', 'workflow_commands') ORDER BY name`;
