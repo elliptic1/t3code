@@ -75,6 +75,10 @@ import Migration0069WebhookDedupeSource from "./Migrations/067_WebhookDedupe.ts"
 
 const Migration0069WebhookDedupe: typeof Migration0068RepairClientSettlementTimestamps =
   Migration0069WebhookDedupeSource;
+import Migration0070ShellStopRequestIndexSource from "./Migrations/068_ShellStopRequestIndex.ts";
+
+const Migration0070ShellStopRequestIndex: typeof Migration0068RepairClientSettlementTimestamps =
+  Migration0070ShellStopRequestIndexSource;
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -148,6 +152,7 @@ const migrationEntries = [
   [67, "CodexUsageNativeTurnIndex", Migration0067CodexUsageNativeTurnIndex],
   [68, "RepairClientSettlementTimestamps", Migration0068RepairClientSettlementTimestamps],
   [69, "WebhookDedupe", Migration0069WebhookDedupe],
+  [70, "ShellStopRequestIndex", Migration0070ShellStopRequestIndex],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -196,10 +201,10 @@ const reconcileForkWorkflowMigration = Effect.gen(function* () {
   );
 });
 
-// Upstream released migration ids 64-67 for canonical links, Codex usage, and
-// settlement repair. The fork uses 64/65 for Workflows and its cleanup, so a
+// Upstream released migration ids 64-68 after the shared migration 63. The fork
+// uses 64/65 for Workflows and 68 for settlement repair, so a
 // legacy upstream ledger must apply those fork migrations first, then move the
-// upstream rows to 66-69 in one transaction. Applying both before remapping is
+// upstream rows to 66-70 in one transaction. Applying both before remapping is
 // essential because the migrator skips every id up to the highest recorded id.
 const reconcileUpstreamMigrationIds = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -215,6 +220,7 @@ const reconcileUpstreamMigrationIds = Effect.gen(function* () {
     [65, 67, "CodexUsageNativeTurnIndex"],
     [66, 68, "RepairClientSettlementTimestamps"],
     [67, 69, "WebhookDedupe"],
+    [68, 70, "ShellStopRequestIndex"],
   ] as const;
   const pending = moves.flatMap(([from, to, name]) =>
     rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],
