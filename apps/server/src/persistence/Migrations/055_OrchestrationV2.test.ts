@@ -10,6 +10,7 @@ import CanonicalizeThreadPullRequestLinks from "../Migrations/064_CanonicalizeTh
 import CodexUsageNativeTurnIndex from "../Migrations/065_CodexUsageNativeTurnIndex.ts";
 import RepairClientSettlementTimestamps from "../Migrations/066_RepairClientSettlementTimestamps.ts";
 import WebhookDedupe from "../Migrations/067_WebhookDedupe.ts";
+import ShellStopRequestIndex from "../Migrations/068_ShellStopRequestIndex.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -20,7 +21,7 @@ layer("055_OrchestrationV2", (it) => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         migrationManifest.map(([id]) => id),
-        Array.from({ length: 69 }, (_, index) => index + 1),
+        Array.from({ length: 70 }, (_, index) => index + 1),
       );
     }),
   );
@@ -48,6 +49,7 @@ layer("055_OrchestrationV2", (it) => {
         [67, "CodexUsageNativeTurnIndex"],
         [68, "RepairClientSettlementTimestamps"],
         [69, "WebhookDedupe"],
+        [70, "ShellStopRequestIndex"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
 
@@ -83,6 +85,7 @@ layer("055_OrchestrationV2", (it) => {
         { migration_id: 67, name: "CodexUsageNativeTurnIndex" },
         { migration_id: 68, name: "RepairClientSettlementTimestamps" },
         { migration_id: 69, name: "WebhookDedupe" },
+        { migration_id: 70, name: "ShellStopRequestIndex" },
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`
@@ -166,7 +169,7 @@ layer("055_OrchestrationV2", (it) => {
     }),
   );
 
-  it.effect("preserves upstream migration 64-67 history while applying fork migrations", () =>
+  it.effect("preserves upstream migration 64-68 history while applying fork migrations", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 63 });
@@ -176,11 +179,19 @@ layer("055_OrchestrationV2", (it) => {
           "65_CodexUsageNativeTurnIndex": CodexUsageNativeTurnIndex,
           "66_RepairClientSettlementTimestamps": RepairClientSettlementTimestamps,
           "67_WebhookDedupe": WebhookDedupe,
+          "68_ShellStopRequestIndex": ShellStopRequestIndex,
         }),
       });
 
       // The reconciliation applies fork 64/65 before moving upstream ids to 66-69.
       assert.deepStrictEqual(yield* runMigrations(), []);
+      const stopRequestIndex = yield* sql<{ readonly name: string }>`
+        SELECT name FROM sqlite_master
+        WHERE type = 'index' AND name = 'orchestration_v2_projection_turn_items_stop_request_idx'
+      `;
+      assert.deepStrictEqual(stopRequestIndex, [
+        { name: "orchestration_v2_projection_turn_items_stop_request_idx" },
+      ]);
       const history = yield* sql<{
         readonly migration_id: number;
         readonly name: string;
