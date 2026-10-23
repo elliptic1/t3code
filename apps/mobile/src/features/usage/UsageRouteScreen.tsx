@@ -78,6 +78,10 @@ const METRIC_OPTIONS = [
 
 const CHART_HEIGHT = 180;
 const providerLabel = (provider: UsageProviderKind) => PROVIDER_LABEL[provider];
+const providerIcon = (provider: UsageProviderKind) =>
+  provider === "claude" ? "claudeAgent" : provider;
+const providerUsesBrandIcon = (provider: UsageProviderKind) =>
+  provider === "claude" || provider === "codex";
 const CURSOR_KEYCHAIN_COPY = "Requires access to your Cursor login in macOS Keychain.";
 
 export function UsageRouteScreen() {
@@ -560,17 +564,32 @@ function ChartCard(props: {
           </Text>
         </View>
         <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
-          {merged.providers.map((provider) => (
-            <View key={provider.provider} className="flex-row items-center gap-1.5">
+          {merged.providers.map((provider) => {
+            const iconOnly = providerUsesBrandIcon(provider.provider);
+            return (
               <View
-                className="size-2 rounded-full"
-                style={{ backgroundColor: colors[provider.provider] }}
-              />
-              <Text className="text-xs text-foreground-muted">
-                {PROVIDER_LABEL[provider.provider]}
-              </Text>
-            </View>
-          ))}
+                key={provider.provider}
+                className="flex-row items-center gap-1.5"
+                accessible={iconOnly}
+                accessibilityRole={iconOnly ? "image" : undefined}
+                accessibilityLabel={iconOnly ? PROVIDER_LABEL[provider.provider] : undefined}
+              >
+                {iconOnly ? (
+                  <ProviderIcon provider={providerIcon(provider.provider)} size={14} />
+                ) : (
+                  <>
+                    <View
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: colors[provider.provider] }}
+                    />
+                    <Text className="text-xs text-foreground-muted">
+                      {PROVIDER_LABEL[provider.provider]}
+                    </Text>
+                  </>
+                )}
+              </View>
+            );
+          })}
         </View>
       </View>
     </View>
@@ -627,18 +646,32 @@ function ProviderSection(props: {
         }
         const provider = row.provider;
         const share = metric === "cost" ? provider.costShare : provider.tokenShare;
+        const iconOnly = providerUsesBrandIcon(provider.provider);
         return (
           <View
             key={provider.provider}
             className={index === 0 ? "gap-2 p-4" : "gap-2 border-t border-border-subtle p-4"}
           >
             <View className="flex-row items-baseline justify-between gap-3">
-              <View className="flex-row items-center gap-2">
-                <View
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: colors[provider.provider] }}
-                />
-                <Text className="text-lg text-foreground">{PROVIDER_LABEL[provider.provider]}</Text>
+              <View
+                className="flex-row items-center gap-2"
+                accessible={iconOnly}
+                accessibilityRole={iconOnly ? "image" : undefined}
+                accessibilityLabel={iconOnly ? PROVIDER_LABEL[provider.provider] : undefined}
+              >
+                {iconOnly ? (
+                  <ProviderIcon provider={providerIcon(provider.provider)} size={18} />
+                ) : (
+                  <>
+                    <View
+                      className="size-2.5 rounded-full"
+                      style={{ backgroundColor: colors[provider.provider] }}
+                    />
+                    <Text className="text-lg text-foreground">
+                      {PROVIDER_LABEL[provider.provider]}
+                    </Text>
+                  </>
+                )}
               </View>
               <Text className="text-lg tabular-nums text-foreground">
                 {metric === "cost"
