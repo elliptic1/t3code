@@ -106,10 +106,15 @@ vi.mock("./use-thread-detail", () => ({
   useSelectedThreadPendingRequests: () => state.pendingRequests,
 }));
 vi.mock("./use-atom-command", () => ({ useAtomCommand: <A>(command: A) => command }));
+vi.mock("./server", async () => {
+  const { Atom } = await import("effect/reactivity");
+  return { serverEnvironment: { configValueAtom: () => Atom.make(state.serverConfig) } };
+});
 vi.mock("./threads", async () => {
   const { Atom } = await import("effect/reactivity");
   return {
     environmentThreadDetails: {
+      pendingRequestsAtom: () => Atom.make(state.pendingRequests),
       queueWorkflowAtom: () => Atom.make(null),
       checkpointSummariesAtom: () => Atom.make([]),
     },
@@ -245,6 +250,110 @@ describe("mobile task permissions", () => {
       environmentId: "secondary",
       input: { threadId: "thread", requestId: "approval", decision: "accept" },
     });
+  });
+
+  it("submits answers edited after the mounted form captured its submit callback", async () => {
+    state.grantedEnvironments.add("secondary");
+    const requestId = RuntimeRequestId.make("fresh-submit-input");
+    state.pendingRequests = {
+      approvals: [],
+      userInputs: [
+        {
+          requestId,
+          createdAt: "2026-10-23T00:00:00.000Z",
+          responseCapability: "live",
+          dismissible: false,
+          questions: [state.question],
+        },
+      ],
+    };
+    const mounted = useSelectedThreadRequests();
+    expect(mounted.activePendingUserInputAnswers).toBeNull();
+    mounted.onSelectUserInputOption(requestId, state.question, "TypeScript");
+    // Keep the original native button's callback: no navigation or remount.
+    await mounted.onSubmitUserInput();
+    expect(state.answer).toHaveBeenCalledWith({
+      environmentId: "secondary",
+      input: {
+        threadId: "thread",
+        requestId,
+        answers: { language: "TypeScript" },
+      },
+    });
+  });
+
+  it("uses the most recently edited answer even when Submit was captured earlier", async () => {
+    state.grantedEnvironments.add("secondary");
+    const requestId = RuntimeRequestId.make("edited-submit-input");
+    state.pendingRequests = {
+      approvals: [],
+      userInputs: [
+        {
+          requestId,
+          createdAt: "2026-10-23T00:00:00.000Z",
+          responseCapability: "live",
+          dismissible: false,
+          questions: [state.question],
+        },
+      ],
+    };
+    const mounted = useSelectedThreadRequests();
+    mounted.onSelectUserInputOption(requestId, state.question, "TypeScript");
+    mounted.onChangeUserInputCustomAnswer(requestId, state.question.id, "Use Kotlin instead");
+    await mounted.onSubmitUserInput();
+    expect(state.answer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ answers: { language: "Use Kotlin instead" } }),
+      }),
+    );
+  });
+
+  it("releases the submit guard after a rejected attempt so the same mounted form can retry", async () => {
+    state.grantedEnvironments.add("secondary");
+    const requestId = RuntimeRequestId.make("retry-submit-input");
+    state.pendingRequests = {
+      approvals: [],
+      userInputs: [
+        {
+          requestId,
+          createdAt: "2026-10-23T00:00:00.000Z",
+          responseCapability: "live",
+          dismissible: false,
+          questions: [state.question],
+        },
+      ],
+    };
+    const mounted = useSelectedThreadRequests();
+    mounted.onSelectUserInputOption(requestId, state.question, "TypeScript");
+    state.answer.mockRejectedValueOnce(new Error("Connection interrupted"));
+    await mounted.onSubmitUserInput();
+    await mounted.onSubmitUserInput();
+    expect(state.answer).toHaveBeenCalledTimes(2);
+    expect(useSelectedThreadRequests().activePendingUserInputAnswers).toEqual({
+      language: "TypeScript",
+    });
+  });
+
+  it("does not submit an obsolete form after its request was answered on another device", async () => {
+    state.grantedEnvironments.add("secondary");
+    const requestId = RuntimeRequestId.make("obsolete-submit-input");
+    state.pendingRequests = {
+      approvals: [],
+      userInputs: [
+        {
+          requestId,
+          createdAt: "2026-10-23T00:00:00.000Z",
+          responseCapability: "live",
+          dismissible: false,
+          questions: [state.question],
+        },
+      ],
+    };
+    const mounted = useSelectedThreadRequests();
+    mounted.onSelectUserInputOption(requestId, state.question, "TypeScript");
+    state.pendingRequests = { approvals: [], userInputs: [] };
+    await mounted.onSubmitUserInput();
+    expect(state.answer).not.toHaveBeenCalled();
   });
 
   it("keeps answer drafts editable after revocation while blocking their submission", async () => {
