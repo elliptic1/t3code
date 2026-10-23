@@ -96,6 +96,7 @@ object AgentNotifications {
 
   @Synchronized
   fun clear(context: Context) {
+    ThreadInputNotifications.clear(context)
     cancelActivity(context)
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().clear().apply()
     val manager = manager(context)

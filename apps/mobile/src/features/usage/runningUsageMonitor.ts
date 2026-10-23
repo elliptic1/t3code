@@ -26,6 +26,8 @@ import {
 } from "./runningUsage";
 import { runningThreadUsageReadings } from "./runningUsageSnapshot";
 
+import { retainThreadInputNotifications } from "../agent-awareness/threadInputMonitor";
+
 const STORAGE_KEY = "t3code.running-usage-history.v1";
 const INTERVAL = 60_000;
 const snapshotAtom = Atom.make((get) => {
@@ -65,6 +67,7 @@ export function retainRunningUsageMonitor(): () => void {
     monitor.owners += 1;
     return release;
   }
+  const releaseInputs = retainThreadInputNotifications();
   let history: RunningUsageHistory = {};
   let loaded = false;
   let active = false;
@@ -178,6 +181,7 @@ export function retainRunningUsageMonitor(): () => void {
     dispose: () => {
       disposed = true;
       unsubscribe();
+      releaseInputs();
       clearInterval(timer);
       subscription.remove();
     },

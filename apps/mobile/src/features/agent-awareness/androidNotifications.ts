@@ -3,6 +3,8 @@ import { requireOptionalNativeModule } from "expo";
 import { Linking, Platform } from "react-native";
 
 interface AndroidAgentNotifications {
+  syncThreadInputs?(payload: string, scheme: string): void;
+  completeThreadInputResponse?(key: string, success: boolean): void;
   configure(deviceId: string, userId: string, scheme: string, ongoingEnabled: boolean): void;
   clear(): void;
   supportsUsageResetReminders?(): boolean;
@@ -79,4 +81,12 @@ export async function openAndroidLiveUpdateSettings(): Promise<void> {
   if (!native?.openLiveUpdateSettings?.()) {
     await Linking.openSettings();
   }
+}
+
+export function syncAndroidThreadInputs(payload: object): void {
+  native?.syncThreadInputs?.(JSON.stringify(payload), appScheme());
+}
+
+export function completeAndroidThreadInputResponse(key: string, success: boolean): void {
+  native?.completeThreadInputResponse?.(key, success);
 }

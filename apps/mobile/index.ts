@@ -40,3 +40,9 @@ AppRegistry.registerHeadlessTask("T3RunningUsage", () => async () => {
   const { keepRunningUsageConnected } = await import("./src/features/usage/runningUsageMonitor");
   await keepRunningUsageConnected();
 });
+
+AppRegistry.registerHeadlessTask("T3ThreadInputResponse", () => async (input) => {
+  const { handleThreadInputResponse } =
+    await import("./src/features/agent-awareness/threadInputResponse");
+  await handleThreadInputResponse(input);
+});
