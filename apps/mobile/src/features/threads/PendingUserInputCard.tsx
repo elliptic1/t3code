@@ -305,7 +305,8 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
         })}
       </ScrollView>
       <Button
-        label="Submit answers"
+        label={isResponding ? "Submitting…" : "Submit answers"}
+        loading={isResponding}
         fullWidth
         tone={props.answers ? "primary" : "secondary"}
         disabled={!props.canOperateThread || responseDisabled || props.answers === null}
