@@ -5,20 +5,25 @@
 # resolves merge conflicts and reruns it.
 #
 # The commits come from the branch's upstream branch, plus upstream/main when there is an
-# `upstream` remote. They are merged in a <checkout>-update worktree beside the checkout, since a
-# dev server or other agents may be using the checkout itself.
+# upstream remote (`upstream`, or `origin` when that is not the branch's own remote). They are
+# merged in a <checkout>-update worktree beside the checkout, since a dev server or other agents
+# may be using the checkout itself. Once the build succeeds, the branch is pushed to its remote.
 #
 # Usage: scripts/fork-update.sh [--rebuild]
 # --rebuild builds and installs even when there is nothing new to merge.
 #
 # Exit status: 0 done (or already up to date), 2 merge conflict or typecheck failure to fix in
 # the update worktree, 4 the branch could not be fast-forwarded, anything else a failed step.
+# A failed push is reported but does not stop the install.
 set -euo pipefail
 
 # install-fork-keepalive.py's job, which starts the app again whenever it quits.
 KEEPALIVE_LABEL=com.elliptic1.t3code.fork
 domain="gui/$(id -u)"
 log="$HOME/Library/Logs/T3 Code Fork/update.log"
+# The commit the installed app was built from, so a build that failed after the branch had
+# already landed is retried instead of being reported as up to date.
+installed_rev_file="$HOME/Library/Logs/T3 Code Fork/installed-rev"
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
 keepalive_loaded() {
@@ -36,11 +41,20 @@ app_running() {
   [ "$status" != 1 ]
 }
 
+# The bundle the keepalive job runs, or nothing when the job isn't set up.
+keepalive_app() {
+  /usr/libexec/PlistBuddy -c "Print :ProgramArguments" "$HOME/Library/LaunchAgents/$KEEPALIVE_LABEL.plist" 2> /dev/null |
+    sed -n 's|^ *\(/.*\.app\)/Contents/MacOS/.*|\1|p' | head -1
+}
+
 # Quits the installed copy of the app extracted in $1, replaces it, and starts the new one.
 install_app() {
   local work=$1 app dest id keepalive=false
   app=$(find "$work" -maxdepth 1 -name "*.app" | head -1)
-  dest="/Applications/$(basename "$app")"
+  # Replace the bundle the keepalive job runs: the build's own name (T3 Code (Fork Nightly))
+  # differs from the installed one.
+  dest=$(keepalive_app)
+  [ -n "$dest" ] || dest="/Applications/$(basename "$app")"
   id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Contents/Info.plist")
   if keepalive_loaded; then
     # Quitting would only make the job start the old app again, so stop the job instead.
@@ -59,6 +73,8 @@ install_app() {
   fi
   rm -rf "$dest"
   mv "$app" "$dest"
+  mkdir -p "$(dirname "$installed_rev_file")"
+  cp "$work/.rev" "$installed_rev_file"
   rm -rf "$work"
   echo "Installed $dest"
   if [ "$keepalive" = true ]; then
@@ -103,12 +119,15 @@ if [ -n "$tracking_remote" ] && [ "$tracking_remote" != . ]; then
   remotes+=("$tracking_remote")
   sources+=("$(git -C "$main" rev-parse --abbrev-ref "$target@{upstream}")")
 fi
-if git -C "$main" remote get-url upstream > /dev/null 2>&1; then
-  remotes+=(upstream)
-  sources+=(upstream/main)
-fi
+for upstream_remote in upstream origin; do
+  if [ "$upstream_remote" != "$tracking_remote" ] && git -C "$main" remote get-url "$upstream_remote" > /dev/null 2>&1; then
+    remotes+=("$upstream_remote")
+    sources+=("$upstream_remote/main")
+    break
+  fi
+done
 if [ ${#sources[@]} = 0 ]; then
-  echo "$target has no upstream branch and there is no upstream remote, so there is nothing to pull." >&2
+  echo "$target has no upstream branch and there is no upstream or origin remote, so there is nothing to pull." >&2
   exit 1
 fi
 
@@ -151,8 +170,8 @@ for source in "${sources[@]}"; do
 done
 
 if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$target")" ]; then
-  if [ "$rebuild" = false ]; then
-    echo "$target is already up to date with ${sources[*]}."
+  if [ "$rebuild" = false ] && [ "$(cat "$installed_rev_file" 2> /dev/null)" = "$(git rev-parse HEAD)" ]; then
+    echo "$target is already up to date with ${sources[*]}, and installed."
     exit 0
   fi
 else
@@ -191,7 +210,18 @@ if [ -z "$zip" ]; then
 fi
 work=$(mktemp -d /tmp/fork-update.XXXXXX)
 ditto -x -k "$zip" "$work"
-installed="/Applications/$(basename "$(find "$work" -maxdepth 1 -name "*.app" | head -1)")"
+git rev-parse HEAD > "$work/.rev"
+
+# The build passed, so the merge is safe to publish. A plain push: if the remote moved, say so.
+if [ -n "$tracking_remote" ] && [ "$tracking_remote" != . ]; then
+  if git -C "$main" push "$tracking_remote" "$target"; then
+    echo "Pushed $target to $tracking_remote."
+  else
+    echo "PUSH FAILED: could not push $target to $tracking_remote. The app is still installed." >&2
+  fi
+fi
+installed=$(keepalive_app)
+[ -n "$installed" ] || installed="/Applications/$(basename "$(find "$work" -maxdepth 1 -name "*.app" | head -1)")"
 
 if keepalive_loaded || app_running "$installed"; then
   mkdir -p "$(dirname "$log")"

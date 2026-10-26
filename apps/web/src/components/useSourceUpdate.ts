@@ -12,19 +12,19 @@ const sourceDir = import.meta.env.T3CODE_SOURCE_DIR.replace(/\/+$/u, "");
 export const SOURCE_UPDATE_TOOLTIP = {
   title: "Update from source",
   detail:
-    "Pull the latest commits into the checkout this app was built from, then rebuild and restart it.",
+    "Pull the latest commits into the checkout this app was built from, then rebuild, restart it, and push the result to your fork.",
 } as const;
 
 const updatePrompt = `Update this app from source.
 
-Run \`${sourceDir}/scripts/fork-update.sh\`. It merges the latest commits from the checked-out branch's upstream, and from \`upstream/main\` when there is an \`upstream\` remote, into that branch in an update worktree beside ${sourceDir}. Then it typechecks, fast-forwards the branch in ${sourceDir}, and rebuilds and reinstalls the app. The build takes several minutes, so run it where a tool timeout won't kill it.
+Run \`${sourceDir}/scripts/fork-update.sh\`. It merges the latest commits from the checked-out branch's remote, and from upstream's main (the \`upstream\` or \`origin\` remote), into that branch in an update worktree beside ${sourceDir}. Then it typechecks, fast-forwards the branch in ${sourceDir}, rebuilds and reinstalls the app, and pushes the branch to its remote. The build takes several minutes, so run it where a tool timeout won't kill it.
 
 - Exit 0: report what was merged (\`git log --oneline --first-parent\` of the new merges) in a few lines. The app restarts about 10 seconds after the build finishes, so reply right away.
 - Exit 2: resolve the merge conflicts or typecheck errors it lists in the update worktree, commit, and run the script again. An upstream migration whose id the fork already uses gets the next free id, plus entries in \`reconcileUpstreamMigrationIds\` (\`apps/server/src/persistence/Migrations.ts\`) and \`reconcileV2PreviewMigration.test.ts\`.
 - Exit 4: uncommitted changes in ${sourceDir} block the fast-forward. Tell me which files, and don't stash or discard them.
 - Anything else: tell me which step failed and why.
 
-Don't work in ${sourceDir} itself, since a dev server or other agents may be using it, and don't push anything.`;
+If the output says PUSH FAILED, tell me. The script does the push itself, so don't push or force-push by hand. Don't work in ${sourceDir} itself, since a dev server or other agents may be using it.`;
 
 /**
  * Builds made by scripts/fork-build.sh have no update feed. They know their source checkout
