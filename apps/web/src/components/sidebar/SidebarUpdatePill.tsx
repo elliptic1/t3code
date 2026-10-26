@@ -23,6 +23,7 @@ import {
   shouldToastDesktopUpdateActionResult,
 } from "../desktopUpdate.logic";
 import { showDesktopUpdateDownloadedToast } from "../desktopUpdate.toast";
+import { SOURCE_UPDATE_TOOLTIP, useSourceUpdate } from "../useSourceUpdate";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Popover, PopoverCreateHandle, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SidebarMenuItem } from "../ui/sidebar";
@@ -237,8 +238,13 @@ function SidebarUpdateControl() {
     isDownloading,
     showCheckIcon,
   });
+  const sourceUpdate = useSourceUpdate(state);
   const idleTooltip =
-    !showUpdateDetails && !showCheckIcon ? getDesktopUpdateIdleTooltip(state) : null;
+    !showUpdateDetails && !showCheckIcon
+      ? sourceUpdate.available
+        ? SOURCE_UPDATE_TOOLTIP
+        : getDesktopUpdateIdleTooltip(state)
+      : null;
   const tooltip = runsEverything
     ? everything.summary
     : showUpdateDetails
@@ -254,7 +260,7 @@ function SidebarUpdateControl() {
       ? false
       : showUpdateDetails
         ? isDesktopUpdateButtonDisabled(state)
-        : !canCheckForUpdate(state);
+        : !canCheckForUpdate(state) && !sourceUpdate.available;
   const isInteractionDisabled = disabled || isActionPending || isRunningEverything;
   const showReleaseNotesPopover =
     !isRunningEverything && shouldUseSidebarUpdateReleaseNotesPopover(showUpdateDetails, state);
@@ -282,6 +288,11 @@ function SidebarUpdateControl() {
 
     if (!bridge || !state) return;
     setIsActionPending(true);
+
+    if (sourceUpdate.available) {
+      void sourceUpdate.start().finally(() => setIsActionPending(false));
+      return;
+    }
 
     if (action === "download") {
       void downloadLocalUpdate(bridge, { notifyDownloaded: true }).finally(() =>
