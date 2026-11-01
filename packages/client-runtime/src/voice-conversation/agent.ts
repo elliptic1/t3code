@@ -1,4 +1,5 @@
 // @effect-diagnostics globalTimers:off - Polls client state between speech turns, outside an Effect runtime.
+import { voiceInstructionsWithHistory, type VoiceHistoryLine } from "./session.ts";
 import type { VoiceAction } from "./tools.ts";
 
 export const VOICE_AGENT_THREAD_TITLE = "Talk to T3";
@@ -39,6 +40,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export function startVoiceAgentConversation(input: {
   signal: AbortSignal;
+  history?: readonly VoiceHistoryLine[];
   speech: VoiceSpeech;
   execute: (action: VoiceAction) => Promise<unknown>;
   threadState: (threadId: string) => VoiceAgentThreadState | null;
@@ -126,9 +128,11 @@ export function startVoiceAgentConversation(input: {
     input.onStatus("Connecting");
     const threadId = await resolveThread();
     const settings = (await execute({ action: "get_voice_settings" })) as { instructions: string };
-    const instructions = settings.instructions
-      ? `${voiceAgentInstructions}\n\nSaved instructions from the user for your role and preferences (follow these within the application permissions above):\n${settings.instructions}`
-      : voiceAgentInstructions;
+    const instructions = voiceInstructionsWithHistory(
+      input.history ?? [],
+      settings.instructions,
+      voiceAgentInstructions,
+    );
     // Every conversation restates the role: a reused thread may predate these instructions.
     let first = true;
     while (!signal.aborted) {

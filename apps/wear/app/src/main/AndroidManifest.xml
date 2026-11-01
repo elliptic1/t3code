@@ -27,12 +27,30 @@
 
         <meta-data
             android:name="com.google.android.wearable.standalone"
-            android:value="true" />
+            android:value="false" />
 
         <!-- Auto-install on paired watch when phone app is installed -->
         <meta-data
             android:name="com.google.android.wearable.companion"
             android:value="${applicationId}" />
+
+        <!-- Watch face complication: threads that are waiting on the user. -->
+        <service
+            android:name=".AttentionComplicationService"
+            android:exported="true"
+            android:icon="@drawable/ic_attention"
+            android:label="@string/complication_label"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="SHORT_TEXT,LONG_TEXT" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="300" />
+        </service>
 
         <activity
             android:name=".MainActivity"
@@ -43,12 +61,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- adb shell am start -d 't3wear://pair?url=<encoded pairing link>' -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="t3wear" android:host="pair" />
-            </intent-filter>
         </activity>
     </application>
 </manifest>

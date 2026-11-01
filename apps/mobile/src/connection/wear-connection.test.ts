@@ -12,7 +12,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { connectionForWatch } from "./wear-connection";
 
-function savedConnections(): ConnectionCatalogDocument {
+function savedConnections() {
   const targets = ["first", "second"].map(
     (id) =>
       new BearerConnectionTarget({
@@ -38,7 +38,7 @@ function savedConnections(): ConnectionCatalogDocument {
       connectionId: target.connectionId,
       credential: new BearerConnectionCredential({ token: `${target.connectionId}-token` }),
     })),
-  };
+  } satisfies ConnectionCatalogDocument;
 }
 
 describe("phone connection restored for the watch", () => {

@@ -15,6 +15,13 @@ fun threadStatus(
     return if (working) ThreadStatus.Working else ThreadStatus.Idle
 }
 
+fun threadStatus(runStatus: String?, needsInput: Boolean): ThreadStatus = when {
+    needsInput || runStatus == "waiting" -> ThreadStatus.NeedsYou
+    runStatus in setOf("preparing", "queued", "starting", "running") -> ThreadStatus.Working
+    runStatus == "failed" -> ThreadStatus.Failed
+    else -> ThreadStatus.Idle
+}
+
 data class ThreadRow(
     val id: String,
     val title: String,
@@ -22,6 +29,7 @@ data class ThreadRow(
     val status: ThreadStatus,
     val lastActivityAt: String,
     val settled: Boolean = false,
+    val environmentId: String = "",
 ) {
     /** Settled threads are only visible after explicitly expanding their section. */
     val tucked: Boolean get() = settled
@@ -29,6 +37,14 @@ data class ThreadRow(
 
 fun sortRows(rows: List<ThreadRow>): List<ThreadRow> =
     rows.sortedByDescending { it.lastActivityAt }
+
+/** Threads waiting on the user: how many, and the most recently active one. */
+data class Attention(val count: Int, val first: ThreadRow?)
+
+fun attention(rows: List<ThreadRow>): Attention {
+    val waiting = sortRows(rows.filter { it.status == ThreadStatus.NeedsYou })
+    return Attention(waiting.size, waiting.firstOrNull())
+}
 
 data class Activity(val id: String, val summary: String, val createdAt: String)
 

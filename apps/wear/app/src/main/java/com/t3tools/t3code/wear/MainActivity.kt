@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,7 +79,10 @@ import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
 
-private const val PREFS = "t3wear"
+internal const val EXTRA_THREAD_ID = "threadId"
+internal const val EXTRA_ENVIRONMENT_ID = "environmentId"
+
+internal const val PREFS = "t3wear"
 private const val KEY_BASE = "baseUrl"
 private const val KEY_TOKEN = "token"
 private const val KEY_LABEL = "label"
@@ -92,7 +96,7 @@ class MainActivity : ComponentActivity() {
         pairingLink = intent.dataString
         setContent {
             T3Theme {
-                WearApp(getSharedPreferences(PREFS, Context.MODE_PRIVATE), pairingLink)
+                WearApp(getSharedPreferences(PREFS, Context.MODE_PRIVATE), pairingLink, intent.getStringExtra(EXTRA_THREAD_ID))
             }
         }
     }
@@ -106,15 +110,19 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun WearApp(prefs: SharedPreferences, pairingLink: String?) {
+private fun WearApp(prefs: SharedPreferences, pairingLink: String?, openThreadId: String?) {
     var baseUrl by rememberSaveable { mutableStateOf(prefs.getString(KEY_BASE, null)) }
     var token by rememberSaveable { mutableStateOf(prefs.getString(KEY_TOKEN, null)) }
     var label by rememberSaveable { mutableStateOf(prefs.getString(KEY_LABEL, null)) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingLink by rememberSaveable { mutableStateOf(pairingLink) }
-    var checkingPhone by remember { mutableStateOf(true) }
+    var checkingPhone by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        // Authentication belongs to the phone; retire credentials copied by older watch builds.
+        prefs.edit().remove(KEY_BASE).remove(KEY_TOKEN).remove(KEY_LABEL).apply()
+    }
 
     val onPaired: (String, String, String) -> Unit = { b, t, l ->
         prefs.edit().putString(KEY_BASE, b).putString(KEY_TOKEN, t).putString(KEY_LABEL, l).apply()
@@ -127,15 +135,6 @@ private fun WearApp(prefs: SharedPreferences, pairingLink: String?) {
         message = msg
     }
 
-    ObservePhoneConnection(
-        context = context,
-        onFound = { b, t, l ->
-            if (pendingLink == null) onPaired(b, t, l)
-            checkingPhone = false
-        },
-        onChecked = { checkingPhone = false },
-        onRemoved = { signOut(null) },
-    )
 
     AppScaffoldFallback {
         if (checkingPhone) {
@@ -152,15 +151,18 @@ private fun WearApp(prefs: SharedPreferences, pairingLink: String?) {
         } else if (baseUrl == null) {
             PhoneConnectionScreen(message)
         } else {
-            key(baseUrl, token) {
-                val api = remember(baseUrl, token) { T3Api(baseUrl!!, token) }
+            key("paired-phone") {
+                val api = remember(context) { T3Api(context) }
                 var openingThread by remember { mutableStateOf<ThreadRow?>(null) }
                 val nav = rememberSwipeDismissableNavController()
+                LaunchedEffect(openThreadId) {
+                    if (openThreadId != null) nav.navigate("thread/${URLEncoder.encode(openThreadId, "UTF-8")}")
+                }
                 SwipeDismissableNavHost(navController = nav, startDestination = "sessions") {
                     composable("sessions") {
                         SessionsScreen(
                             api = api,
-                            label = label ?: "",
+                            label = "Via your phone",
                             onOpen = { row ->
                                 openingThread = row
                                 nav.navigate("thread/${URLEncoder.encode(row.id, "UTF-8")}") {
@@ -385,6 +387,16 @@ private fun SessionsScreen(
                         if (showSettled) items(settled, key = { "thread:${it.id}" }, contentType = { "session" }) { row ->
                             SessionButton(row) { onOpen(row) }
                         }
+                        if (showSettled) items(settled, key = { "thread:${it.id}" }, contentType = { "session" }) { row ->
+                            SessionButton(row) { onOpen(row) }
+                        }
+                    }
+                    item(key = "refresh", contentType = "control") {
+                        CompactButton(
+                            onClick = { refreshKey++ },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = activeColors(),
+                        ) { Text("Refresh") }
                     }
                     item(key = "refresh", contentType = "control") {
                         CompactButton(
@@ -585,10 +597,8 @@ private fun ThreadScreen(
 }
 
 /**
- * Live voice conversation on the watch. Requests the microphone, reads the transcript
- * history synced from the phone, and streams audio to the provider over the same
- * WebSocket/PCM path the phone uses (xai/local presets). WebRTC servers are unsupported
- * here and surface a clear message instead.
+ * Live voice conversation uses the watch microphone/speaker and the paired phone's
+ * network runtime. Each session loads the environment's server-owned history.
  */
 @Composable
 private fun VoiceScreen(
@@ -619,12 +629,26 @@ private fun VoiceScreen(
         else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    ObserveVoiceHistory(context) { lines -> history = lines }
+
+    DisposableEffect(session) {
+        val window = (context as? Activity)?.window
+        val keepAwake = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        val alreadyAwake = window?.attributes?.flags?.and(keepAwake) != 0
+        if (session != null) window?.addFlags(keepAwake)
+        onDispose { if (!alreadyAwake) window?.clearFlags(keepAwake) }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { session?.close() }
+    }
 
     LaunchedEffect(sessionState) {
         if (sessionState == VoiceSession.State.CLOSED) {
             session = null
             onBack()
+        } else if (sessionState == VoiceSession.State.FAILED) {
+            session = null
+            starting = false
         }
     }
 
@@ -634,19 +658,14 @@ private fun VoiceScreen(
         error = null
         scope.launch {
             try {
-                val connection = api.createVoiceSession()
-                if (connection.transport != "websocket") {
-                    error = "This server uses WebRTC voice, which the watch doesn't support. Switch to the xAI or local voice provider, then retry."
-                    starting = false
-                    return@launch
-                }
+                sessionState = VoiceSession.State.CONNECTING
                 val voice = VoiceSession(
-                    connection = connection,
-                    history = history,
-                    onEvent = { },
-                    onTranscript = { text ->
-                        transcript = (transcript + text).takeLast(20)
+                    context = context.applicationContext,
+                    api = api,
+                    onTranscript = { line ->
+                        transcript = (transcript + "${line.speaker}: ${line.text}").takeLast(40)
                     },
+                    onHistory = { lines -> transcript = lines.map { "${it.speaker}: ${it.text}" } },
                     onError = { message -> error = message },
                     onState = { state -> sessionState = state },
                 )
@@ -706,7 +725,11 @@ private fun VoiceScreen(
             } else {
                 item {
                     Text(
-                        if (muted) "Listening muted" else "Listening",
+                        when (sessionState) {
+                            VoiceSession.State.CONNECTING -> "Connecting through phone…"
+                            VoiceSession.State.SAVING -> "Saving conversation…"
+                            else -> if (muted) "Microphone muted" else "Listening"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -736,12 +759,14 @@ private fun VoiceScreen(
                     Row(modifier = Modifier.fillMaxWidth()) {
                         FilledTonalButton(
                             onClick = { muted = !muted; session?.setMuted(muted) },
+                            enabled = sessionState == VoiceSession.State.LISTENING,
                             modifier = Modifier.weight(1f),
                             colors = if (muted) settledColors() else activeColors(),
                         ) { Text(if (muted) "Unmute" else "Mute") }
                         Spacer(Modifier.size(8.dp))
                         Button(
                             onClick = { session?.close() },
+                            enabled = sessionState != VoiceSession.State.SAVING,
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.error,

@@ -128,7 +128,7 @@ const make = Effect.gen(function* () {
   const root = path.join(config.stateDir, "thread-artifacts");
   yield* fs.makeDirectory(root, { recursive: true }).pipe(Effect.mapError(storageError));
   const filePath = (key: string) => path.join(root, key);
-  const uuid = crypto.randomUUIDv4.pipe(Effect.mapError(storageError));
+  const uuid = crypto.randomUUIDv4().pipe(Effect.mapError(storageError));
   const now = DateTime.now.pipe(Effect.map(DateTime.formatIso));
   const notify = (id: ThreadId) => PubSub.publish(changes, id).pipe(Effect.asVoid);
   const discard = (key: string) =>

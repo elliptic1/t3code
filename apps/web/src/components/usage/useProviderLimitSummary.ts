@@ -20,7 +20,7 @@ export function useProviderLimitSummary(): ReadonlyMap<
   ServerProvider["driver"],
   ProviderLimitSummary
 > {
-  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   return useMemo(() => {
     // `now` only feeds pace, which the summary does not show.
     const pools = collectLimitPools(collectLimitAccounts(presentations), 0);

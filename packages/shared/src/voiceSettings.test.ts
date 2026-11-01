@@ -6,7 +6,7 @@ import {
   updateVoiceConnection,
   voiceProviderId,
   voiceTransportOptions,
-} from "./voiceSettings";
+} from "./voiceSettings.ts";
 
 describe("saved voice providers", () => {
   it("preserves each provider's credentials and edited connection across repeated switches", () => {

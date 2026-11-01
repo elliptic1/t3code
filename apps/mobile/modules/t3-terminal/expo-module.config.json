@@ -1,10 +1,6 @@
 {
-  "platforms": [
-    "android"
-  ],
+  "platforms": ["android"],
   "android": {
-    "modules": [
-      "expo.modules.t3terminal.T3TerminalModule"
-    ]
+    "modules": ["expo.modules.t3terminal.T3TerminalModule"]
   }
 }

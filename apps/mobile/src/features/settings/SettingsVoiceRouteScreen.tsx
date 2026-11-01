@@ -1,14 +1,11 @@
 import { useState } from "react";
 import { ScrollView, Switch, TextInput, View } from "react-native";
-import { type VoiceConnectionSettings, type EnvironmentId } from "@t3tools/contracts";
 import {
-  selectVoiceProvider,
-  selectVoiceTransport,
-  updateVoiceConnection,
-  voiceProviderId,
-  voiceTransportOptions,
-} from "@t3tools/shared/voiceSettings";
-import { AppText as Text } from "../../components/AppText";
+  VOICE_CONNECTION_PRESETS,
+  type VoiceConnectionSettings,
+  type EnvironmentId,
+} from "@t3tools/contracts";
+import { AppText as Text } from "../../components/ui/AppText";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
@@ -50,19 +47,20 @@ export function SettingsVoiceRouteScreen() {
 }
 
 function VoiceSettings({ target }: { target: SettingsTarget }) {
-  const [draft, setDraft] = useState<VoiceConnectionSettings>(
-    target.serverConfig.settings.voiceConnection,
-  );
-  const provider = voiceProviderId(draft);
-  const providerLabel =
-    provider === "xai" ? "Grok" : provider === "openai" ? "OpenAI" : "Local / custom";
+  const [draft, setDraft] = useState<VoiceConnectionSettings>({
+    ...target.serverConfig.settings.voiceConnection,
+    apiKey: "",
+  });
   const [instructions, setInstructions] = useState(target.serverConfig.settings.voiceInstructions);
   const [instructionsChanged, setInstructionsChanged] = useState(false);
+  const [keyChanged, setKeyChanged] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const update = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
-  const save = async (connection = draft) => {
+  const setEnabled = async (enabled: boolean) => {
     if (saving) return;
+    const previous = draft.enabled;
+    setDraft((current) => ({ ...current, enabled }));
     setSaving(true);
     setMessage("");
     try {
@@ -71,27 +69,46 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
           environmentId: target.environmentId,
           input: {
             patch: {
-              ...(instructionsChanged ? { voiceInstructions: instructions.trim() } : {}),
-              voiceConnection: updateVoiceConnection(connection, {}),
+              voiceConnection: {
+                ...target.serverConfig.settings.voiceConnection,
+                enabled,
+              },
             },
           },
         }),
       );
-      const redact = (value: string) => (value ? "••••••" : "");
-      setDraft({
-        ...connection,
-        apiKey: redact(connection.apiKey),
-        profiles: Object.fromEntries(
-          Object.entries(connection.profiles ?? {}).map(([id, profile]) => [
-            id,
-            { ...profile, apiKey: redact(profile.apiKey) },
-          ]),
-        ),
-      });
-      setInstructionsChanged(false);
-      setMessage(
-        `${voiceProviderId(connection) === "xai" ? "Grok" : voiceProviderId(connection) === "openai" ? "OpenAI" : "Local / custom"} settings saved`,
+      setMessage("Saved");
+    } catch (error) {
+      setDraft((current) => ({ ...current, enabled: previous }));
+      setMessage(error instanceof Error ? error.message : "Could not save voice settings.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      const { apiKey, ...connection } = draft;
+      voiceResult(
+        await update({
+          environmentId: target.environmentId,
+          input: {
+            patch: {
+              ...(instructionsChanged ? { voiceInstructions: instructions.trim() } : {}),
+              voiceConnection: {
+                ...connection,
+                apiKey: keyChanged ? apiKey : target.serverConfig.settings.voiceConnection.apiKey,
+              },
+            },
+          },
+        }),
       );
+      setDraft((current) => ({ ...current, apiKey: "" }));
+      setKeyChanged(false);
+      setInstructionsChanged(false);
+      setMessage("Saved");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save voice settings.");
     } finally {
@@ -110,62 +127,42 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
           accessibilityLabel="Enable voice conversation"
           value={draft.enabled}
           disabled={saving}
-          onValueChange={(enabled) => {
-            const next = updateVoiceConnection(draft, { enabled });
-            setDraft(next);
-            void save(next);
-          }}
+          onValueChange={(enabled) => void setEnabled(enabled)}
         />
       </View>
-      <Text className="text-foreground">Voice provider</Text>
-      <Text className="text-sm text-foreground-muted">
-        Each provider keeps its own key, model, voice, and connection settings. Tap a provider to
-        save your changes and switch immediately.
-      </Text>
       <View className="flex-row flex-wrap">
-        {(["openai", "xai", "local"] as const).map((id) => (
+        {Object.entries(VOICE_CONNECTION_PRESETS).map(([name, preset]) => (
           <VoiceButton
-            key={id}
-            label={`${provider === id ? "✓ " : ""}${id === "local" ? "Local / custom" : id === "xai" ? "Grok" : "OpenAI"}`}
+            key={name}
+            label={name === "local" ? "Local / custom" : name === "xai" ? "Grok" : "OpenAI"}
             disabled={saving}
             onPress={() => {
-              const next = selectVoiceProvider(draft, id);
-              setDraft(next);
-              void save(next);
+              setDraft({ ...preset, enabled: draft.enabled });
+              setKeyChanged(true);
+              setMessage("Preset selected. Enter its API key if required.");
             }}
           />
         ))}
       </View>
-      {provider === "local" ? (
-        <>
-          <Text className="text-foreground">Protocol</Text>
-          <View className="flex-row">
-            {(["openai", "xai"] as const).map((protocol) => (
-              <VoiceButton
-                key={protocol}
-                label={`${draft.protocol === protocol ? "✓ " : ""}${protocol}`}
-                disabled={saving}
-                onPress={() => setDraft(updateVoiceConnection(draft, { protocol }))}
-              />
-            ))}
-          </View>
-        </>
-      ) : null}
-      <Text className="text-foreground">{providerLabel} connection method</Text>
-      <Text className="text-sm text-foreground-muted">
-        {provider === "xai"
-          ? "Grok uses WebSocket. No connection method change is needed when switching providers."
-          : provider === "openai"
-            ? "WebRTC is recommended for phones and browsers. The connection endpoint updates automatically when you change this."
-            : "Choose the connection method supported by your server."}
-      </Text>
+      <Text className="text-foreground">Protocol</Text>
       <View className="flex-row">
-        {voiceTransportOptions(provider).map((transport) => (
+        {(["openai", "xai"] as const).map((protocol) => (
+          <VoiceButton
+            key={protocol}
+            label={`${draft.protocol === protocol ? "✓ " : ""}${protocol}`}
+            disabled={saving}
+            onPress={() => setDraft({ ...draft, protocol })}
+          />
+        ))}
+      </View>
+      <Text className="text-foreground">Transport</Text>
+      <View className="flex-row">
+        {(["webrtc", "websocket"] as const).map((transport) => (
           <VoiceButton
             key={transport}
-            label={`${draft.transport === transport ? "✓ " : ""}${transport === "webrtc" ? (provider === "openai" ? "WebRTC (recommended)" : "WebRTC") : "WebSocket"}`}
+            label={`${draft.transport === transport ? "✓ " : ""}${transport}`}
             disabled={saving}
-            onPress={() => setDraft(selectVoiceTransport(draft, transport))}
+            onPress={() => setDraft({ ...draft, transport })}
           />
         ))}
       </View>
@@ -176,33 +173,22 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
           ["model", "Model"],
           ["voice", "Voice"],
           ["transcriptionModel", "Transcription model (optional)"],
-          ["apiKey", `${providerLabel} API key`],
+          ["apiKey", "API key (leave blank to keep existing)"],
         ] as const
       ).map(([field, label]) => (
-        <View key={`${provider}:${field}`} className="gap-1">
-          <Text className="text-sm text-foreground">
-            {field === "apiKey" ? label : `${providerLabel} ${label.toLowerCase()}`}
-          </Text>
-          {field === "apiKey" ? (
-            <Text className="text-sm text-foreground-muted">
-              {draft.apiKey
-                ? draft.apiKey === "••••••"
-                  ? "Key saved for this provider. Leave unchanged to keep it, or enter a replacement."
-                  : "Key entered. Save or switch providers to keep it."
-                : "No API key saved for this provider."}
-            </Text>
-          ) : null}
+        <View key={field} className="gap-1">
+          <Text className="text-sm text-foreground">{label}</Text>
           <TextInput
             accessibilityLabel={label}
-            value={field === "apiKey" && draft.apiKey === "••••••" ? "" : draft[field]}
-            placeholder={field === "apiKey" && draft.apiKey ? "Saved key (unchanged)" : undefined}
+            value={draft[field]}
             editable={!saving}
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry={field === "apiKey"}
             className="min-h-11 rounded-lg border border-border px-3 text-foreground"
             onChangeText={(value) => {
-              setDraft(updateVoiceConnection(draft, { [field]: value }));
+              setDraft({ ...draft, [field]: value });
+              if (field === "apiKey") setKeyChanged(true);
             }}
           />
         </View>
@@ -230,10 +216,11 @@ function VoiceSettings({ target }: { target: SettingsTarget }) {
         />
       </View>
       <VoiceButton
-        label={`Remove ${providerLabel} API key`}
+        label="Remove saved API key"
         disabled={saving}
         onPress={() => {
-          setDraft(updateVoiceConnection(draft, { apiKey: "" }));
+          setDraft({ ...draft, apiKey: "" });
+          setKeyChanged(true);
           setMessage("Save to remove the existing key.");
         }}
       />

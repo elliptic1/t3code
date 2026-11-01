@@ -17,6 +17,7 @@ const NativeClientRecord = Schema.Struct({ fingerprint: Schema.String, binary: S
 const encodeRecord = Schema.encodeEffect(Schema.fromJsonString(NativeClientRecord));
 const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(NativeClientRecord));
 const encodeOutput = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const isNotLink = Schema.is(Schema.Struct({ code: Schema.Literal("EINVAL") }));
 export type NativeClientRecord = typeof NativeClientRecord.Type;
 export type NativeClientStatus = "compatible" | "missing" | "unknown" | "stale";
 export class NativeClientError extends Schema.TaggedError<NativeClientError>()(
@@ -79,6 +80,49 @@ const digest = Effect.fn("nativeClient.digest")(function* (value: string | Uint8
   );
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 });
+
+/** Hash fixed-size chunks to bound memory, including resources and symlink targets. */
+export const hashBundle = Effect.fn("hashBundle")(function* (root: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const entries: string[] = [];
+  const visit = Effect.fn("mobile-native-client.visit")(function* (
+    relative: string,
+  ): Effect.fn.Return<void, FileSystemError, FileSystem.FileSystem | Crypto.Crypto> {
+    const names = (yield* fs.readDirectory(path.join(root, relative))).sort((a, b) =>
+      a.localeCompare(b, "en"),
+    );
+    for (const name of names) {
+      const key = path.join(relative, name);
+      const absolute = path.join(root, key);
+      // FileSystem.stat follows links; readLink distinguishes them without following a cycle.
+      const link = yield* fs.readLink(absolute).pipe(
+        Effect.catchIf(
+          (error) => isNotLink(error.reason.cause),
+          () => Effect.succeed(null),
+        ),
+      );
+      if (link !== null) {
+        entries.push(`link:${key}:${link}`);
+        continue;
+      }
+      const info = yield* fs.stat(absolute);
+      if (info.type === "Directory") {
+        entries.push(`directory:${key}`);
+        yield* visit(key);
+      } else {
+        const chunks = yield* fs.stream(absolute, { chunkSize: 65536 }).pipe(
+          Stream.mapEffect((chunk) => digest(chunk)),
+          Stream.runCollect,
+        );
+        entries.push(`file:${key}:${yield* digest(chunks.join("\n"))}`);
+      }
+    }
+  });
+  yield* visit("");
+  return yield* digest(entries.map((entry) => `${entry.length}:${entry}`).join(""));
+});
+type FileSystemError = import("effect/PlatformError").PlatformError;
 
 const bundleId = "com.t3tools.t3code.dev";
 const roots = Effect.gen(function* () {
@@ -200,6 +244,45 @@ export const installedBinary = Effect.fn("installedBinary")(function* (
   return yield* digest(hashes.sort().join("\n"));
 });
 
+/**
+ * Run `expo prebuild --clean` without losing `android/.gradle` (task history) and
+ * `android/app/.cxx` (native compile outputs). Both invalidate by input, so a clean
+ * rebuild only redoes changed work. `app/build` stays out: its autolinking and JS
+ * bundle tasks do not declare every input. Each step is best-effort, because a lost
+ * cache costs one slower build and must never cost the build.
+ */
+export const prebuildAndroid = Effect.fn("nativeClient.prebuildAndroid")(function* <E, R>(
+  mobile: string,
+  prebuild: Effect.Effect<void, E, R>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const android = path.join(mobile, "android");
+  // A sibling of android/ keeps the renames on one filesystem. It is gitignored, and a
+  // run killed mid-prebuild leaves it for the next run to clear.
+  const saved = path.join(mobile, ".android-cache");
+  const caches = [".gradle", "app/.cxx"];
+  const clear = fs.remove(saved, { recursive: true, force: true }).pipe(Effect.ignore);
+  const move = (from: string, to: string) =>
+    Effect.forEach(
+      caches,
+      (cache) =>
+        Effect.gen(function* () {
+          const source = path.join(from, cache);
+          const target = path.join(to, cache);
+          if (!(yield* fs.exists(source)) || (yield* fs.exists(target))) return;
+          yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+          yield* fs.rename(source, target);
+        }).pipe(Effect.ignore),
+      { discard: true },
+    );
+  yield* Effect.acquireUseRelease(
+    clear.pipe(Effect.andThen(move(android, saved))),
+    () => prebuild,
+    () => move(saved, android).pipe(Effect.andThen(clear)),
+  );
+});
+
 const main = Command.make(
   "mobile-native-client",
   {
@@ -249,16 +332,64 @@ const main = Command.make(
             message:
               "Native directory contains tracked files; clean prebuild would overwrite them.",
           });
-        yield* command(
+        const prebuild = command(
           "vp",
           ["exec", "expo", "prebuild", "--clean", "--platform", platform, "--no-install"],
           true,
-        );
-        yield* command(
-          "vp",
-          ["exec", "expo", "run:android", "--device", device, "--no-bundler", "--variant", "debug"],
-          true,
-        );
+        ).pipe(Effect.asVoid);
+        if (platform === "android") {
+          yield* prebuildAndroid((yield* roots).mobile, prebuild);
+        } else {
+          yield* prebuild;
+        }
+        if (platform === "ios") {
+          const output = yield* fs.makeTempDirectoryScoped({ prefix: "t3-native-client-" });
+          const { mobile } = yield* roots;
+          yield* command("pod", ["install"], true, path.join(mobile, "ios"));
+          yield* command(
+            "xcrun",
+            [
+              "xcodebuild",
+              "-workspace",
+              path.join(mobile, "ios/T3CodeDev.xcworkspace"),
+              "-scheme",
+              "T3CodeDev",
+              "-configuration",
+              "Debug",
+              "-destination",
+              `id=${device}`,
+              "-derivedDataPath",
+              output,
+              "build",
+            ],
+            true,
+          );
+          yield* command(
+            "xcrun",
+            [
+              "simctl",
+              "install",
+              device,
+              path.join(output, "Build/Products/Debug-iphonesimulator/T3CodeDev.app"),
+            ],
+            true,
+          );
+        } else {
+          yield* command(
+            "vp",
+            [
+              "exec",
+              "expo",
+              "run:android",
+              "--device",
+              device,
+              "--no-bundler",
+              "--variant",
+              "debug",
+            ],
+            true,
+          );
+        }
       }).pipe(Effect.scoped),
       saveRecord: Effect.fn(function* (record: NativeClientRecord) {
         yield* fs.makeDirectory(path.dirname(recordPath), { recursive: true });

@@ -18,16 +18,6 @@ const codec = Schema.fromJsonString(VoiceConversationHistory);
 const decode = Schema.decodeUnknownEffect(codec);
 const encode = Schema.encodeEffect(codec);
 
-export class VoiceHistory extends Context.Service<
-  VoiceHistory,
-  {
-    readonly sync: (
-      incoming: ReadonlyArray<VoiceTranscriptLine>,
-      reset?: boolean,
-    ) => Effect.Effect<ReadonlyArray<VoiceTranscriptLine>, VoiceSessionError>;
-  }
->()("t3/voice/history/VoiceHistory") {}
-
 /** One bounded transcript per environment, shared by all of its clients. */
 export const makeVoiceHistory = Effect.fn("voice.makeHistory")(function* (filePath: string) {
   const fs = yield* FileSystem.FileSystem;
@@ -68,8 +58,13 @@ export const makeVoiceHistory = Effect.fn("voice.makeHistory")(function* (filePa
           }),
       ),
     );
-  return VoiceHistory.of({ sync });
+  return { sync };
 });
+
+export class VoiceHistory extends Context.Service<
+  VoiceHistory,
+  Effect.Success<ReturnType<typeof makeVoiceHistory>>
+>()("t3/voice/history/VoiceHistory") {}
 
 export const layer = Layer.effect(
   VoiceHistory,

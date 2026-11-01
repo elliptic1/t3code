@@ -68,11 +68,28 @@ class TimelineTest {
 
     @Test
     fun statusPrecedenceNeedsYou() {
-        assertEquals(ThreadStatus.NeedsYou, threadStatus("running", "running", "t", needsInput = true))
-        assertEquals(ThreadStatus.Working, threadStatus("running", "running", "t", needsInput = false))
-        assertEquals(ThreadStatus.Working, threadStatus(null, "running", "t", needsInput = false))
-        assertEquals(ThreadStatus.Idle, threadStatus("completed", "idle", null, needsInput = false))
-        assertEquals(ThreadStatus.Idle, threadStatus(null, "idle", null, needsInput = false))
+        assertEquals(ThreadStatus.NeedsYou, threadStatus("running", needsInput = true))
+        assertEquals(ThreadStatus.NeedsYou, threadStatus("waiting", needsInput = false))
+        assertEquals(ThreadStatus.Working, threadStatus("running", needsInput = false))
+        assertEquals(ThreadStatus.Working, threadStatus("queued", needsInput = false))
+        assertEquals(ThreadStatus.Idle, threadStatus("completed", needsInput = false))
+        assertEquals(ThreadStatus.Idle, threadStatus("idle", needsInput = false))
+        assertEquals(ThreadStatus.Idle, threadStatus(null, needsInput = false))
+    }
+
+    @Test
+    fun attentionCountsOnlyThreadsWaitingOnYou() {
+        val rows = listOf(
+            ThreadRow("a", "A", "p", ThreadStatus.NeedsYou, "2026-01-02T00:00:00Z"),
+            ThreadRow("b", "B", "p", ThreadStatus.Working, "2026-01-05T00:00:00Z"),
+            ThreadRow("c", "C", "p", ThreadStatus.NeedsYou, "2026-01-03T00:00:00Z"),
+            ThreadRow("d", "D", "p", ThreadStatus.Idle, "2026-01-04T00:00:00Z"),
+        )
+        val result = attention(rows)
+        assertEquals(2, result.count)
+        assertEquals("c", result.first?.id)
+        assertEquals(0, attention(rows.filter { it.status != ThreadStatus.NeedsYou }).count)
+        assertEquals(null, attention(emptyList()).first)
     }
 
     @Test

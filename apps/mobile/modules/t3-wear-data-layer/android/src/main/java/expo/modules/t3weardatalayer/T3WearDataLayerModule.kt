@@ -9,11 +9,7 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
 
-/**
- * Mirrors the phone app's T3 pairing ({baseUrl, accessToken}) to the paired Wear
- * watch via the Wear Data Layer. The watch companion app reads this data item and
- * auto-pairs from the phone's session — no watch-side pairing UI needed.
- */
+/** Connects the paired watch to the phone runtime without copying server credentials. */
 class T3WearDataLayerModule : Module() {
 
   private val context: Context
@@ -26,6 +22,42 @@ class T3WearDataLayerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("T3WearDataLayer")
 
+    AsyncFunction("respond") { nodeId: String, response: String, promise: expo.modules.kotlin.Promise ->
+      try {
+        sendWatchResponse(context, nodeId, response)
+          .addOnSuccessListener { promise.resolve(null) }
+          .addOnFailureListener { promise.reject("WEAR_RESPONSE_FAILED", it.message, it) }
+      } catch (error: Exception) {
+        promise.reject("WEAR_RESPONSE_FAILED", error.message, error)
+      }
+    }
+
+    AsyncFunction("setConnectionReady") { enabled: Boolean ->
+      context.getSharedPreferences("voice-presence", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
+      val intent = android.content.Intent(context, ConnectionPresenceService::class.java)
+      if (enabled) context.startForegroundService(intent) else context.stopService(intent)
+      Unit
+    }
+    AsyncFunction("awaitConnectionStopped") { promise: Promise -> ConnectionPresenceService.awaitStop(promise) }
+
+    AsyncFunction("startVoiceRelay") { nodeId: String, sessionId: String, connection: String, configuration: String, promise: Promise ->
+      WatchVoiceRelayService.start(context, nodeId, sessionId, connection, configuration) { error ->
+        if (error == null) promise.resolve(null)
+        else promise.reject("WATCH_VOICE_FAILED", error.message, error)
+      }
+    }
+
+    AsyncFunction("setCompanionAvailable") { label: String, promise: Promise ->
+      val request = PutDataMapRequest.create(PATH_PAIRING).apply {
+        dataMap.putString("label", label)
+        dataMap.putInt("protocolVersion", 2)
+      }
+      dataClient.putDataItem(request.asPutDataRequest().setUrgent())
+        .addOnSuccessListener { promise.resolve(null) }
+        .addOnFailureListener { promise.reject("WEAR_SYNC_FAILED", "Could not notify the watch", it) }
+    }
+
+    // Legacy clients only. New companions use the phone bridge instead of server credentials.
     // Write (or update) the pairing on the Data Layer so the watch can read it.
     AsyncFunction("setPairing") { baseUrl: String, accessToken: String, label: String, promise: Promise ->
       val putReq = PutDataMapRequest.create(PATH_PAIRING).apply {

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
-import { SymbolView } from "../../components/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { cn } from "../../lib/cn";
 import type { ModelOption } from "../../lib/modelOptions";
 
@@ -9,9 +9,13 @@ export type ModelRowProps = {
   readonly option: ModelOption;
   readonly selected: boolean;
   readonly onPress: () => void;
+  readonly onLongPressDefault?: () => void;
+  readonly isPreferredDefault?: boolean;
   readonly isFavorite: boolean;
   readonly favoritesLoaded: boolean;
   readonly onToggleFavorite: () => void;
+  readonly onToggleHidden?: () => void;
+  readonly hiddenUpdatePending?: boolean;
   readonly isFirst: boolean;
   readonly isLast: boolean;
 };
@@ -52,10 +56,16 @@ export function ModelRowContent(
         accessibilityRole="radio"
         accessibilityState={{
           checked: props.selected,
-          disabled: props.option.isUnavailable === true,
+          disabled: props.option.isUnavailable === true || props.option.isHidden === true,
         }}
+        accessibilityHint={
+          props.onLongPressDefault
+            ? "Long press to make this the default model for new threads."
+            : undefined
+        }
         className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2 active:opacity-70"
-        disabled={props.option.isUnavailable}
+        disabled={props.option.isUnavailable || props.option.isHidden}
+        onLongPress={props.onLongPressDefault}
         onPress={props.onPress}
       >
         {props.leadingSelection}
@@ -72,10 +82,18 @@ export function ModelRowContent(
                 <Text className="text-3xs font-t3-bold text-foreground-muted">Default</Text>
               </View>
             ) : null}
+            {props.isPreferredDefault ? (
+              <View className="rounded-md bg-subtle px-1.5 py-0.5">
+                <Text className="text-3xs font-t3-bold text-foreground-muted">New thread</Text>
+              </View>
+            ) : null}
             {props.option.isLegacy ? (
               <View className="rounded-md bg-subtle px-1.5 py-0.5">
                 <Text className="text-3xs font-t3-bold text-foreground-muted">Legacy</Text>
               </View>
+            ) : null}
+            {props.option.isHidden ? (
+              <Text className="text-xs text-foreground-muted">Hidden</Text>
             ) : null}
             {props.option.isUnavailable ? (
               <Text className="text-xs text-foreground">Unavailable</Text>
@@ -92,6 +110,23 @@ export function ModelRowContent(
         </View>
         {props.trailingSelection}
       </Pressable>
+      {props.onToggleHidden ? (
+        <Pressable
+          accessibilityLabel={`${props.option.isHidden ? "Show" : "Hide"} model: ${props.option.providerLabel}, ${props.option.label}`}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: props.hiddenUpdatePending === true }}
+          className="min-h-11 min-w-11 items-center justify-center"
+          disabled={props.hiddenUpdatePending}
+          onPress={props.onToggleHidden}
+        >
+          <SymbolView
+            name={props.option.isHidden ? "eye.slash" : "eye"}
+            size={18}
+            tintColorClassName={props.option.isHidden ? "accent-icon-subtle" : "accent-icon"}
+            type="monochrome"
+          />
+        </Pressable>
+      ) : null}
       <Pressable
         accessibilityLabel={`${props.isFavorite ? "Remove from" : "Add to"} favorites: ${
           props.option.providerLabel
@@ -113,7 +148,6 @@ export function ModelRowContent(
   );
 }
 
-/** Single option inside a submenu panel. */
 export function ChoiceRowContent(props: ChoiceRowProps & RowSelectionProps) {
   return (
     <Pressable

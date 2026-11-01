@@ -3,7 +3,7 @@ import { collectLimitAccounts, collectLimitPools } from "@t3tools/shared/usageLi
 import { useMemo } from "react";
 import { Pressable, View } from "react-native";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { environmentPresentations } from "../../state/presentation";
 
@@ -13,7 +13,7 @@ import { environmentPresentations } from "../../state/presentation";
  * stops you first. Mirrors the web sidebar's provider limits.
  */
 export function ProviderLimitsStrip(props: { readonly onPress: () => void }) {
-  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const summaries = useMemo(
     // `now` only feeds pace, which the strip does not show.
     () =>

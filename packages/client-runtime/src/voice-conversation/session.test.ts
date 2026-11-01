@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vite-plus/test";
-import { VOICE_CONNECTION_PRESETS } from "@t3tools/contracts";
-import { updateVoiceTranscript, voiceSessionConfiguration } from "./session.ts";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { VOICE_CONNECTION_PRESETS, type VoiceTranscriptLine } from "@t3tools/contracts";
+import {
+  createVoiceHistorySync,
+  updateVoiceTranscript,
+  voiceSessionConfiguration,
+} from "./session.ts";
 import { voiceInstructions } from "./tools.ts";
 
 const connection = { ...VOICE_CONNECTION_PRESETS.xai, instructions: "", clientSecret: "ephemeral" };
@@ -48,5 +52,39 @@ describe("voice session history", () => {
       ).toBe(true);
       expect(instructions).not.toContain("ancient");
     }
+  });
+});
+
+// These clients stand in for independently mounted desktop and mobile surfaces.
+describe("voice history synchronization", () => {
+  it("flushes the latest streaming revision at End and loads it on the next device", async () => {
+    let stored: readonly VoiceTranscriptLine[] = [];
+    const sync = async (lines: readonly VoiceTranscriptLine[]) => {
+      for (const line of lines) stored = [...stored.filter((old) => old.id !== line.id), line];
+      return stored;
+    };
+    const mac = createVoiceHistorySync(sync, () => {});
+    const phone = createVoiceHistorySync(sync, () => {});
+    mac.record({ id: "mac:1", speaker: "You", text: "Remember Blue" });
+    mac.record({ id: "mac:1", speaker: "You", text: "Remember Bluebird" });
+    await mac.flush();
+    const history = await phone.load();
+    expect(history).toEqual([{ id: "mac:1", speaker: "You", text: "Remember Bluebird" }]);
+    expect(voiceSessionConfiguration(connection, history).instructions).toContain(
+      "Remember Bluebird",
+    );
+  });
+  it("retains a failed save for retry and serializes concurrent flushes", async () => {
+    const sync = vi
+      .fn<(lines: readonly VoiceTranscriptLine[]) => Promise<readonly VoiceTranscriptLine[]>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue([]);
+    const history = createVoiceHistorySync(sync, () => {});
+    const line = { id: "mac:1", speaker: "You", text: "Keep this" } as const;
+    history.record(line);
+    await expect(history.flush()).rejects.toThrow("offline");
+    await Promise.all([history.flush(), history.flush()]);
+    expect(sync).toHaveBeenCalledTimes(2);
+    expect(sync).toHaveBeenLastCalledWith([line]);
   });
 });

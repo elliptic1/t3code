@@ -2,11 +2,12 @@ import type {
   ChatAttachment,
   OrchestrationV2ProjectedTurnItem,
   OrchestrationV2ProviderCapabilities,
-  OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import { copySorted } from "@t3tools/shared/Array";
 
-type Projection = OrchestrationV2ThreadProjection;
+import type { ThreadStructure } from "./models.ts";
+
+type Projection = ThreadStructure;
 type Run = Projection["runs"][number];
 type Message = Projection["messages"][number];
 type ProviderSession = Projection["providerSessions"][number];
@@ -23,7 +24,6 @@ export interface QueuedThreadRun {
   readonly run: Run;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
-  /** Editing replaces this message's content, so its id and context travel with the row. */
   readonly messageId: Message["id"];
   readonly context?: Message["context"];
 }
@@ -33,6 +33,7 @@ export interface ThreadQueueWorkflowState {
   readonly queuedRuns: ReadonlyArray<QueuedThreadRun>;
   readonly isHeld: boolean;
   readonly canReorder: boolean;
+  readonly canSendNow: boolean;
   readonly canPromoteToSteer: boolean;
 }
 
@@ -107,7 +108,6 @@ export function threadSupportsProviderHandoff(projection: Projection | null | un
   );
 }
 
-/** Automatic completion/notification runs are not messages in the user's queue. */
 export function getUserQueuedThreadRuns(
   projection: Pick<Projection, "runs" | "messages">,
 ): ReadonlyArray<Run> {
@@ -167,6 +167,10 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
     queuedRuns,
     isHeld: projection.runs.some((run) => run.status === "queued" && run.queueHeld === true),
     canReorder: capabilities?.supportsQueuedMessages === true,
+    canSendNow:
+      activeRun === null &&
+      projection.thread.archivedAt == null &&
+      projection.thread.deletedAt == null,
     canPromoteToSteer: threadSupportsActiveSteering(projection),
   };
 }

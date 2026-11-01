@@ -84,6 +84,7 @@ dependencies {
     implementation(libs.camera.view)
     implementation(libs.mlkit.barcode)
     implementation(libs.okhttp)
+    implementation(libs.watchface.complications.data.source)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockwebserver)

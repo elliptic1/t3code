@@ -73,15 +73,12 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
     if (busy) return;
     setBusy(true);
     setError(null);
-    try {
-      await action();
-    } catch (cause) {
+    await action().catch((cause: unknown) => {
       if (!transfer.current?.signal.aborted)
         setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      transfer.current = null;
-      setBusy(false);
-    }
+    });
+    transfer.current = null;
+    setBusy(false);
   }
   function absoluteUrl(relativeUrl: string) {
     const connection = readPreparedConnection(props.environmentId);

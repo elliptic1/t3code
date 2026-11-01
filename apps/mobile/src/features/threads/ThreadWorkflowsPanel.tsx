@@ -16,7 +16,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { uuidv4 } from "../../lib/uuid";
 import { serverEnvironment } from "../../state/server";
 import { useEnvironmentQuery } from "../../state/query";

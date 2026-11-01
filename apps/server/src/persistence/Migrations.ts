@@ -1,19 +1,8 @@
-/**
- * Migration runner with an inline loader.
- *
- * Uses Migrator.make with fromRecord to define migrations inline.
- * All migrations are statically imported - no dynamic file system loading.
- *
- * `runMigrations` is called by the SQLite persistence layer at startup, so the
- * schema is always up to date before the application starts.
- */
-
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
-// Import all migrations statically
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
 import Migration0002 from "./Migrations/002_OrchestrationCommandReceipts.ts";
 import Migration0003 from "./Migrations/003_CheckpointDiffBlobs.ts";
@@ -74,21 +63,25 @@ import Migration0057 from "./Migrations/057_ScheduledTaskWebhooks.ts";
 import Migration0058 from "./Migrations/058_WebhookRelayDeliveries.ts";
 import Migration0059 from "./Migrations/059_McpAppModelContext.ts";
 import Migration0060 from "./Migrations/060_ThreadSnapshotWindowIndexes.ts";
-import Migration0061 from "./Migrations/061_Workflows.ts";
-import Migration0062 from "./Migrations/062_ThreadArtifacts.ts";
-import Migration0064 from "./Migrations/064_EnsureThreadArtifacts.ts";
+import Migration0061 from "./Migrations/061_PullRequestReviewGuides.ts";
+import Migration0062 from "./Migrations/062_ThreadFailureLookupIndex.ts";
+import Migration0063DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
+import Migration0064Workflows from "./Migrations/063_Workflows.ts";
+import Migration0065DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
+import Migration0066CanonicalizeThreadPullRequestLinks from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
+import Migration0067CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
+import Migration0068RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettlementTimestamps.ts";
+import Migration0069WebhookDedupeSource from "./Migrations/067_WebhookDedupe.ts";
 
-/**
- * Migration loader with all migrations defined inline.
- *
- * Key format: "{id}_{name}" where:
- * - id: numeric migration ID (determines execution order)
- * - name: descriptive name for the migration
- *
- * Uses Migrator.fromRecord which parses the key format and
- * returns migrations sorted by ID.
- */
-export const migrationEntries = [
+const Migration0069WebhookDedupe: typeof Migration0068RepairClientSettlementTimestamps =
+  Migration0069WebhookDedupeSource;
+import Migration0071EnsureThreadArtifacts from "./Migrations/071_EnsureThreadArtifacts.ts";
+import Migration0070ShellStopRequestIndexSource from "./Migrations/068_ShellStopRequestIndex.ts";
+
+const Migration0070ShellStopRequestIndex: typeof Migration0068RepairClientSettlementTimestamps =
+  Migration0070ShellStopRequestIndexSource;
+
+const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
   [3, "CheckpointDiffBlobs", Migration0003],
@@ -143,7 +136,6 @@ export const migrationEntries = [
   [52, "ProjectionThreadTitleState", Migration0052],
   [53, "PullRequestFilesViewed", Migration0053],
   [54, "ProjectionThreadsAutoSettleDisabledAt", Migration0054],
-  // Released as 53 and 54 in V2 previews; reconcileV2PreviewMigration preserves their ledger.
   // Preserve this migration's schema. Future V2 schema changes need new migrations.
   [55, "OrchestrationV2", Migration0055],
   [56, "RemoveRedundantProjectionIndexes", Migration0056],
@@ -151,9 +143,18 @@ export const migrationEntries = [
   [58, "WebhookRelayDeliveries", Migration0058],
   [59, "McpAppModelContext", Migration0059],
   [60, "ThreadSnapshotWindowIndexes", Migration0060],
-  [61, "Workflows", Migration0061],
-  [62, "ThreadArtifacts", Migration0062],
-  [64, "EnsureThreadArtifacts", Migration0064],
+  [61, "PullRequestReviewGuides", Migration0061],
+  [62, "ThreadFailureLookupIndex", Migration0062],
+  // Preserve both branches' released migration histories after their shared id 63.
+  [63, "DropUnusedV1Projections", Migration0063DropUnusedV1Projections],
+  [64, "Workflows", Migration0064Workflows],
+  [65, "DropUnusedV1ProjectionsAfterForkWorkflows", Migration0065DropUnusedV1Projections],
+  [66, "CanonicalizeThreadPullRequestLinks", Migration0066CanonicalizeThreadPullRequestLinks],
+  [67, "CodexUsageNativeTurnIndex", Migration0067CodexUsageNativeTurnIndex],
+  [68, "RepairClientSettlementTimestamps", Migration0068RepairClientSettlementTimestamps],
+  [69, "WebhookDedupe", Migration0069WebhookDedupe],
+  [70, "ShellStopRequestIndex", Migration0070ShellStopRequestIndex],
+  [71, "EnsureThreadArtifacts", Migration0071EnsureThreadArtifacts],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -167,33 +168,205 @@ const makeMigrationLoader = (throughId?: number) =>
     ),
   );
 
+const FIRST_V2_MIGRATION_ID = 55;
+
+const isMigrationNameCompatible = (id: number, expected: string, recorded: string | undefined) =>
+  recorded === expected ||
+  (id === 63 && expected === "DropUnusedV1Projections" && recorded === "Workflows");
+
+// Earlier fork builds assigned workflows ids that upstream later used for other tables.
+// Repair only these known collisions before the general migration-history guard runs.
+const reconcileForkWorkflowMigration = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const tables = yield* sql`SELECT name FROM sqlite_master
+    WHERE type = 'table' AND name IN ('effect_sql_migrations', 'workflows', 'workflow_commands')`;
+  if (tables.length !== 3) return;
+  const collisions = yield* sql<{ migration_id: number }>`SELECT migration_id
+    FROM effect_sql_migrations WHERE name = 'Workflows' AND migration_id IN (61, 62)`;
+  if (collisions.length === 0) return;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      for (const row of collisions) {
+        if (row.migration_id === 61) {
+          yield* Migration0061;
+          yield* sql`UPDATE effect_sql_migrations SET name = 'PullRequestReviewGuides'
+          WHERE migration_id = 61 AND name = 'Workflows'`;
+        } else {
+          const indexes = yield* sql`SELECT name FROM sqlite_master WHERE type = 'index'
+          AND name = 'orchestration_v2_projection_turn_items_failed_error_idx'`;
+          if (indexes.length === 0) yield* Migration0062;
+          yield* sql`UPDATE effect_sql_migrations SET name = 'ThreadFailureLookupIndex'
+          WHERE migration_id = 62 AND name = 'Workflows'`;
+        }
+      }
+    }),
+  );
+});
+
+// Local artifact builds recorded 62 and 64 under ids that belong to other migrations. Dropping
+// the 64 row lets the migrator run 64 onward, which is safe because they are all idempotent
+// against those databases, and migration 71 keeps the existing thread_artifacts table.
+const reconcileForkArtifactMigrations = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledger.length === 0) return;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const collisions = yield* sql`SELECT migration_id FROM effect_sql_migrations
+        WHERE migration_id = 62 AND name = 'ThreadArtifacts'`;
+      if (collisions.length > 0) {
+        const indexes = yield* sql`SELECT name FROM sqlite_master WHERE type = 'index'
+          AND name = 'orchestration_v2_projection_turn_items_failed_error_idx'`;
+        if (indexes.length === 0) yield* Migration0062;
+        yield* sql`UPDATE effect_sql_migrations SET name = 'ThreadFailureLookupIndex'
+          WHERE migration_id = 62 AND name = 'ThreadArtifacts'`;
+      }
+      yield* sql`DELETE FROM effect_sql_migrations
+        WHERE migration_id = 64 AND name = 'EnsureThreadArtifacts'`;
+    }),
+  );
+});
+
+// Upstream released migration ids 64-68 after the shared migration 63. The fork
+// uses 64/65 for Workflows and 68 for settlement repair, so a
+// legacy upstream ledger must apply those fork migrations first, then move the
+// upstream rows to 66-70 in one transaction. Applying both before remapping is
+// essential because the migrator skips every id up to the highest recorded id.
+const reconcileUpstreamMigrationIds = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledger.length === 0) return;
+  const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+    SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id IN (64, 65, 66, 67, 68)
+  `;
+  const moves = [
+    [64, 66, "CanonicalizeThreadPullRequestLinks"],
+    [65, 67, "CodexUsageNativeTurnIndex"],
+    [66, 68, "RepairClientSettlementTimestamps"],
+    [67, 69, "WebhookDedupe"],
+    [68, 70, "ShellStopRequestIndex"],
+  ] as const;
+  const pending = moves.flatMap(([from, to, name]) =>
+    rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],
+  );
+  if (pending.length === 0) return;
+  const movingSources = new Set<number>(pending.map(({ from }) => from));
+  const invalidTarget = pending.find(({ to, name }) => {
+    const target = rows.find((row) => row.migration_id === to);
+    return (
+      target !== undefined &&
+      target.name !== name &&
+      !(
+        movingSources.has(to) &&
+        pending.some((move) => move.from === to && move.name === target.name)
+      )
+    );
+  });
+  if (invalidTarget) {
+    return yield* new Migrator.MigrationError({
+      kind: "BadState",
+      message: `Cannot remap upstream migration ${invalidTarget.name} from ${invalidTarget.from}; migration ${invalidTarget.to} is already recorded with a different name.`,
+    });
+  }
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* Migration0064Workflows;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* Migration0065DropUnusedV1Projections;
+      }
+      for (const { from, to, name } of pending.toSorted((a, b) => b.from - a.from)) {
+        if (rows.some((row) => row.migration_id === to && row.name === name)) {
+          yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = ${from} AND name = ${name}`;
+        } else {
+          yield* sql`UPDATE effect_sql_migrations SET migration_id = ${to}
+            WHERE migration_id = ${from} AND name = ${name}`;
+        }
+      }
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (64, 'Workflows')`;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
+          VALUES (65, 'DropUnusedV1ProjectionsAfterForkWorkflows')`;
+      }
+    }),
+  );
+});
+
 /**
- * Migrator run function - no schema dumping needed
- * Uses the base Migrator.make without platform dependencies
+ * Fail before migrating when the migrator would skip one of V2's own
+ * migrations. It skips every id up to the highest recorded one, whatever name
+ * was recorded, so a database that took a V2 id for another migration would
+ * start without V2's schema and fail on first use.
  */
+const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
+  throughId?: number,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const tables = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (tables.length === 0) return;
+  const recorded = yield* sql<{
+    readonly migration_id: number;
+    readonly name: string;
+  }>`SELECT migration_id, name FROM effect_sql_migrations`;
+  const latestRecordedId = Math.max(0, ...recorded.map((row) => row.migration_id));
+  const recordedNames = new Map(recorded.map((row) => [row.migration_id, row.name]));
+  const skipped = migrationEntries.flatMap(([id, name]) => {
+    if (
+      id < FIRST_V2_MIGRATION_ID ||
+      id > latestRecordedId ||
+      (throughId !== undefined && id > throughId)
+    )
+      return [];
+    const recordedName = recordedNames.get(id);
+    if (isMigrationNameCompatible(id, name, recordedName)) return [];
+    return [`${id}_${name} (recorded: ${recordedName ?? "nothing"})`];
+  });
+  if (skipped.length === 0) return;
+  return yield* new Migrator.MigrationError({
+    kind: "BadState",
+    message: `This database's migration history would skip required schema migrations: ${skipped.join(", ")}. The migrator skips every id up to the highest recorded id (${latestRecordedId}), regardless of name. It was probably written by a different build. Start the build that wrote it, or report this migration history so an upgrade path can be added.`,
+  });
+});
+
 const run = Migrator.make({});
 
 export interface RunMigrationsOptions {
   readonly toMigrationInclusive?: number | undefined;
 }
 
-/**
- * Run all pending migrations.
- *
- * Creates the migrations tracking table (effect_sql_migrations) if it doesn't exist,
- * then runs any migrations with ID greater than the latest recorded migration.
- *
- * Returns array of [id, name] tuples for migrations that were run.
- *
- * @returns Effect containing array of executed migrations
- */
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
-  const previewMigrations =
-    toMigrationInclusive === undefined || toMigrationInclusive >= 55
-      ? yield* reconcileV2PreviewMigration()
-      : [];
+  const includesV2 =
+    toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
+  const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
+  if (includesV2) {
+    if (toMigrationInclusive === undefined) {
+      yield* reconcileUpstreamMigrationIds;
+    }
+    yield* reconcileForkWorkflowMigration;
+    yield* reconcileForkArtifactMigrations;
+    yield* assertV2MigrationsCanRun(toMigrationInclusive);
+  }
   const executedMigrations = [
     ...previewMigrations,
     ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
@@ -203,10 +376,6 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     ? Effect.logDebug("Database schema is current")
     : Effect.log("Migrations ran successfully").pipe(Effect.annotateLogs({ migrations }));
 
-  // The migrator keys on migration_id: a database that recorded a different
-  // migration under a shared id (local or fork builds) keeps that id and
-  // silently skips this build's migration at it. Surface the divergence so the
-  // skipped schema change is diagnosable.
   const sql = yield* SqlClient.SqlClient;
   const recorded = yield* sql<{
     readonly migration_id: number;
@@ -218,7 +387,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     if (expected === undefined) {
       return [`${row.migration_id}:${row.name} (unknown to this build)`];
     }
-    return expected === row.name
+    return isMigrationNameCompatible(row.migration_id, expected, row.name)
       ? []
       : [`${row.migration_id}:${row.name} (this build: ${expected})`];
   });

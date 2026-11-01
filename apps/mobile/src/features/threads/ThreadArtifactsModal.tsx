@@ -11,8 +11,8 @@ import * as Option from "effect/Option";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Modal, ScrollView, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppText as Text } from "../../components/AppText";
-import { MaterialButton } from "../../components/MaterialButton";
+import { AppText as Text } from "../../components/ui/AppText";
+import { Button } from "../../components/ui/Button";
 import {
   downloadAndShareAttachment,
   installAndOpenApk,
@@ -192,27 +192,19 @@ function ArtifactFiles(props: {
     >
       <View className="flex-row items-center justify-between border-b border-border px-4 py-2">
         <Text className="text-lg font-semibold text-foreground">Artifacts</Text>
-        <MaterialButton label="Done" tone="text" onPress={props.onClose} />
+        <Button label="Done" tone="text" onPress={props.onClose} />
       </View>
       <ScrollView contentContainerClassName="gap-4 p-4" keyboardShouldPersistTaps="handled">
         <Text className="text-sm text-foreground-muted">
           Files saved with this thread, available on every connected client.
         </Text>
-        <MaterialButton
-          label="Add file"
-          disabled={busy || !canUpload}
-          onPress={() => void upload()}
-        />
+        <Button label="Add file" disabled={busy || !canUpload} onPress={() => void upload()} />
         {busy ? (
           <View className="gap-2">
             <Text accessibilityRole="text" className="text-sm text-foreground-muted">
               {status ?? "Working…"}
             </Text>
-            <MaterialButton
-              label="Cancel transfer"
-              tone="text"
-              onPress={() => transfer.current?.abort()}
-            />
+            <Button label="Cancel transfer" tone="text" onPress={() => transfer.current?.abort()} />
           </View>
         ) : null}
         {error || query.error ? (
@@ -245,7 +237,7 @@ function ArtifactFiles(props: {
                   autoFocus
                 />
                 <View className="flex-row flex-wrap gap-2">
-                  <MaterialButton
+                  <Button
                     label="Save name"
                     disabled={busy || !canRename || !name.trim()}
                     onPress={() =>
@@ -264,27 +256,27 @@ function ArtifactFiles(props: {
                       })
                     }
                   />
-                  <MaterialButton label="Cancel" tone="text" onPress={() => setEditing(null)} />
+                  <Button label="Cancel" tone="text" onPress={() => setEditing(null)} />
                 </View>
               </View>
             ) : (
               <>
                 <View className="flex-row flex-wrap gap-2">
-                  <MaterialButton
+                  <Button
                     label={isApkFile(artifact) ? "Install and open" : "Open"}
                     disabled={busy || !canDownload}
                     onPress={() =>
                       void download(artifact, isApkFile(artifact) ? "install" : "open")
                     }
                   />
-                  <MaterialButton
+                  <Button
                     label="Save or share"
                     disabled={busy || !canDownload}
                     onPress={() => void download(artifact, "share")}
                   />
                 </View>
                 <View className="flex-row flex-wrap gap-2">
-                  <MaterialButton
+                  <Button
                     label="Rename"
                     tone="text"
                     disabled={busy || !canRename}
@@ -293,13 +285,13 @@ function ArtifactFiles(props: {
                       setName(artifact.name);
                     }}
                   />
-                  <MaterialButton
+                  <Button
                     label="Replace"
                     tone="text"
                     disabled={busy || !canUpload}
                     onPress={() => void upload(artifact)}
                   />
-                  <MaterialButton
+                  <Button
                     label="Delete"
                     tone="text"
                     disabled={busy || !canDelete}

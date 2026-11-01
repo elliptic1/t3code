@@ -272,7 +272,7 @@ describe("system dictation", () => {
         assert.equal(yield* menu.stopDictation, platform === "darwin");
         assert.deepEqual(
           sendActionMock.mock.calls,
-          platform === "darwin" ? [["startDictation:"]] : [],
+          platform === "darwin" ? [["startDictation:"], ["stopDictation:"]] : [],
         );
         assert.equal(stopDictationMock.mock.calls.length, platform === "darwin" ? 1 : 0);
       }).pipe(

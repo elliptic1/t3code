@@ -1,6 +1,8 @@
+// Must stay first: the render counter wraps the DevTools hook before any React commit.
+import "./src/features/development/render-counter-entry";
 import { registerRootComponent } from "expo";
 import "react-native-gesture-handler";
-import { LogBox } from "react-native";
+import { AppRegistry, LogBox } from "react-native";
 import { featureFlags } from "react-native-screens";
 
 import App from "./src/App";
@@ -14,3 +16,33 @@ if (process.env.EXPO_PUBLIC_SHOWCASE === "1") {
 }
 
 registerRootComponent(App);
+
+// Wear Data Layer requests can start the phone runtime while the app is backgrounded.
+AppRegistry.registerHeadlessTask("T3WatchRequest", () => async (input) => {
+  const { handleWatchRequest } = await import("./src/rpc/watch-companion");
+  await handleWatchRequest(input);
+});
+
+AppRegistry.registerHeadlessTask("T3ConnectionPresence", () => async () => {
+  const [{ keepPhoneConnectionsAlive }, { retainRunningUsageMonitor }] = await Promise.all([
+    import("./src/rpc/watch-companion"),
+    import("./src/features/usage/runningUsageMonitor"),
+  ]);
+  const release = retainRunningUsageMonitor();
+  try {
+    await keepPhoneConnectionsAlive();
+  } finally {
+    release();
+  }
+});
+
+AppRegistry.registerHeadlessTask("T3RunningUsage", () => async () => {
+  const { keepRunningUsageConnected } = await import("./src/features/usage/runningUsageMonitor");
+  await keepRunningUsageConnected();
+});
+
+AppRegistry.registerHeadlessTask("T3ThreadInputResponse", () => async (input) => {
+  const { handleThreadInputResponse } =
+    await import("./src/features/agent-awareness/threadInputResponse");
+  await handleThreadInputResponse(input);
+});

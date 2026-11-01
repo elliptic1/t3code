@@ -64,6 +64,10 @@ export function createVoiceActionBindings<R, ER>(deps: {
     waitForProject,
     waitForThreadShell,
   } = deps;
+  const syncVoiceHistoryCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
+    label: "voice:sync-history",
+    tag: WS_METHODS.serverSyncVoiceHistory,
+  });
   const createVoiceSessionCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
     label: "voice:create-session",
     tag: WS_METHODS.serverCreateVoiceSession,
@@ -455,5 +459,5 @@ export function createVoiceActionBindings<R, ER>(deps: {
     };
   }
 
-  return { createVoiceActions, createVoiceSessionCommand };
+  return { createVoiceActions, createVoiceSessionCommand, syncVoiceHistoryCommand };
 }

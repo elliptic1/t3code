@@ -1,11 +1,11 @@
 import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import type * as Path from "effect/Path";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 /**
- * Workspace file access requested through the ACP client `fs` capability.
  * The agent gates each write behind `session/request_permission`, so only
  * path containment is checked here.
  */
@@ -17,11 +17,8 @@ function isInsideRoot(path: Path.Path, root: string, candidate: string): boolean
 }
 
 /**
- * Resolves an agent-supplied path and rejects anything outside the session
- * roots. Symlinks resolve before the check, including the final component, so
- * a link inside the workspace cannot read or write through to a file outside
- * it. An entry that exists but cannot be resolved, like a dangling link, is
- * rejected rather than written through.
+ * Symlinks resolve before the check, including the final component, so a link
+ * inside the workspace cannot read or write through to a file outside it.
  */
 const resolveClientFilePath = Effect.fn("AntigravityClientFiles.resolveClientFilePath")(
   function* (input: {
@@ -46,10 +43,24 @@ const resolveClientFilePath = Effect.fn("AntigravityClientFiles.resolveClientFil
             Effect.orElseSucceed(() => true),
           );
           if (entryExists) return yield* outside;
-          const parent = yield* input.fileSystem
-            .realPath(path.dirname(resolved))
-            .pipe(Effect.orElseSucceed(() => path.dirname(resolved)));
-          return path.join(parent, path.basename(resolved));
+          let ancestor = path.dirname(resolved);
+          const missingSegments = [path.basename(resolved)];
+          while (true) {
+            const realAncestor = yield* input.fileSystem.realPath(ancestor).pipe(Effect.option);
+            if (Option.isSome(realAncestor)) {
+              return path.join(realAncestor.value, ...missingSegments);
+            }
+            const ancestorExists = yield* input.fileSystem.readLink(ancestor).pipe(
+              Effect.as(true),
+              Effect.catch(() => input.fileSystem.exists(ancestor)),
+              Effect.orElseSucceed(() => true),
+            );
+            if (ancestorExists) return yield* outside;
+            const parent = path.dirname(ancestor);
+            if (parent === ancestor) return yield* outside;
+            missingSegments.unshift(path.basename(ancestor));
+            ancestor = parent;
+          }
         }),
       ),
     );

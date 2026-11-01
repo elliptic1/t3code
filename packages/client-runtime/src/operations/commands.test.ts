@@ -51,6 +51,7 @@ import {
   reorderActiveThread,
   reorderQueuedRun,
   revertThreadCheckpoint,
+  resumeThreadQueue,
   settleThread,
   startThreadTurn,
   unsettleThread,
@@ -82,6 +83,7 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly advertiseServerResolvedCommandContext?: boolean;
   readonly advertiseComposerParallelTasks?: boolean;
   readonly advertiseModelFallback?: boolean;
+  readonly advertiseThreadStop?: boolean;
 }) {
   const client = {
     [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command: OrchestrationV2Command) =>
@@ -133,6 +135,7 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
             ? {}
             : { composerParallelTasks: true }),
           ...(input.advertiseModelFallback === false ? {} : { modelFallback: true }),
+          ...(input.advertiseThreadStop === true ? { threadStop: true } : {}),
           ...(input.advertiseServerResolvedCommandContext === false
             ? {}
             : { serverResolvedCommandContext: true }),
@@ -306,6 +309,28 @@ describe("V2 environment commands", () => {
           faviconPath: null,
           defaultThreadEnvMode: null,
         },
+      ]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("distinguishes sending a selected queued message from resuming queue order", () =>
+    Effect.gen(function* () {
+      const commands: OrchestrationV2Command[] = [];
+      const supervisor = yield* makeSupervisor({ commands, projects: [] });
+      const threadId = ThreadId.make("thread-1");
+      yield* resumeThreadQueue({
+        commandId: CommandId.make("send-selected"),
+        threadId,
+        runId: RunId.make("selected"),
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+      yield* resumeThreadQueue({
+        commandId: CommandId.make("resume-queue"),
+        threadId,
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+
+      expect(commands).toEqual([
+        { type: "queued-run.start", commandId: "send-selected", threadId, runId: "selected" },
+        { type: "queue.resume", commandId: "resume-queue", threadId },
       ]);
     }).pipe(Effect.provide(layerTestCrypto)),
   );
@@ -808,7 +833,6 @@ describe("V2 environment commands", () => {
             attachments: [{ id: "attachment-kept" }],
           },
         ]);
-        // A text-only edit must not send an attachments replacement list.
         expect(commands[5]).not.toHaveProperty("attachments");
       }).pipe(Effect.provide(layerTestCrypto)),
   );
@@ -1177,6 +1201,34 @@ describe("V2 environment commands", () => {
       }).pipe(Effect.provide(layerTestCrypto)),
   );
 
+  it.effect("stops a thread without relying on background work in the history window", () =>
+    Effect.gen(function* () {
+      const commands: OrchestrationV2Command[] = [];
+      const projectionRequests: ThreadId[] = [];
+      const supervisor = yield* makeSupervisor({
+        commands,
+        projects: [],
+        projectionRequests,
+        advertiseThreadStop: true,
+      });
+
+      const result = yield* interruptThreadTurn({
+        commandId: CommandId.make("stop-outside-history-window"),
+        threadId: v2ThreadId,
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+
+      expect(result).toEqual({ sequence: 1 });
+      expect(projectionRequests).toEqual([]);
+      expect(commands).toEqual([
+        {
+          type: "thread.stop",
+          commandId: "stop-outside-history-window",
+          threadId: v2ThreadId,
+        },
+      ]);
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
   it.effect("interrupts a known run without fetching the full projection", () =>
     Effect.gen(function* () {
       const commands: OrchestrationV2Command[] = [];
@@ -1185,6 +1237,7 @@ describe("V2 environment commands", () => {
         commands,
         projects: [],
         projectionRequests,
+        advertiseThreadStop: true,
       });
 
       yield* interruptThreadTurn({

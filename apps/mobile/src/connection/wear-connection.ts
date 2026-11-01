@@ -4,10 +4,12 @@ import type { ConnectionCatalogDocument } from "@t3tools/client-runtime/platform
 export function connectionForWatch(catalog: ConnectionCatalogDocument) {
   // Environments are newest last, but each environment's routes are preferred first.
   const environmentIds = [...new Set(catalog.targets.map((target) => target.environmentId))];
-  // oxlint-disable-next-line unicorn/no-array-reverse -- Hermes does not support toReversed.
-  const targets = environmentIds.reverse().flatMap((environmentId) =>
-    catalog.targets.filter((target) => target.environmentId === environmentId),
-  );
+  // Hermes does not support toReversed.
+  const targets = environmentIds
+    .reverse()
+    .flatMap((environmentId) =>
+      catalog.targets.filter((target) => target.environmentId === environmentId),
+    );
   for (const target of targets) {
     if (
       target._tag !== "BearerConnectionTarget" ||

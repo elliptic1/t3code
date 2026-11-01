@@ -20,7 +20,7 @@ export const APP_BASE_NAME = injectedDesktopAppBranding?.baseName ?? "T3 Code";
 export const APP_STAGE_LABEL =
   injectedDesktopAppBranding?.stageLabel ??
   HOSTED_APP_CHANNEL_LABEL ??
-  (import.meta.env.DEV ? "Dev" : "Alpha");
+  (import.meta.env.DEV ? "Dev" : "Beta");
 export const APP_DISPLAY_NAME =
   injectedDesktopAppBranding?.displayName ??
   formatAppDisplayName({ baseName: APP_BASE_NAME, stageLabel: APP_STAGE_LABEL });
@@ -38,3 +38,4 @@ export const APP_BUILD_DATE_LABEL = Number.isNaN(appBuildDate.getTime())
     });
 export const APP_BUILD_DATE_TITLE =
   APP_BUILD_DATE_LABEL === null ? undefined : appBuildDate.toString();
+export const DESKTOP_DOWNLOAD_URL = "https://t3.codes/download";

@@ -8,6 +8,7 @@ import { connectNativeVoice } from "./nativeSession";
 const mocks = vi.hoisted(() => ({
   permission: vi.fn(),
   activity: vi.fn(),
+  focus: vi.fn(),
   connect: vi.fn(),
   close: vi.fn(),
   remove: vi.fn(),
@@ -28,7 +29,7 @@ vi.mock("react-native-audio-api", () => ({
     requestRecordingPermissions: mocks.permission,
     setAudioSessionActivity: mocks.activity,
     setAudioSessionOptions: vi.fn(),
-    observeAudioInterruptions: vi.fn(),
+    observeAudioInterruptions: mocks.focus,
     addSystemEventListener: () => ({ remove: mocks.remove }),
   },
 }));
@@ -62,6 +63,7 @@ describe("native audio session ownership", () => {
     expect(mocks.remove).toHaveBeenCalledOnce();
     expect(mocks.backgroundStop).toHaveBeenCalledOnce();
     expect(mocks.awake).not.toHaveBeenCalled();
+    expect(mocks.focus.mock.calls).toEqual([["gain"], [false]]);
     const next = acquireVoiceInputSession();
     expect(next).not.toBeNull();
     releaseVoiceInputSession(next);
@@ -92,6 +94,9 @@ describe("native audio session ownership", () => {
     );
     const session = await connectNativeVoice(input());
     const closing = session.close();
+    // System dictation can take focus while slow native capture teardown finishes,
+    // but another T3 recorder must still wait for the old microphone to close.
+    expect(mocks.focus).toHaveBeenLastCalledWith(false);
     expect(acquireVoiceInputSession()).toBeNull();
     finish();
     await closing;
@@ -165,6 +170,46 @@ it("cancellation during service startup releases it before allowing another sess
   await expect(pending).rejects.toThrow();
   expect(mocks.backgroundStop).toHaveBeenCalledOnce();
   expect(mocks.connect).not.toHaveBeenCalled();
+  const next = acquireVoiceInputSession();
+  expect(next).not.toBeNull();
+  releaseVoiceInputSession(next);
+});
+
+it("yields audio focus on cancellation even while the transport is still connecting", async () => {
+  let finish!: (value: {
+    close: typeof mocks.close;
+    mute: ReturnType<typeof vi.fn>;
+    notify: ReturnType<typeof vi.fn>;
+  }) => void;
+  let connecting!: () => void;
+  const started = new Promise<void>((resolve) => {
+    connecting = resolve;
+  });
+  mocks.connect.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+        connecting();
+      }),
+  );
+  const abort = new AbortController();
+  const pending = connectNativeVoice(input(abort));
+  const rejected = expect(pending).rejects.toThrow();
+  await started;
+  let released!: () => void;
+  const focusReleased = new Promise<void>((resolve) => {
+    released = resolve;
+  });
+  mocks.focus.mockImplementation((value) => {
+    if (value === false) released();
+  });
+  abort.abort();
+  await focusReleased;
+  expect(acquireVoiceInputSession()).toBeNull();
+  finish({ close: mocks.close, mute: vi.fn(), notify: vi.fn() });
+  await rejected;
+  expect(mocks.focus.mock.calls).toEqual([["gain"], [false]]);
+  expect(mocks.backgroundStop).toHaveBeenCalledOnce();
   const next = acquireVoiceInputSession();
   expect(next).not.toBeNull();
   releaseVoiceInputSession(next);

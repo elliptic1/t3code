@@ -13,6 +13,7 @@ export interface VoiceConnection {
 }
 export async function connectVoice(input: {
   connection: VoiceSessionConnection;
+  history?: readonly import("@t3tools/client-runtime/voice-conversation/session").VoiceHistoryLine[];
   signal: AbortSignal;
   execute: (action: VoiceAction) => Promise<unknown>;
   onTranscript: (speaker: "You" | "T3", text: string, id?: string) => void;
@@ -24,7 +25,7 @@ export async function connectVoice(input: {
   let send: (event: unknown) => void = () => {};
   const controller = createVoiceConversationController({ ...input, send: (event) => send(event) });
   const onEvent = controller.onEvent;
-  const session = voiceSessionConfiguration(connection);
+  const session = voiceSessionConfiguration(connection, input.history);
   if (connection.transport === "websocket") {
     const socket = await connectPcmSocket({ connection, signal, onEvent, onError: input.onError });
     send = socket.send;

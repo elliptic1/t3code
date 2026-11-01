@@ -198,10 +198,11 @@ export const make = Effect.gen(function* () {
       Electron.Menu.sendActionToFirstResponder("startDictation:");
       return true;
     }),
-    stopDictation:
-      platform !== "darwin"
-        ? Effect.succeed(false)
-        : Effect.tryPromise(stopMacOsDictation).pipe(Effect.orElseSucceed(() => false)),
+    stopDictation: Effect.sync(() => {
+      if (platform !== "darwin") return false;
+      Electron.Menu.sendActionToFirstResponder("stopDictation:");
+      return true;
+    }),
     setApplicationMenu: (template) =>
       Effect.try({
         try: () => {

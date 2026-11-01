@@ -79,10 +79,11 @@ the dialog.
 ## Track subscription limits
 
 **Usage → Limits** pools every subscription account it can see per provider, so with several Codex
-or Claude accounts across your environments and hubs you read one number per window rather than a
+or Claude accounts across your enabled environments and hubs you read one number per window rather than a
 list. Each window card shows how much of the pool is left and a bar with one segment per account,
-kept in the same column across windows. Accounts are ordered by their 5-hour reset, soonest
-first, or by the first available window when no account reports a 5-hour limit. A gap means the
+kept in the same column across windows. Accounts are ordered by their next 5-hour refill, soonest
+first. For an account with no weekly quota left, this is when its session becomes usable again.
+The first available window is used when no account reports a 5-hour limit. A gap means the
 account does not report that window. When the provider reports reset times, the card also says
 when the next reset lands and how much it hands back. The hatched
 part of a segment is what that reset restores. Tap a segment or account row for the account's plan,
@@ -95,6 +96,12 @@ the bar show each account's quota, countdown, and credits. Tap a row to open its
 The same account signed in on more than one environment, or reported by a hub as well, counts once.
 Filter with the environment dropdown to see what a single machine has.
 
+When a Claude or Codex account has no overall weekly quota left, its pooled session contribution
+shows 0% left. The next refill depends on both reset times: an exhausted session must also reset,
+and a partly spent session may only regain its unused portion when the week resets. Missing or
+stale reset times have no refill estimate; refresh Limits for a new reading. Claude's
+model-specific weekly allowances keep their reported values.
+
 Opening Limits checks the selected connected environments automatically. Each client waits at
 least five minutes between automatic checks of an environment, including after a failed check.
 If a window still looks stale, refresh Limits to re-check every provider and hub.
@@ -106,9 +113,10 @@ anything. The command is offered only for providers that appear under **Usage �
 
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. T3 cannot report limits for external OpenCode servers because their credentials
-belong to the remote server. Limits need an OpenCode Go API key. A Console sign-in alone
-does not report them. Add your Go API key as `OPENCODE_API_KEY` in the OpenCode instance's
-**Environment variables**, then refresh provider status. Cursor reports
+belong to the remote server. Limits need an OpenCode Go API key, or an OpenCode Console connected
+in OpenCode with an API key. A Console browser sign-in alone does not report them. You can also add
+your Go API key as `OPENCODE_API_KEY` in the OpenCode instance's **Environment variables**, then
+refresh provider status. Cursor reports
 its monthly allowance, including separate Auto and API usage, using the CLI login or
 `CURSOR_AUTH_TOKEN`. On macOS, this includes the default Keychain login after you enable Cursor
 usage. Keychain login is used for limits only with Cursor's default API endpoint. If you configure
@@ -153,4 +161,4 @@ Press `Escape` to return to the previous page. Customize these shortcuts in
 
 Enable **Usage reset reminders** in web or desktop **Settings → Providers**, or mobile **Settings → Notifications**, for each environment you want to monitor. T3 sends one phone alert during the final hour of a short Claude or Codex subscription window, showing the percentage used and the allowance remaining, even when the allowance is exhausted. Tap the alert to open Usage.
 
-Your environment must stay running and linked to T3 Connect, and your phone must have **Device Notifications** enabled. Reminders use the provider's reported allowance and reset time; accounts without that information and weekly or monthly windows do not generate reminders.
+Your environment must stay running. To receive alerts through ntfy, save your topic URL in the same settings section and subscribe to it in the ntfy app. Use an unguessable topic name on a public ntfy server. Leaving the topic URL empty uses T3 Connect instead; that path needs an environment linked to T3 Connect and **Device Notifications** enabled on your phone. Reminders use the provider's reported allowance and reset time; accounts without that information and weekly or monthly windows do not generate reminders.

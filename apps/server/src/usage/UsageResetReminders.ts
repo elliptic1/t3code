@@ -1,5 +1,6 @@
 import type { ServerProvider } from "@t3tools/contracts";
 import type { RelayUsageResetReminder } from "@t3tools/contracts/relay";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -58,6 +59,49 @@ export function dueUsageResetReminders(providers: readonly ServerProvider[], now
   });
 }
 
+export class UsageResetNotificationError extends Schema.TaggedError<UsageResetNotificationError>()(
+  "UsageResetNotificationError",
+  { cause: Schema.Defect() },
+) {}
+
+export const publishNtfyUsageResetReminder = Effect.fn("usage.publishNtfyResetReminder")(function* (
+  topicUrl: string,
+  reminder: RelayUsageResetReminder,
+  nowMs: number,
+) {
+  const url = yield* Effect.try({
+    try: () => {
+      const url = new URL(topicUrl);
+      if (
+        !["https:", "http:"].includes(url.protocol) ||
+        url.pathname === "/" ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      ) {
+        throw new Error("Enter an HTTP or HTTPS ntfy topic URL.");
+      }
+      return url;
+    },
+    catch: (cause) => new UsageResetNotificationError({ cause }),
+  });
+  const client = yield* HttpClient.HttpClient;
+  const used = Math.round((100 - reminder.remainingPercent) * 10) / 10;
+  const remaining = Math.round(reminder.remainingPercent * 10) / 10;
+  const minutes = Math.ceil((Date.parse(reminder.resetsAt) - nowMs) / 60_000);
+  yield* client
+    .execute(
+      HttpClientRequest.post(url.toString()).pipe(
+        HttpClientRequest.setHeaders({ Title: "T3 Code allowance resets soon", Tags: "hourglass" }),
+        HttpClientRequest.bodyText(
+          `${reminder.providerLabel}: ${used}% used, ${remaining}% remaining. Resets in ${minutes} minutes (${reminder.resetsAt}).`,
+        ),
+      ),
+    )
+    .pipe(Effect.flatMap(HttpClientResponse.filterStatusOk));
+});
+
 const Ledger = Schema.Record(Schema.String, Schema.Number);
 const decodeLedger = Schema.decodeUnknownEffect(Schema.fromJsonString(Ledger));
 const encodeIdentity = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
@@ -86,13 +130,15 @@ const make = Effect.gen(function* () {
       .get(name)
       .pipe(Effect.map((value) => Option.map(value, (bytes) => new TextDecoder().decode(bytes))));
   const sweep = Effect.gen(function* () {
-    if (!(yield* settings.getSettings).usageResetRemindersEnabled) return;
+    const currentSettings = yield* settings.getSettings;
+    if (!currentSettings.usageResetRemindersEnabled) return;
+    const ntfyUrl = currentSettings.usageResetReminderNtfyUrl;
     const nowMs = (yield* DateTime.now).epochMilliseconds;
     if (nowMs < nextSweepAt) return;
     nextSweepAt = nowMs + 60_000;
     const url = yield* readSecret(RELAY_URL_SECRET);
     const credential = yield* readSecret(RELAY_ENVIRONMENT_CREDENTIAL_SECRET);
-    if (Option.isNone(url) || Option.isNone(credential)) return;
+    if (!ntfyUrl && (Option.isNone(url) || Option.isNone(credential))) return;
     const snapshot = yield* providers.getProviders;
     // Opting in keeps quota fresh even when no client is connected. Refresh
     // only instances that report short windows, plus Claude/Codex at startup.
@@ -117,25 +163,37 @@ const make = Effect.gen(function* () {
     const currentLedger = Object.fromEntries(
       Object.entries(ledger).filter(([, resetMs]) => resetMs > now),
     );
-    const client = yield* makeRelayEnvironmentClient({
-      url: url.value,
-      environmentCredential: credential.value,
-    });
+    const client =
+      !ntfyUrl && Option.isSome(url) && Option.isSome(credential)
+        ? yield* makeRelayEnvironmentClient({
+            url: url.value,
+            environmentCredential: credential.value,
+          })
+        : null;
     const environmentId = yield* environment.getEnvironmentId;
     for (const reminder of due) {
       const identity = encodeIdentity([
+        ...(ntfyUrl ? ["ntfy", ntfyUrl] : []),
         reminder.providerInstanceId,
         reminder.windowId,
         reminder.resetsAt,
       ]);
       if (currentLedger[identity] !== undefined) continue;
-      const response = yield* client.server
-        .publishUsageResetReminder({
-          params: { environmentId },
-          payload: reminder,
-        })
-        .pipe(Effect.timeout("15 seconds"));
-      if (!response.delivered) continue;
+      const delivered = ntfyUrl
+        ? yield* publishNtfyUsageResetReminder(ntfyUrl, reminder, now).pipe(
+            Effect.provide(FetchHttpClient.layer),
+            Effect.timeout("15 seconds"),
+            Effect.as(true),
+          )
+        : client !== null
+          ? (yield* client.server
+              .publishUsageResetReminder({
+                params: { environmentId },
+                payload: reminder,
+              })
+              .pipe(Effect.timeout("15 seconds"))).delivered
+          : false;
+      if (!delivered) continue;
       currentLedger[identity] = Date.parse(reminder.resetsAt);
       yield* fs.makeDirectory(config.stateDir, { recursive: true });
       const temporary = `${ledgerPath}.tmp`;

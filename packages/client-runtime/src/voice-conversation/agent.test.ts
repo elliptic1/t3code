@@ -12,6 +12,7 @@ function harness(options: {
   existingThread?: boolean;
   utterances: string[];
   instructions?: string;
+  history?: readonly { speaker: string; text: string }[];
 }) {
   const abort = new AbortController();
   const messages: Array<{ role: string; text: string }> = [];
@@ -53,6 +54,7 @@ function harness(options: {
   const errors: string[] = [];
   const controller = startVoiceAgentConversation({
     signal: abort.signal,
+    ...(options.history ? { history: options.history } : {}),
     execute,
     pollMs: 1,
     preferredProjectId: () => "focused",
@@ -82,6 +84,16 @@ function harness(options: {
 }
 
 describe("voice agent conversation", () => {
+  it("continues the shared realtime conversation when switching to the agent engine", async () => {
+    const run = harness({
+      utterances: ["Continue"],
+      history: [{ speaker: "You", text: "Our release is Bluebird" }],
+    });
+    await run.finished;
+    const sent = run.actions.find((action) => action.action === "send_message");
+    expect(sent?.action === "send_message" && sent.message).toContain("Our release is Bluebird");
+    expect(run.errors).toEqual([]);
+  });
   it("loads saved preferences when restarting an existing voice thread", async () => {
     const run = harness({
       existingThread: true,

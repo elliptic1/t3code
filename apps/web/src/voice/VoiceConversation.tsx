@@ -2,9 +2,18 @@ import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { startVoiceAgentConversation } from "@t3tools/client-runtime/voice-conversation/agent";
-import { updateVoiceTranscript } from "@t3tools/client-runtime/voice-conversation/session";
+import {
+  createVoiceHistorySync,
+  updateVoiceTranscript,
+} from "@t3tools/client-runtime/voice-conversation/session";
 import { randomUUID } from "../lib/utils";
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Mic, MicOff, PhoneOff, Settings } from "lucide-react";
 import { readThreadShell, useActiveEnvironmentId, useThreadShells } from "../state/entities";
@@ -13,7 +22,12 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "../components/ui/button";
 import { T3Wordmark } from "../components/T3Wordmark";
 import { useEnvironmentSettings } from "../hooks/useSettings";
-import { createVoiceActions, createVoiceSessionCommand, voiceResult } from "./actions";
+import {
+  createVoiceActions,
+  createVoiceSessionCommand,
+  syncVoiceHistoryCommand,
+  voiceResult,
+} from "./actions";
 import { createBrowserSpeech } from "./browserSpeech";
 import { connectVoice, type VoiceConnection } from "./connection";
 
@@ -57,6 +71,16 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
   const [muted, setMuted] = useState(false);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
+  const syncHistory = useAtomCommand(syncVoiceHistoryCommand, { reportFailure: false });
+  const [historySync] = useState(() =>
+    createVoiceHistorySync(
+      async (lines, reset) =>
+        voiceResult(
+          await syncHistory({ environmentId, input: { lines, ...(reset ? { reset: true } : {}) } }),
+        ),
+      () => setError("Voice history could not be saved. End the conversation to retry."),
+    ),
+  );
   const [transcript, setTranscript] = useState<
     Array<{ id: string; speaker: string; text: string }>
   >([]);
@@ -98,13 +122,17 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     const clamped = clampBubble(bubblePosition.left, bubblePosition.top);
     if (clamped.left !== bubblePosition.left || clamped.top !== bubblePosition.top)
       setBubblePosition(clamped);
-    const handleResize = () => setBubblePosition((current) => current ? clampBubble(current.left, current.top) : null);
+    const handleResize = () =>
+      setBubblePosition((current) => (current ? clampBubble(current.left, current.top) : null));
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [bubblePosition, clampBubble]);
-  useEffect(() => () => {
-    if (flingFrameRef.current !== null) cancelAnimationFrame(flingFrameRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (flingFrameRef.current !== null) cancelAnimationFrame(flingFrameRef.current);
+    },
+    [],
+  );
   const finishBubbleDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
@@ -182,15 +210,25 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     setRunning(false);
     setConnected(false);
     setMuted(false);
-    setStatus("Ended");
+    setStatus("Saving conversation");
+    void historySync.flush().then(
+      () => setStatus("Ended"),
+      () => {
+        setStatus("History not saved");
+        setError(
+          "Voice history could not be saved. Check your connection before switching devices.",
+        );
+      },
+    );
   };
   useEffect(
     () => () => {
       session.current?.abort.abort();
       session.current?.connection?.close();
       session.current = null;
+      void historySync.flush().catch(() => {});
     },
-    [],
+    [historySync],
   );
   useEffect(() => {
     const next = new Map<string, string>();
@@ -227,7 +265,7 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     setOpen(true);
     setRunning(true);
     setError(null);
-    setTranscript([]);
+    const transcriptSessionId = randomUUID();
     setStatus("Connecting");
     const timeout = setTimeout(() => {
       if (session.current === owner) {
@@ -250,10 +288,14 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
         () => focusedThread.current,
       ),
       onTranscript: (speaker: "You" | "T3", text: string, id?: string) => {
-        if (session.current === owner)
-          setTranscript((lines) =>
-            updateVoiceTranscript(lines, { id: id ?? randomUUID(), speaker, text }, 40),
-          );
+        if (session.current !== owner) return;
+        const line = {
+          id: `${transcriptSessionId}:${id ?? randomUUID()}`,
+          speaker,
+          text: text.slice(-16000),
+        };
+        historySync.record(line);
+        setTranscript((lines) => updateVoiceTranscript(lines, line, 40));
       },
       onStatus: (value: string) => {
         if (session.current === owner) setStatus(value);
@@ -266,11 +308,15 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
       },
     };
     try {
+      const history = await historySync.load();
+      owner.abort.signal.throwIfAborted();
+      setTranscript([...history]);
       if (mode === "agent") {
         owner.connection = {
           close: () => {},
           ...startVoiceAgentConversation({
             ...conversation,
+            history,
             speech: createBrowserSpeech(),
             preferredProjectId: () => shell(focusedThread.current)?.projectId ?? null,
             threadState: (threadId) => {
@@ -288,7 +334,11 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
       } else {
         const result = await createSession({ environmentId, input: {} });
         owner.abort.signal.throwIfAborted();
-        owner.connection = await connectVoice({ ...conversation, connection: voiceResult(result) });
+        owner.connection = await connectVoice({
+          ...conversation,
+          history,
+          connection: voiceResult(result),
+        });
       }
       if (owner.abort.signal.aborted) owner.connection.close();
       else setConnected(true);
@@ -387,6 +437,23 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
                 Start conversation
               </Button>
             )}
+            {!running && transcript.length ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  void historySync.reset().then(
+                    () => setTranscript([]),
+                    () =>
+                      setError(
+                        "Could not clear voice history. Check your connection and try again.",
+                      ),
+                  );
+                }}
+              >
+                Start fresh
+              </Button>
+            ) : null}
             {!running ? (
               <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
                 Close
@@ -397,7 +464,7 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
       ) : null}
       <button
         type="button"
-        className="flex size-12 touch-none items-center justify-center rounded-full border border-border bg-popover text-popover-foreground shadow-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="flex size-12 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground shadow-lg hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
         aria-expanded={open}
         aria-label={running ? "Show voice conversation" : "Talk to T3"}
         onPointerDown={(event) => {

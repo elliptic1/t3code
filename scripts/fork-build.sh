@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the private fork as its own macOS app, "T3 Code (Fork)", with a
+# Builds the fork as its own macOS app, "T3 Code (Fork)", with a
 # separate bundle id, Electron profile and T3 home (~/.t3-fork) so it never
 # shares state with an upstream install.
 #
@@ -27,6 +27,9 @@ swap() { # file, exact text, replacement
     const fs = require("node:fs");
     const { FILE, FROM, TO } = process.env;
     const source = fs.readFileSync(FILE, "utf8");
+    if (!source.includes(FROM) && source.split(TO).length === 2) {
+      process.exit(0);
+    }
     if (source.split(FROM).length !== 2) {
       console.error(`fork-build: expected exactly one "${FROM}" in ${FILE}`);
       process.exit(1);
@@ -41,8 +44,8 @@ swap apps/desktop/package.json '"productName": "T3 Code (Alpha)"' '"productName"
 swap scripts/build-desktop-artifact.ts 'const DESKTOP_APP_ID = "com.t3tools.t3code";' 'const DESKTOP_APP_ID = "com.t3tools.t3code.fork";'
 swap scripts/build-desktop-artifact.ts '? "T3 Code (Nightly)"' '? "T3 Code (Fork Nightly)"'
 
-# Keep the installed fork's nightly branding and prevent upstream updates
-# from replacing its custom features.
+# Follow the newest nightly source merged into this fork, with its blue branding.
+# No upstream update feed may replace the custom features in this build.
 NIGHTLY_TAG="$(git describe --tags --match 'v*-nightly.*' --abbrev=0)"
 BASE_VERSION="${NIGHTLY_TAG#v}"
 BASE_VERSION="${BASE_VERSION%%-nightly.*}"

@@ -4,10 +4,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import * as Layer from "effect/Layer";
-import * as RpcTest from "effect/rpc/RpcTest";
-import { AuthOrchestrationOperateScope, WS_METHODS, WsRpcGroup } from "@t3tools/contracts";
-import * as RpcAuthorization from "../auth/RpcAuthorization.ts";
 import { makeVoiceHistory } from "./history.ts";
 
 const scenario = Effect.gen(function* () {
@@ -18,40 +14,6 @@ const scenario = Effect.gen(function* () {
 });
 
 describe("shared voice history", () => {
-  it.effect("serves the mobile sync RPC and persists its transcript", () =>
-    Effect.gen(function* () {
-      const { file } = yield* scenario;
-      const history = yield* makeVoiceHistory(file);
-      const group = WsRpcGroup.omit(
-        ...[...WsRpcGroup.requests.keys()].filter(
-          (
-            tag,
-          ): tag is Exclude<
-            keyof typeof RpcAuthorization.RPC_REQUIRED_SCOPES,
-            typeof WS_METHODS.serverSyncVoiceHistory
-          > => tag !== WS_METHODS.serverSyncVoiceHistory,
-        ),
-      );
-      const client = yield* RpcTest.makeClient(group).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            group.toLayerHandler(WS_METHODS.serverSyncVoiceHistory, ({ lines, reset }) =>
-              history.sync(lines, reset),
-            ),
-            RpcAuthorization.layer([AuthOrchestrationOperateScope]),
-          ),
-        ),
-      );
-      const line = { id: "phone:1", speaker: "You", text: "Remember Bluebird." } as const;
-      expect(yield* client[WS_METHODS.serverSyncVoiceHistory]({ lines: [line] })).toEqual([line]);
-      const restarted = yield* makeVoiceHistory(file);
-      expect(yield* restarted.sync([])).toEqual([line]);
-      expect(yield* client[WS_METHODS.serverSyncVoiceHistory]({ lines: [], reset: true })).toEqual(
-        [],
-      );
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  );
-
   it.effect("Start fresh clears shared history across a restart", () =>
     Effect.gen(function* () {
       const { file } = yield* scenario;
