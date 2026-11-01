@@ -2,6 +2,8 @@ package com.t3tools.t3code.wear
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -9,11 +11,9 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.time.Instant
-import java.time.temporal.ChronoUnit
 import java.util.UUID
 
-class SessionExpired : Exception("Session expired, pair again")
+class SessionExpired : Exception("Connection expired")
 
 data class TurnSettings(
     val modelSelection: JSONObject?,
@@ -30,7 +30,23 @@ data class ThreadDetail(
     val earlierCursor: String?,
 )
 
-class T3Api(private val baseUrl: String, private val token: String?) {
+/** Mirrors the server's VoiceSessionConnection: everything a client needs to stream audio. */
+data class VoiceConnection(
+    val instructions: String,
+    val protocol: String,
+    val transport: String,
+    val endpoint: String,
+    val transcriptionModel: String,
+    val model: String,
+    val voice: String,
+    val clientSecret: String,
+)
+
+class T3Api(
+    private val baseUrl: String,
+    private val token: String?,
+    private val rpcClient: OkHttpClient = watchRpcClient,
+) {
 
     private fun JSONObject.str(key: String): String? =
         if (isNull(key)) null else optString(key)
@@ -47,6 +63,9 @@ class T3Api(private val baseUrl: String, private val token: String?) {
             conn.requestMethod = method
             conn.connectTimeout = 15000
             conn.readTimeout = 15000
+            if (path.startsWith("/api/orchestration/")) {
+                conn.setRequestProperty("x-t3-orchestration-protocol", "2")
+            }
             if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
             if (contentType != null) conn.setRequestProperty("Content-Type", contentType)
             if (body != null) {
@@ -108,7 +127,8 @@ class T3Api(private val baseUrl: String, private val token: String?) {
 
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
-    suspend fun threads(): List<ThreadRow> {
+    // Decode and sort on a worker too; callers resume on the UI thread after call().
+    suspend fun threads(): List<ThreadRow> = withContext(Dispatchers.IO) {
         val text = call("GET", "/api/orchestration/shell")
         val root = JSONObject(text)
         val projects = mutableMapOf<String, String>()
@@ -123,14 +143,7 @@ class T3Api(private val baseUrl: String, private val token: String?) {
             for (i in 0 until arr.length()) {
                 val t = arr.getJSONObject(i)
                 if (t.has("archivedAt") && !t.isNull("archivedAt")) continue
-                val session = t.optJSONObject("session")
-                val latestTurn = t.optJSONObject("latestTurn")
-                val status = threadStatus(
-                    latestTurn?.str("state"),
-                    session?.str("status"),
-                    session?.str("activeTurnId"),
-                    t.optBoolean("hasPendingApprovals") || t.optBoolean("hasPendingUserInput"),
-                )
+                val status = shellThreadStatus(t)
                 rows.add(
                     ThreadRow(
                         id = t.optString("id"),
@@ -138,97 +151,54 @@ class T3Api(private val baseUrl: String, private val token: String?) {
                         project = projects[t.optString("projectId")] ?: "",
                         status = status,
                         lastActivityAt = t.str("updatedAt") ?: "",
+                        // Servers that predate settling omit the field.
+                        settled = t.str("settledOverride") == "settled",
                     )
                 )
             }
         }
-        return sortRows(rows)
+        sortRows(rows)
     }
 
-    suspend fun thread(id: String, beforeCursor: String? = null): ThreadDetail {
+    suspend fun thread(id: String, beforeCursor: String? = null): ThreadDetail = withContext(Dispatchers.IO) {
         val encId = enc(id)
-        var path = "/api/orchestration/threads/$encId?turnLimit=20"
-        if (beforeCursor != null) path += "&beforeCursor=${enc(beforeCursor)}"
-        val text = call("GET", path)
-        val root = JSONObject(text)
-        val thread = root.getJSONObject("thread")
-
-        val messages = mutableListOf<ChatMessage>()
-        thread.optJSONArray("messages")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val m = arr.getJSONObject(i)
-                messages.add(
-                    ChatMessage(
-                        id = m.optString("id"),
-                        fromUser = m.optString("role") == "user",
-                        text = m.optString("text"),
-                        createdAt = m.str("createdAt") ?: "",
-                    )
-                )
-            }
+        val snapshot = JSONObject(call("GET", "/api/orchestration/threads/$encId/bounded"))
+        val history = beforeCursor?.let {
+            JSONObject(call("GET", "/api/orchestration/threads/$encId/history?cursor=${enc(it)}&view=conversation"))
         }
-        val activities = mutableListOf<Activity>()
-        thread.optJSONArray("activities")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val a = arr.getJSONObject(i)
-                activities.add(
-                    Activity(
-                        id = a.optString("id"),
-                        summary = a.optString("summary"),
-                        createdAt = a.str("createdAt") ?: "",
-                    )
-                )
-            }
-        }
-
-        val session = thread.optJSONObject("session")
-        val latestTurn = thread.optJSONObject("latestTurn")
-        val hasPending = thread.optBoolean("hasPendingApprovals") || thread.optBoolean("hasPendingUserInput")
-        val status = threadStatus(
-            latestTurn?.str("state"),
-            session?.str("status"),
-            session?.str("activeTurnId"),
-            hasPending,
-        )
-
-        val settings = TurnSettings(
-            modelSelection = thread.optJSONObject("modelSelection"),
-            runtimeMode = thread.str("runtimeMode") ?: "full-access",
-            interactionMode = thread.str("interactionMode") ?: "default",
-        )
-
-        val page = root.optJSONObject("page")
-        val earlierCursor = if (page != null && page.optBoolean("hasMore")) page.str("beforeCursor") else null
-
-        return ThreadDetail(
-            title = thread.optString("title"),
-            messages = messages,
-            activities = activities,
-            status = status,
-            settings = settings,
-            earlierCursor = earlierCursor,
-        )
+        parseThreadSnapshot(snapshot, history)
     }
 
     suspend fun send(threadId: String, text: String, settings: TurnSettings) {
         val commandId = UUID.randomUUID().toString()
         val messageId = UUID.randomUUID().toString()
-        val now = Instant.now().truncatedTo(ChronoUnit.MILLIS).toString()
         val payload = JSONObject()
-            .put("type", "thread.turn.start")
+            .put("type", "message.dispatch")
             .put("commandId", commandId)
+            .put("createdBy", "user")
+            .put("creationSource", "mobile")
             .put("threadId", threadId)
-            .put(
-                "message", JSONObject()
-                    .put("messageId", messageId)
-                    .put("role", "user")
-                    .put("text", text)
-                    .put("attachments", JSONObject.NULL)
-            )
-            .put("runtimeMode", settings.runtimeMode)
-            .put("interactionMode", settings.interactionMode)
-            .put("createdAt", now)
+            .put("messageId", messageId)
+            .put("text", text)
+            .put("attachments", JSONArray())
+            .put("deliveryIntent", "auto")
+            .put("dispatchMode", JSONObject().put("type", "start_immediately"))
         if (settings.modelSelection != null) payload.put("modelSelection", settings.modelSelection)
-        call("POST", "/api/orchestration/dispatch", payload.toString(), "application/json")
+        dispatchWatchCommand(rpcClient, baseUrl, token, payload)
+    }
+
+    /** Ask the server for a live voice-session connection, then stream audio against it. */
+    suspend fun createVoiceSession(): VoiceConnection = withContext(Dispatchers.IO) {
+        val j = JSONObject(call("POST", "/api/orchestration/voice-session"))
+        VoiceConnection(
+            instructions = j.optString("instructions"),
+            protocol = j.optString("protocol"),
+            transport = j.optString("transport"),
+            endpoint = j.optString("endpoint"),
+            transcriptionModel = j.optString("transcriptionModel"),
+            model = j.optString("model"),
+            voice = j.optString("voice"),
+            clientSecret = j.optString("clientSecret"),
+        )
     }
 }

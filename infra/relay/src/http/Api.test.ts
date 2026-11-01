@@ -66,6 +66,7 @@ import * as HookInbox from "../hooks/HookInbox.ts";
 import * as EnvironmentLinks from "../environments/EnvironmentLinks.ts";
 import * as ManagedEndpointAllocations from "../environments/ManagedEndpointAllocations.ts";
 import * as ManagedEndpointProvider from "../environments/ManagedEndpointProvider.ts";
+import * as UsageResetReminderPublisher from "../agentActivity/UsageResetReminderPublisher.ts";
 import * as AgentActivityPublisher from "../agentActivity/AgentActivityPublisher.ts";
 import * as EnvironmentPublishSignatures from "../environments/EnvironmentPublishSignatures.ts";
 
@@ -1271,6 +1272,7 @@ describe("relay routing fallback", () => {
           EnvironmentPublishSignatures.EnvironmentPublishSignatures["Service"]["verify"]
         >[0]
       > = [];
+      const reminderPublications: Array<string> = [];
       const layerPublisher = Layer.succeed(AgentActivityPublisher.AgentActivityPublisher, {
         publish: (input) =>
           Effect.sync(() => {
@@ -1310,7 +1312,18 @@ describe("relay routing fallback", () => {
                 Layer.mock(ManagedEndpointProvider.ManagedEndpointProvider, {}),
               ),
             ),
-            Layer.provide([layerPublisher, layerSignatures, Layer.mock(HeldHooks.HeldHooks, {})]),
+            Layer.provide([
+              layerPublisher,
+              layerSignatures,
+              Layer.mock(HeldHooks.HeldHooks, {}),
+              Layer.mock(UsageResetReminderPublisher.UsageResetReminderPublisher, {
+                publish: (input) =>
+                  Effect.sync(() => {
+                    reminderPublications.push(input.environmentId);
+                    return { delivered: true };
+                  }),
+              }),
+            ]),
           ),
         ),
         Layer.provide(layerAuth),
@@ -1352,6 +1365,21 @@ describe("relay routing fallback", () => {
         })),
       );
       expect(verified.map((input) => input.threadId)).toEqual(threadIds);
+      for (const destination of [environmentId, "another-environment"]) {
+        const response = yield* sendRelayRequest(
+          httpEffect,
+          new Request(`https://relay.test/v1/environments/${destination}/usage-reset-reminder`, {
+            method: "POST",
+            headers: {
+              authorization: "Bearer environment-credential",
+              "content-type": "application/json",
+            },
+            body: '{"providerInstanceId":"claude","providerLabel":"Claude","windowId":"five_hour","remainingPercent":50,"resetsAt":"1970-01-01T01:00:00.000Z"}',
+          }),
+        );
+        expect(response.status).toBe(destination === environmentId ? 200 : 401);
+      }
+      expect(reminderPublications).toEqual([environmentId]);
     }).pipe(Effect.scoped),
   );
 

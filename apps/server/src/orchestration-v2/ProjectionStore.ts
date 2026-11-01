@@ -165,8 +165,9 @@ export type ProjectionLimitRecoveryCandidate = Pick<
   | "latestRunCompletedAt"
   | "updatedAt"
   | "limitRecovery"
+  | "modelFallback"
   | "snoozedUntil"
->;
+> & { readonly modelFallbackRunIds?: ReadonlyArray<RunId> };
 
 /** The thread fields pull request sync reads, for a thread with at least one link. */
 export type ProjectionThreadPullRequests = Pick<
@@ -1466,6 +1467,9 @@ export function threadShellFromProjection(
     title: projection.thread.title,
     providerInstanceId: projection.thread.providerInstanceId,
     modelSelection: projection.thread.modelSelection,
+    ...(projection.thread.modelFallback === undefined
+      ? {}
+      : { modelFallback: projection.thread.modelFallback }),
     runtimeMode: projection.thread.runtimeMode,
     interactionMode: projection.thread.interactionMode,
     branch: projection.thread.branch,
@@ -1734,6 +1738,9 @@ function shellFromState(input: {
     title: input.state.thread.title,
     providerInstanceId: input.state.thread.providerInstanceId,
     modelSelection: input.state.thread.modelSelection,
+    ...(input.state.thread.modelFallback === undefined
+      ? {}
+      : { modelFallback: input.state.thread.modelFallback }),
     runtimeMode: input.state.thread.runtimeMode,
     interactionMode: input.state.thread.interactionMode,
     branch: input.state.thread.branch,
@@ -3474,9 +3481,27 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           readonly completed_at: string | null;
           readonly failure_payload_json: string;
           readonly last_error: string | null;
+          readonly preferred_run_id: string | null;
+          readonly fallback_run_id: string | null;
         }>`
           SELECT t.payload_json, r.run_id, r.completed_at,
             item.payload_json AS failure_payload_json,
+            CASE WHEN json_extract(t.payload_json, '$.modelFallback') IS NOT NULL THEN (
+              SELECT account_run.run_id FROM orchestration_v2_projection_runs account_run
+              WHERE account_run.thread_id = t.thread_id
+                AND account_run.provider_instance_id = json_extract(t.payload_json, '$.modelFallback.preferred.instanceId')
+                AND account_run.status IN ('completed', 'failed')
+              ORDER BY account_run.completed_at DESC, account_run.ordinal DESC, account_run.run_id DESC
+              LIMIT 1
+            ) END AS preferred_run_id,
+            CASE WHEN json_extract(t.payload_json, '$.modelFallback') IS NOT NULL THEN (
+              SELECT account_run.run_id FROM orchestration_v2_projection_runs account_run
+              WHERE account_run.thread_id = t.thread_id
+                AND account_run.provider_instance_id = json_extract(t.payload_json, '$.modelFallback.fallback.instanceId')
+                AND account_run.status IN ('completed', 'failed')
+              ORDER BY account_run.completed_at DESC, account_run.ordinal DESC, account_run.run_id DESC
+              LIMIT 1
+            ) END AS fallback_run_id,
             (
               SELECT json_extract(session.payload_json, '$.lastError')
               -- Keep bindings outermost: one provider instance can hold every session.
@@ -3514,27 +3539,41 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             AND json_extract(t.payload_json, '$.archivedAt') IS NULL
             AND json_extract(t.payload_json, '$.settledOverride') IS NOT 'settled'
             AND json_extract(item.payload_json, '$.failure.class') = 'usage_limit'
-            AND json_extract(item.payload_json, '$.failure.resetAt') IS NOT NULL
-            AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(COALESCE(r.completed_at, json_extract(t.payload_json, '$.updatedAt')))
             AND (
               (
-                json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
-                AND json_extract(t.payload_json, '$.limitRecovery.resetAt') IS json_extract(item.payload_json, '$.failure.resetAt')
-                AND json_extract(t.payload_json, '$.limitRecovery.autoResume') = 1
-                AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) <= julianday(${DateTime.formatIso(options.now)})
-                AND (
-                  json_extract(t.payload_json, '$.snoozedUntil') IS NULL
-                  OR julianday(json_extract(t.payload_json, '$.snoozedUntil')) <= julianday(${DateTime.formatIso(options.now)})
+                json_extract(t.payload_json, '$.modelFallback') IS NOT NULL
+                AND (json_extract(t.payload_json, '$.snoozedUntil') IS NULL
+                  OR julianday(json_extract(t.payload_json, '$.snoozedUntil')) <= julianday(${DateTime.formatIso(options.now)}))
+                AND NOT EXISTS (
+                  SELECT 1 FROM orchestration_v2_projection_turn_items stopped
+                  WHERE stopped.thread_id = t.thread_id AND stopped.run_id = r.run_id
+                    AND stopped.type = 'run_interrupt_request'
                 )
-              )
-              OR (
-                (
-                  json_extract(t.payload_json, '$.limitRecovery.runId') IS NOT r.run_id
-                  OR json_extract(t.payload_json, '$.limitRecovery.resetAt') IS NOT json_extract(item.payload_json, '$.failure.resetAt')
-                )
+              ) OR (
+                json_extract(t.payload_json, '$.modelFallback') IS NULL
+                AND json_extract(item.payload_json, '$.failure.resetAt') IS NOT NULL
+                AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(COALESCE(r.completed_at, json_extract(t.payload_json, '$.updatedAt')))
                 AND (
-                  ${booleanInt(options.autoResume)}
-                  OR (${booleanInt(options.snooze)} AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(${DateTime.formatIso(options.now)}))
+                  (
+                    json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
+                    AND json_extract(t.payload_json, '$.limitRecovery.resetAt') IS json_extract(item.payload_json, '$.failure.resetAt')
+                    AND json_extract(t.payload_json, '$.limitRecovery.autoResume') = 1
+                    AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) <= julianday(${DateTime.formatIso(options.now)})
+                    AND (
+                      json_extract(t.payload_json, '$.snoozedUntil') IS NULL
+                      OR julianday(json_extract(t.payload_json, '$.snoozedUntil')) <= julianday(${DateTime.formatIso(options.now)})
+                    )
+                  )
+                  OR (
+                    (
+                      json_extract(t.payload_json, '$.limitRecovery.runId') IS NOT r.run_id
+                      OR json_extract(t.payload_json, '$.limitRecovery.resetAt') IS NOT json_extract(item.payload_json, '$.failure.resetAt')
+                    )
+                    AND (
+                      ${booleanInt(options.autoResume)}
+                      OR (${booleanInt(options.snooze)} AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(${DateTime.formatIso(options.now)}))
+                    )
+                  )
                 )
               )
             )
@@ -3566,6 +3605,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             settledOverride: thread.settledOverride,
             pendingRuntimeRequest: null,
             limitRecovery: thread.limitRecovery ?? null,
+            ...(thread.modelFallback === undefined ? {} : { modelFallback: thread.modelFallback }),
+            ...(thread.modelFallback
+              ? {
+                  modelFallbackRunIds: Array.from(
+                    new Set(
+                      [row.run_id, row.preferred_run_id, row.fallback_run_id].filter(
+                        (id): id is string => id !== null,
+                      ),
+                    ),
+                  ).map((id) => RunId.make(id)),
+                }
+              : {}),
             snoozedUntil: thread.snoozedUntil ?? null,
           });
         }

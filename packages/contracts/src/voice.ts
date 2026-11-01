@@ -1,12 +1,10 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export const VoiceConnectionSettings = Schema.Struct({
-  enabled: Schema.Boolean,
-  /** "agent" speaks through a coding-agent thread and needs no voice provider or API key. */
-  mode: Schema.Literals(["realtime", "agent"]).pipe(
-    Schema.withDecodingDefault(Effect.succeed("realtime" as const)),
-  ),
+export const VoiceProviderId = Schema.Literals(["openai", "xai", "local"]);
+export type VoiceProviderId = typeof VoiceProviderId.Type;
+
+export const VoiceConnectionProfile = Schema.Struct({
   protocol: Schema.Literals(["openai", "xai"]),
   transport: Schema.Literals(["webrtc", "websocket"]),
   endpoint: Schema.String,
@@ -15,6 +13,24 @@ export const VoiceConnectionSettings = Schema.Struct({
   model: Schema.String,
   voice: Schema.String,
   apiKey: Schema.String,
+});
+export type VoiceConnectionProfile = typeof VoiceConnectionProfile.Type;
+
+export const VoiceConnectionSettings = Schema.Struct({
+  ...VoiceConnectionProfile.fields,
+  provider: Schema.optionalKey(VoiceProviderId),
+  profiles: Schema.optionalKey(
+    Schema.Struct({
+      openai: Schema.optionalKey(VoiceConnectionProfile),
+      xai: Schema.optionalKey(VoiceConnectionProfile),
+      local: Schema.optionalKey(VoiceConnectionProfile),
+    }),
+  ),
+  enabled: Schema.Boolean,
+  /** "agent" speaks through a coding-agent thread and needs no voice provider or API key. */
+  mode: Schema.Literals(["realtime", "agent"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("realtime" as const)),
+  ),
 });
 export type VoiceConnectionSettings = typeof VoiceConnectionSettings.Type;
 
@@ -57,7 +73,19 @@ export const VOICE_CONNECTION_PRESETS = {
   },
 } as const satisfies Record<string, VoiceConnectionSettings>;
 
+export const VOICE_HISTORY_LINES = 40;
+export const VoiceTranscriptLine = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  speaker: Schema.Literals(["You", "T3"]),
+  text: Schema.String.check(Schema.isMaxLength(16000)),
+});
+export type VoiceTranscriptLine = typeof VoiceTranscriptLine.Type;
+export const VoiceConversationHistory = Schema.Array(VoiceTranscriptLine).check(
+  Schema.isMaxLength(VOICE_HISTORY_LINES),
+);
+
 export const VoiceSessionConnection = Schema.Struct({
+  instructions: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   protocol: VoiceConnectionSettings.fields.protocol,
   transport: VoiceConnectionSettings.fields.transport,
   endpoint: Schema.String,

@@ -28,6 +28,7 @@ export function validateVoiceConnection(settings: VoiceConnectionSettings): void
 export const createVoiceSession = Effect.fn("voice.createSession")(function* (
   settings: VoiceConnectionSettings,
   fetcher: typeof fetch = fetch,
+  instructions = "",
 ) {
   if (!settings.enabled)
     return yield* new VoiceSessionError({
@@ -99,6 +100,7 @@ export const createVoiceSession = Effect.fn("voice.createSession")(function* (
     clientSecret = secret.value;
   }
   return {
+    instructions,
     protocol: settings.protocol,
     transport: settings.transport,
     endpoint: settings.endpoint,

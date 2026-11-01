@@ -8,6 +8,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import {
   AuthOrchestrationOperateScope,
+  AuthFilesystemReadScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   ThreadId,
@@ -59,6 +60,33 @@ const setup = Effect.gen(function* () {
 });
 
 describe("command permissions", () => {
+  it.effect(
+    "workflow and voice-history mutations use the destination environment's operate grant",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = yield* setup;
+          for (const method of [
+            WS_METHODS.artifactsCreateUploadUrl,
+            WS_METHODS.artifactsRename,
+            WS_METHODS.artifactsDelete,
+            WS_METHODS.workflowsCreate,
+            WS_METHODS.workflowsControl,
+            WS_METHODS.serverSyncVoiceHistory,
+          ]) {
+            const workflowPermissions = createCommandPermissions(runtime, method);
+            registry.set(sessions(env), AsyncResult.success(grant(true)));
+            registry.set(sessions(other), AsyncResult.success(grant(false)));
+            expect(registry.get(workflowPermissions.permissionAtom(env))).toBe(true);
+            yield* workflowPermissions.authorize(registry, env);
+            expect(registry.get(workflowPermissions.permissionAtom(other))).toBe(false);
+            expect(
+              (yield* workflowPermissions.authorize(registry, other).pipe(Effect.flip))._tag,
+            ).toBe("EnvironmentAuthorizationError");
+          }
+        }),
+      ),
+  );
   it.effect("requires the destination settings grant to run storage cleanup", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -308,4 +336,45 @@ it.effect("rejects protected unary and streamed RPCs outside a guarded command",
     expect(streamed._tag).toBe("EnvironmentAuthorizationError");
     expect(writes).toBe(0);
   }),
+);
+
+it.effect(
+  "artifact publishing requires host-file read and thread operate grants; downloads require file read",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const publish = createCommandPermissions(runtime, WS_METHODS.artifactsPublish);
+        const download = createCommandPermissions(runtime, WS_METHODS.artifactsCreateDownloadUrl);
+        registry.set(sessions(env), AsyncResult.success(grant(true)));
+        expect(registry.get(publish.permissionAtom(env))).toBe(false);
+        expect(registry.get(download.permissionAtom(env))).toBe(false);
+        expect((yield* publish.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
+          AuthFilesystemReadScope,
+        );
+        registry.set(
+          sessions(env),
+          AsyncResult.success({ ...grant(false), permissions: [AuthFilesystemReadScope] }),
+        );
+        yield* download.authorize(registry, env);
+        expect(registry.get(publish.permissionAtom(env))).toBe(false);
+        expect((yield* publish.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
+          AuthOrchestrationOperateScope,
+        );
+        registry.set(
+          sessions(env),
+          AsyncResult.success({
+            ...grant(true),
+            permissions: [AuthFilesystemReadScope, AuthOrchestrationOperateScope],
+          }),
+        );
+        expect(registry.get(publish.permissionAtom(env))).toBe(true);
+        yield* publish.authorize(registry, env);
+        registry.set(sessions(other), AsyncResult.success(grant(false)));
+        expect(registry.get(publish.permissionAtom(other))).toBe(false);
+        expect((yield* publish.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+      }),
+    ),
 );

@@ -8,6 +8,7 @@ import {
   getProjectScopeSelectionTarget,
   resolveDraftProjectSelection,
   resolveEnvironmentProjectMatch,
+  resolveSelectedDraftProject,
 } from "./new-task-project-selection";
 
 function makeProject(
@@ -119,12 +120,49 @@ describe("resolveEnvironmentProjectMatch", () => {
   });
 });
 
+describe("resolveSelectedDraftProject", () => {
+  const glytch = makeProject("glytch");
+  const code = makeProject("t3code");
+  const projects = [glytch, code];
+
+  it("leaves a new draft unselected instead of using the first project", () => {
+    expect(resolveSelectedDraftProject(projects, null, null)).toBeNull();
+  });
+
+  it("uses the project explicitly chosen by the user", () => {
+    expect(resolveSelectedDraftProject(projects, "environment:t3code", null)).toBe(code);
+  });
+
+  it("does not move a missing project selection into another project", () => {
+    expect(resolveSelectedDraftProject(projects, "environment:removed", null)).toBeNull();
+  });
+
+  it("keeps an offline pending task pinned to its saved project", () => {
+    const pendingProject = makeProject("offline");
+    expect(resolveSelectedDraftProject(projects, "environment:offline", pendingProject)).toBe(
+      pendingProject,
+    );
+    expect(resolveSelectedDraftProject(projects, null, pendingProject)).toBeNull();
+  });
+});
+
 describe("resolveDraftProjectSelection", () => {
   it("preserves an explicit project selection", () => {
     const project = makeProject("t3code");
     expect(
       resolveDraftProjectSelection("environment:t3code", [project], [makeScope([project])]),
     ).toEqual({ kind: "preserve" });
+  });
+
+  it("asks where to start when multiple projects are available", () => {
+    const projects = [makeProject("glytch"), makeProject("t3code")];
+    expect(
+      resolveDraftProjectSelection(
+        null,
+        projects,
+        projects.map((project) => makeScope([project])),
+      ),
+    ).toEqual({ kind: "pick" });
   });
 
   it("selects the only physical project when no project was explicitly selected", () => {

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { randomUUID } from "expo-crypto";
 import Constants from "expo-constants";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { updateVoiceTranscript } from "@t3tools/client-runtime/voice-conversation/session";
 import { AppText as Text } from "../../components/AppText";
 import { T3Wordmark } from "../../components/T3Wordmark";
 import { useEnvironments } from "../../state/environments";
@@ -14,6 +15,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { createVoiceActions, createVoiceSessionCommand, voiceResult } from "./actions";
 import type { VoiceConnection } from "./connection";
+import { loadVoiceHistory, saveVoiceHistory, VOICE_HISTORY_LINES } from "./voiceHistory";
 
 type SessionOwner = { abort: AbortController; connection?: VoiceConnection };
 
@@ -82,6 +84,19 @@ function VoiceSession(props: {
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<{ message: string; details: string } | null>(null);
   const [lines, setLines] = useState<Array<{ id: string; speaker: string; text: string }>>([]);
+  // Null until the stored history has loaded; nothing is written back before then.
+  const history = useRef<Promise<void> | null>(null);
+  const linesRef = useRef(lines);
+  useEffect(() => {
+    history.current = loadVoiceHistory().then((stored) => {
+      setLines((current) => [...stored, ...current].slice(-VOICE_HISTORY_LINES));
+    });
+  }, []);
+  useEffect(() => {
+    const loaded = linesRef.current !== lines;
+    linesRef.current = lines;
+    if (loaded) void saveVoiceHistory(lines).catch(() => {});
+  }, [lines]);
   const focused = useRef(props.focusedThread);
   useEffect(() => {
     focused.current = props.focusedThread;
@@ -139,12 +154,12 @@ function VoiceSession(props: {
   const start = async () => {
     if (session.current) return;
     const owner: SessionOwner = { abort: new AbortController() };
+    const transcriptSessionId = randomUUID();
     session.current = owner;
     props.onStarted();
     setRunning(true);
     setStatus("Connecting");
     setError(null);
-    setLines([]);
     let transport = "";
     // Details are what "Copy details" puts on the clipboard for a bug report.
     const fail = (message: string, cause?: unknown) => {
@@ -175,8 +190,10 @@ function VoiceSession(props: {
       transport = `${connection.protocol} over ${connection.transport}, ${connection.endpoint}, model ${connection.model || "default"}`;
       owner.abort.signal.throwIfAborted();
       const { connectNativeVoice } = await import("./nativeSession");
+      await history.current;
       owner.connection = await connectNativeVoice({
         connection,
+        history: linesRef.current,
         signal: owner.abort.signal,
         execute: createVoiceActions(
           props.environmentId,
@@ -190,9 +207,15 @@ function VoiceSession(props: {
           if (session.current === owner) setStatus(value);
         },
         onError: fail,
-        onTranscript: (speaker, text) => {
+        onTranscript: (speaker, text, id) => {
           if (session.current === owner)
-            setLines((previous) => [...previous.slice(-39), { id: randomUUID(), speaker, text }]);
+            setLines((previous) =>
+              updateVoiceTranscript(
+                previous,
+                { id: id ? `${transcriptSessionId}:${id}` : randomUUID(), speaker, text },
+                VOICE_HISTORY_LINES,
+              ),
+            );
         },
       });
       if (owner.abort.signal.aborted) await owner.connection.close();
@@ -253,7 +276,15 @@ function VoiceSession(props: {
                 <VoiceButton label="End" onPress={stop} />
               </>
             ) : (
-              <VoiceButton label="Start conversation" onPress={() => void start()} />
+              <>
+                <VoiceButton
+                  label={lines.length ? "Continue conversation" : "Start conversation"}
+                  onPress={() => void start()}
+                />
+                {lines.length ? (
+                  <VoiceButton label="Start fresh" onPress={() => setLines([])} />
+                ) : null}
+              </>
             )}
             <VoiceButton
               label="Settings"

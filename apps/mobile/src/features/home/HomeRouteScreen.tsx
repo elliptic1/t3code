@@ -132,6 +132,12 @@ export function HomeRouteScreen() {
     }
   }, [projectFilterOptions, selectedProjectKey]);
 
+  const openUsage = () =>
+    navigation.navigate("SettingsSheet", {
+      screen: "SettingsContent",
+      params: { screen: "SettingsUsage" },
+    });
+
   // In split layouts the persistent sidebar IS the thread list — Home becomes
   // an empty detail pane so selecting a thread never transitions layouts.
   if (layout.usesSplitView && !nativePrimaryColumn) {
@@ -141,7 +147,20 @@ export function HomeRouteScreen() {
           options={
             Platform.OS === "android"
               ? { headerShown: false }
-              : { title: "", headerTitle: "", unstable_headerLeftItems: () => [] }
+              : {
+                  title: "",
+                  headerTitle: "",
+                  unstable_headerLeftItems: () => [],
+                  unstable_headerRightItems: () => [
+                    {
+                      type: "button",
+                      accessibilityLabel: "Open usage settings",
+                      icon: { name: "chart.bar.xaxis", type: "sfSymbol" },
+                      label: "",
+                      onPress: openUsage,
+                    },
+                  ],
+                }
           }
         />
         {Platform.OS === "ios" ? (
@@ -188,7 +207,7 @@ export function HomeRouteScreen() {
             ...getConnectionAwareBrandHeaderOptions({
               headerWidth,
               trailingItemCount:
-                nativePrimaryColumn && Platform.OS === "ios" && Platform.isPad ? 2 : 1,
+                nativePrimaryColumn && Platform.OS === "ios" && Platform.isPad ? 3 : 2,
               onOpenEnvironments: () =>
                 navigation.navigate("SettingsSheet", {
                   screen: "SettingsContent",
@@ -218,6 +237,7 @@ export function HomeRouteScreen() {
               params: { screen: "Settings" },
             })
           }
+          onOpenUsage={openUsage}
           onSearchQueryChange={setSearchQuery}
           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
         />

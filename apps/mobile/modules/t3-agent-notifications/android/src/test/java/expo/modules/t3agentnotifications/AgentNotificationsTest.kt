@@ -507,6 +507,46 @@ class AgentNotificationsTest {
     assertEquals("Project · 2 threads", finished.extras.getString(Notification.EXTRA_SUB_TEXT))
   }
 
+  @Test
+  fun usageResetAlertPreservesOngoingAgentActivity() {
+    AgentNotifications.receive(context, update("running", true))
+    val before = manager.activeNotifications.single { it.tag == "t3-agent-activity" }.notification
+    AgentNotifications.receive(
+      context,
+      mapOf(
+        "device_id" to "device",
+        "user_id" to "user",
+        "updated_at" to System.currentTimeMillis().toString(),
+        "type" to "usage-reset",
+        "alert_id" to "usage-reset-1",
+        "alert_title" to "Claude allowance resets soon",
+        "alert_body" to "50% remains. Resets in 60 minutes.",
+        "alert_path" to "/settings/usage",
+        "alert_group" to "t3-usage-reset"
+      )
+    )
+    val after = manager.activeNotifications.single { it.tag == "t3-agent-activity" }.notification
+    assertEquals(
+      before.extras.getCharSequence(Notification.EXTRA_TEXT),
+      after.extras.getCharSequence(Notification.EXTRA_TEXT)
+    )
+    assertTrue(manager.activeNotifications.any {
+      it.notification.extras.getCharSequence(Notification.EXTRA_TITLE) == "Claude allowance resets soon"
+    })
+  }
+
+  @Test
+  fun usageResetAlertIsSuppressedAfterReset() {
+    AgentNotifications.receive(
+      context,
+      update("expired-reset", false) + mapOf(
+        "type" to "usage-reset",
+        "alert_expires_at" to (System.currentTimeMillis() - 1).toString()
+      )
+    )
+    assertTrue(manager.activeNotifications.isEmpty())
+  }
+
   private fun assertTimeout(card: Notification, expected: LongRange) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       assertTrue(card.timeoutAfter in expected)

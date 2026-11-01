@@ -84,6 +84,7 @@ function Header(props: { readonly gitStatus: VcsStatusResult | null; readonly ti
       subtitle=""
       headerColor="#000"
       usesNativeHeaderGlass
+      settled={false}
       gitControls={{
         environmentId: "environment-1",
         threadId: "thread-1",

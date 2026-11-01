@@ -94,10 +94,14 @@ export function ThreadDetailsCard({
     const measure = () => {
       const frame = element.closest<HTMLElement>("[data-thread-details-card]");
       const next = element.offsetHeight + (frame ? frame.offsetHeight - frame.clientHeight : 0);
-      // Lineage scrolls as it expands. Counting it toward density would hide
-      // the section and workspace controls when the user asks to see more rows.
-      const lineage = element.querySelector<HTMLElement>("[data-thread-relationships-panel]");
-      const fittingHeight = next - (lineage?.offsetHeight ?? 0);
+      // Expanding artifacts or lineage scrolls the card instead of hiding the
+      // section and workspace controls when the user asks to see more rows.
+      const expandableHeight = Array.from(
+        element.querySelectorAll<HTMLElement>(
+          "[data-thread-relationships-panel], [data-thread-artifacts-panel]",
+        ),
+      ).reduce((height, panel) => height + panel.offsetHeight, 0);
+      const fittingHeight = next - expandableHeight;
       setMeasurements((current) => {
         const heights = current.key === measurementKey ? current.heights : { full: 0, compact: 0 };
         const fullContentHeight =

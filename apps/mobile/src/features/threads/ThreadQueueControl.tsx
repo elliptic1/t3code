@@ -25,7 +25,6 @@ import { NativeStackScreenOptions, nativeHeaderScrollEdgeEffects } from "../../n
 import { useAssetUrl } from "../../state/assets";
 import { beginQueuedRunEdit, useQueuedRunEdit } from "../../state/queued-run-edit";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import {
   REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
@@ -35,6 +34,7 @@ import {
   resolveThreadQueueRowControls,
 } from "./threadQueueControlPresentation";
 import { threadDragGapOffset } from "./threadDragGap";
+import { useThreadQueueCommand } from "./useThreadQueueCommand";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 const REMOVE_ACTION_WIDTH = 76;
@@ -61,10 +61,22 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const workflow = useThreadQueueWorkflow(target);
   const threadKey = scopedThreadKey(target.environmentId, target.threadId);
   const editing = useQueuedRunEdit(threadKey);
-  const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun, "reorder queued message");
-  const promote = useAtomCommand(threadEnvironment.promoteQueuedRun, "promote queued message");
-  const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun, "remove queued message");
-  const resume = useAtomCommand(threadEnvironment.resumeThreadQueue, "resume queue");
+  const reorder = useThreadQueueCommand(
+    threadEnvironment.reorderQueuedRun,
+    "Could not reorder message",
+  );
+  const promote = useThreadQueueCommand(
+    threadEnvironment.promoteQueuedRun,
+    "Could not send queued message",
+  );
+  const cancel = useThreadQueueCommand(
+    threadEnvironment.cancelQueuedRun,
+    "Could not remove message",
+  );
+  const resume = useThreadQueueCommand(
+    threadEnvironment.resumeThreadQueue,
+    "Could not resume queue",
+  );
   const [resuming, setResuming] = useState(false);
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
   const busyRef = useRef(false);
@@ -180,6 +192,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const content = (
     <ScrollView
       className="flex-1"
+      keyboardShouldPersistTaps="handled"
       scrollEnabled={draggedRunId === null}
       // The iOS header is translucent and floats over this view; UIKit has to
       // inset the content or the first row sits underneath the title.
@@ -326,84 +339,92 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                 background={theme["--color-sheet"]}
                 onRemove={() => void act(run.id, "remove")}
               >
-                <ControlPillMenu
-                  accessibilityLabel={`Actions for queued message ${index + 1}`}
-                  shouldOpenOnLongPress
-                  actions={[
-                    ...(workflow?.canPromoteToSteer
-                      ? [
-                          {
-                            id: "steer",
-                            title: "Steer now",
-                            attributes: { disabled: !controls.canSteer },
-                            image: Platform.OS === "ios" ? "arrow.turn.left.up" : "arrow_upward",
-                          },
-                        ]
-                      : []),
-                    {
-                      id: "edit",
-                      title: "Edit",
-                      attributes: { disabled: !controls.canEdit },
-                      image: Platform.OS === "ios" ? "pencil" : "edit",
-                    },
-                    { id: "up", title: "Move up", attributes: { disabled: !controls.canMoveUp } },
-                    {
-                      id: "down",
-                      title: "Move down",
-                      attributes: { disabled: !controls.canMoveDown },
-                    },
-                    {
-                      id: "remove",
-                      title: "Remove",
-                      attributes: { disabled: !controls.canDismiss, destructive: true },
-                    },
-                  ]}
-                  onPressAction={({ nativeEvent }) =>
-                    void act(run.id, nativeEvent.event as QueueAction)
-                  }
-                >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={title}
-                    accessibilityHint="Opens this message in the composer for editing"
-                    disabled={!controls.canEdit}
-                    onPress={() => void act(run.id, "edit")}
-                    className="min-h-14 flex-row items-center gap-2.5 py-2.5 active:opacity-70"
-                  >
-                    <QueueAttachmentThumbnails
-                      environmentId={target.environmentId}
-                      attachments={attachments}
-                    />
-                    <Text
-                      className={
-                        controls.isEditing
-                          ? "min-w-0 flex-1 text-sm text-foreground-muted"
-                          : "min-w-0 flex-1 text-sm text-foreground"
+                <View className="flex-row items-center gap-2.5">
+                  <View className="min-w-0 flex-1">
+                    <ControlPillMenu
+                      accessibilityLabel={`Actions for queued message ${index + 1}`}
+                      shouldOpenOnLongPress
+                      actions={[
+                        ...(workflow?.canPromoteToSteer
+                          ? [
+                              {
+                                id: "steer",
+                                title: "Steer now",
+                                attributes: { disabled: !controls.canSteer },
+                                image:
+                                  Platform.OS === "ios" ? "arrow.turn.left.up" : "arrow_upward",
+                              },
+                            ]
+                          : []),
+                        {
+                          id: "edit",
+                          title: "Edit",
+                          attributes: { disabled: !controls.canEdit },
+                          image: Platform.OS === "ios" ? "pencil" : "edit",
+                        },
+                        {
+                          id: "up",
+                          title: "Move up",
+                          attributes: { disabled: !controls.canMoveUp },
+                        },
+                        {
+                          id: "down",
+                          title: "Move down",
+                          attributes: { disabled: !controls.canMoveDown },
+                        },
+                        {
+                          id: "remove",
+                          title: "Remove",
+                          attributes: { disabled: !controls.canDismiss, destructive: true },
+                        },
+                      ]}
+                      onPressAction={({ nativeEvent }) =>
+                        void act(run.id, nativeEvent.event as QueueAction)
                       }
-                      numberOfLines={1}
                     >
-                      {title}
-                    </Text>
-                    {controls.isEditing ? (
-                      <Text className="shrink-0 text-2xs uppercase tracking-wide text-primary">
-                        Editing
-                      </Text>
-                    ) : null}
-                    {workflow?.canPromoteToSteer ? (
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel={`Steer with message ${index + 1} now`}
-                        disabled={!controls.canSteer}
-                        onPress={() => void act(run.id, "steer")}
-                        className="h-8 shrink-0 justify-center rounded-full bg-primary px-3 active:opacity-70 disabled:opacity-40"
+                        accessibilityLabel={title}
+                        accessibilityHint="Opens this message in the composer for editing"
+                        disabled={!controls.canEdit}
+                        onPress={() => void act(run.id, "edit")}
+                        className="min-h-14 flex-row items-center gap-2.5 py-2.5 active:opacity-70"
                       >
-                        <Text className="font-t3-medium text-xs text-primary-foreground">
-                          Steer
+                        <QueueAttachmentThumbnails
+                          environmentId={target.environmentId}
+                          attachments={attachments}
+                        />
+                        <Text
+                          className={
+                            controls.isEditing
+                              ? "min-w-0 flex-1 text-sm text-foreground-muted"
+                              : "min-w-0 flex-1 text-sm text-foreground"
+                          }
+                          numberOfLines={1}
+                        >
+                          {title}
                         </Text>
+                        {controls.isEditing ? (
+                          <Text className="shrink-0 text-2xs uppercase tracking-wide text-primary">
+                            Editing
+                          </Text>
+                        ) : null}
                       </Pressable>
-                    ) : null}
-                  </Pressable>
-                </ControlPillMenu>
+                    </ControlPillMenu>
+                  </View>
+                  {workflow?.canPromoteToSteer ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Steer with message ${index + 1} now`}
+                      disabled={!controls.canSteer}
+                      onPress={() => void act(run.id, "steer")}
+                      hitSlop={8}
+                      className="h-8 shrink-0 justify-center rounded-full bg-primary px-3 active:opacity-70 disabled:opacity-40"
+                    >
+                      <Text className="font-t3-medium text-xs text-primary-foreground">Steer</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </QueueRowSwipeable>
             </Animated.View>
           </QueueShiftedRow>

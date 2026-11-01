@@ -768,7 +768,7 @@ export function useThreadActions() {
   );
 
   const settleThread = useCallback(
-    async (target: ScopedThreadRef) => {
+    async (target: ScopedThreadRef, opts: { onSettled?: () => void } = {}) => {
       // Version skew: never send the command to a server that predates it —
       // the raw protocol rejection would read as a random failure.
       if (!readEnvironmentSupportsSettlement(target.environmentId)) {
@@ -829,9 +829,14 @@ export function useThreadActions() {
         },
         failureTitle: "Failed to undo settle",
       });
+      const current = getCurrentRouteThreadRef();
+      if (current?.environmentId === target.environmentId && current.threadId === target.threadId) {
+        opts.onSettled?.();
+      }
       return result;
     },
     [
+      getCurrentRouteThreadRef,
       markThreadVisited,
       pinThread,
       resolveThreadTarget,

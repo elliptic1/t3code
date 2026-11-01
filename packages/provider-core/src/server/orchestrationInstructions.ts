@@ -34,6 +34,10 @@ ACP fallback: some ACP agents accept the injected MCP server but fail to expose 
 ### Showing visuals
 
 When a chart, table, diagram, image collage, or mockup would say more than prose, build a self-contained HTML page, check it with \`html_preview\`, then publish it with \`html_render\` before your final reply. The reader sees the page above that reply, so don't announce or restate it; add only what it doesn't say.
+
+### Sharing files
+
+Every thread has an Artifacts area hosted by this environment and downloadable from web, desktop, and mobile, even after the thread settles. Whenever you build or produce a file the user should get (an APK, installer, archive, export, report, generated media), publish it there with \`artifact_publish\` without being asked. It is the default way to hand over a file: never start a temporary HTTP server, upload to a third-party host, or ask the user to copy a path off this machine. To ship a newer version of the same file, \`artifact_list\` it and publish with \`replace\` so the thread keeps one current copy; delete artifacts that are obsolete. In your reply, name the artifact rather than a local path.
 `;
 
 export const T3_CODE_BROWSER_TOOL_INSTRUCTIONS = `

@@ -10,6 +10,7 @@ import {
   ServerSettings,
   ServerSettingsPatch,
 } from "@t3tools/contracts";
+import { selectVoiceProvider, updateVoiceConnection } from "@t3tools/shared/voiceSettings";
 import { createModelSelection } from "@t3tools/shared/model";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -98,6 +99,31 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
   });
 
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it.effect(
+    "persists, reloads, and clears saved voice instructions without changing the connection",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const service = yield* ServerSettingsModule.ServerSettingsService;
+        const before = yield* service.getSettings;
+        assert.equal(before.voiceInstructions, "");
+        yield* service.updateSettings({ voiceInstructions: "Act as my company's COO." });
+        const persisted = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.equal(persisted.voiceInstructions, "Act as my company's COO.");
+        assert.deepEqual(persisted.voiceConnection, before.voiceConnection);
+        const reloaded = yield* service.getSettings;
+        assert.equal(reloaded.voiceInstructions, persisted.voiceInstructions);
+        yield* service.updateSettings({ voiceInstructions: "" });
+        const cleared = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.equal(cleared.voiceInstructions, "");
+        assert.deepEqual(cleared.voiceConnection, before.voiceConnection);
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
   it.effect("migrates saved token delivery to paragraph buffering without resetting settings", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
@@ -1921,6 +1947,60 @@ it.effect(
       yield* service.updateSettings({ voiceConnection: { ...redacted, apiKey: "" } });
       assert.isTrue(Option.isNone(yield* secrets.get("voice-connection-api-key")));
       assert.equal((yield* service.getSettings).voiceConnection.apiKey, "");
+    }).pipe(
+      Effect.provide(layerServerSettingsWithSecrets().pipe(Layer.provideMerge(NodeServices.layer))),
+    ),
+);
+
+it.effect(
+  "keeps separate voice provider keys through switching, redaction, reload, and clearing",
+  () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const client = (settings: ServerSettings) =>
+        ServerSettingsModule.redactServerSettingsForClient(settings).voiceConnection;
+      let settings = yield* service.updateSettings({
+        voiceConnection: {
+          ...DEFAULT_SERVER_SETTINGS.voiceConnection,
+          apiKey: "openai-profile-secret",
+          voice: "cedar",
+        },
+      });
+      settings = yield* service.updateSettings({
+        voiceConnection: updateVoiceConnection(selectVoiceProvider(client(settings), "xai"), {
+          apiKey: "grok-profile-secret",
+          voice: "ara",
+        }),
+      });
+      assert.equal(settings.voiceConnection.apiKey, "grok-profile-secret");
+      const redacted = client(settings);
+      assert.notEqual(redacted.profiles?.openai?.apiKey, "openai-profile-secret");
+      assert.notEqual(redacted.profiles?.xai?.apiKey, "grok-profile-secret");
+      settings = yield* service.updateSettings({
+        voiceConnection: selectVoiceProvider(redacted, "openai"),
+      });
+      assert.equal(settings.voiceConnection.apiKey, "openai-profile-secret");
+      assert.equal(settings.voiceConnection.voice, "cedar");
+      const persisted = yield* fs.readFileString(config.settingsPath);
+      assert.notInclude(persisted, "openai-profile-secret");
+      assert.notInclude(persisted, "grok-profile-secret");
+      const reloaded = yield* Effect.gen(function* () {
+        const fresh = yield* ServerSettingsModule.ServerSettingsService;
+        return yield* fresh.getSettings;
+      }).pipe(Effect.provide(Layer.fresh(ServerSettingsModule.layer)));
+      assert.equal(reloaded.voiceConnection.profiles?.xai?.apiKey, "grok-profile-secret");
+      settings = yield* service.updateSettings({
+        voiceConnection: updateVoiceConnection(client(settings), { apiKey: "" }),
+      });
+      assert.equal(settings.voiceConnection.apiKey, "");
+      settings = yield* service.updateSettings({
+        voiceConnection: selectVoiceProvider(client(settings), "xai"),
+      });
+      assert.equal(settings.voiceConnection.apiKey, "grok-profile-secret");
+      assert.equal(settings.voiceConnection.voice, "ara");
+      assert.equal(settings.voiceConnection.profiles?.openai?.apiKey, "");
     }).pipe(
       Effect.provide(layerServerSettingsWithSecrets().pipe(Layer.provideMerge(NodeServices.layer))),
     ),

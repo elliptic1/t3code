@@ -48,6 +48,7 @@ import {
   checkSystemPermission,
   pasteAsText,
   startDictation,
+  stopDictation,
   probeRemoteEditors,
   pickFolder,
   pickProjectFavicon,
@@ -152,6 +153,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(checkSystemPermission);
   yield* ipc.handle(pasteAsText);
   yield* ipc.handle(startDictation);
+  yield* ipc.handle(stopDictation);
   yield* ipc.handle(probeRemoteEditors);
   yield* ipc.handle(getUpdateState);
   yield* ipc.handle(setUpdateChannel);

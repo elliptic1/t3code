@@ -1,3 +1,5 @@
+import * as ThreadArtifactService from "../artifacts/ThreadArtifactService.ts";
+import * as WorkflowService from "../workflows/WorkflowService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
@@ -347,6 +349,8 @@ export const layerProduction = Layer.mergeAll(
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerThreadLifecycleProvided,
+  ThreadArtifactService.layer,
+  WorkflowService.layer.pipe(Layer.provide(layerThreadManagementProvided)),
   layerScheduledTaskProvided,
   layerSecretRequestsProvided,
   UsageLimitRecoveryWorker.layer.pipe(

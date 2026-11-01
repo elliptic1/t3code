@@ -158,6 +158,12 @@ it.layer(layerTest)("ContextHandoffService legacy import", (it) => {
       assert.isAtMost(handoff.summaryText.length, 32_000);
       assert.include(handoff.summaryText, "User:\n... ");
       assert.include(handoff.summaryText, "LATEST_SINGLE_TOKEN");
+      const excerpt = handoff.history?.messages.find(
+        (message) => message.itemId === TurnItemId.make("turn-item:long-single-token"),
+      );
+      assert.include(excerpt!.text, "Compressed historical excerpt");
+      assert.include(excerpt!.text, "LATEST_SINGLE_TOKEN");
+      assert.notInclude(excerpt!.text, "\ufffd");
       assert.notInclude(handoff.summaryText, "\ufffd");
     }),
   );

@@ -55,7 +55,7 @@ export const QueuedThreadMessageSchema = Schema.Struct({
   context: Schema.optional(OrchestrationMessageContext),
   attachments: Schema.Array(DraftComposerAttachmentSchema),
   modelSelection: Schema.optional(ModelSelection),
-  dispatchMode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
+  dispatchMode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart", "parallel"])),
   runtimeMode: Schema.optional(RuntimeMode),
   interactionMode: Schema.optional(ProviderInteractionMode),
   // Present when the queued item creates a brand-new thread (pending task)

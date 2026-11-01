@@ -29,6 +29,7 @@ import { OtlpTracer, OtlpSerialization } from "effect/observability";
 
 import * as ServerConfig from "./config.ts";
 import { ASSET_ROUTE_PREFIX, resolveAsset } from "./assets/AssetAccess.ts";
+import * as Artifacts from "./artifacts/ThreadArtifactService.ts";
 import { githubMediaResponse } from "./assets/GitHubMediaFetch.ts";
 import { statMediaFile, streamMediaFile, type OpenMediaFile } from "./assets/MediaFile.ts";
 import {
@@ -442,6 +443,49 @@ export const layerAssetRoute = HttpRouter.add(
       request.method === "HEAD" ? "HEAD" : "GET",
     ).pipe(
       Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
+    );
+  }),
+);
+
+export const layerArtifactUploadRoute = HttpRouter.add(
+  "POST",
+  `${Artifacts.ARTIFACT_ROUTE_PREFIX}/upload/*`,
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = HttpServerRequest.toURL(request);
+    if (Option.isNone(url)) return HttpServerResponse.empty({ status: 400 });
+    const service = yield* Artifacts.ThreadArtifactService;
+    const token = url.value.pathname.slice(`${Artifacts.ARTIFACT_ROUTE_PREFIX}/upload/`.length);
+    const bodyPull = yield* Stream.toPull(request.stream);
+    return yield* service.upload(token, Stream.fromPull(Effect.succeed(bodyPull))).pipe(
+      Effect.as(HttpServerResponse.empty({ status: 204 })),
+      Effect.catchTags({
+        ThreadArtifactError: (error) =>
+          Effect.succeed(
+            HttpServerResponse.text(error.message, {
+              status: error.reason === "conflict" ? 409 : error.reason === "storage" ? 500 : 400,
+            }),
+          ),
+      }),
+    );
+  }),
+);
+
+export const layerArtifactDownloadRoute = HttpRouter.add(
+  "GET",
+  `${Artifacts.ARTIFACT_ROUTE_PREFIX}/download/*`,
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = HttpServerRequest.toURL(request);
+    if (Option.isNone(url)) return HttpServerResponse.empty({ status: 400 });
+    const service = yield* Artifacts.ThreadArtifactService;
+    const token = url.value.pathname.slice(`${Artifacts.ARTIFACT_ROUTE_PREFIX}/download/`.length);
+    return yield* service.resolveDownload(token).pipe(
+      Effect.flatMap((asset) => assetFileResponse(asset)),
+      Effect.map(HttpServerResponse.setHeader("Cache-Control", "private, no-store")),
+      Effect.catchTags({
+        ThreadArtifactError: () => Effect.succeed(HttpServerResponse.empty({ status: 404 })),
+      }),
     );
   }),
 );

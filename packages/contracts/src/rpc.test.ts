@@ -3,7 +3,7 @@ import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
-import { WsRpcGroup, WsSubscribeServerConfigRpc } from "./rpc.ts";
+import { WS_METHODS, WsRpcGroup, WsSubscribeServerConfigRpc } from "./rpc.ts";
 
 /**
  * The client always sends `environmentThemes`, including to servers built
@@ -32,6 +32,20 @@ describe("subscribeServerConfig payload compatibility", () => {
 });
 
 describe("WebSocket RPC contracts", () => {
+  it("accepts the mobile voice-history sync request and bounds transcript uploads", () => {
+    const request = WsRpcGroup.requests.get(WS_METHODS.serverSyncVoiceHistory);
+    if (request === undefined) throw new Error("Voice history sync is not registered");
+    const decode = Schema.decodeUnknownExit(request.payloadSchema);
+    const line = { id: "phone:1", speaker: "You", text: "Continue our conversation." };
+
+    expect(Exit.isSuccess(decode({ lines: [] }))).toBe(true);
+    expect(Exit.isSuccess(decode({ lines: [line], reset: false }))).toBe(true);
+    expect(Exit.isSuccess(decode({ lines: [], reset: true }))).toBe(true);
+    expect(Exit.isFailure(decode({ lines: [{ ...line, speaker: "unknown" }] }))).toBe(true);
+    expect(Exit.isFailure(decode({ lines: Array.from({ length: 41 }, () => line) }))).toBe(true);
+    expect(Exit.isFailure(decode({ lines: [{ ...line, text: "x".repeat(16001) }] }))).toBe(true);
+  });
+
   it("exposes only the V2 orchestration transport surface", () => {
     const methods = [...WsRpcGroup.requests.keys()];
 

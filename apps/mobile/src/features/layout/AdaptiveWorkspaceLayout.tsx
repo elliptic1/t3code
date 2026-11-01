@@ -436,6 +436,13 @@ function AdaptiveWorkspaceLayoutContent(
     });
   }, [navigation]);
 
+  const handleOpenUsage = useCallback(() => {
+    navigation.navigate("SettingsSheet", {
+      screen: "SettingsContent",
+      params: { screen: "SettingsUsage" },
+    });
+  }, [navigation]);
+
   const handleStartNewTask = useCallback(() => {
     navigation.navigate("NewTaskSheet", { screen: "NewTask" });
   }, [navigation]);
@@ -633,6 +640,7 @@ function AdaptiveWorkspaceLayoutContent(
                       onRequestVisibility={revealPrimarySidebar}
                       selectedThreadKey={selectedThreadKey}
                       onOpenSettings={handleOpenSettings}
+                      onOpenUsage={handleOpenUsage}
                       onOpenEnvironmentSettings={handleOpenEnvironmentSettings}
                       onNewThreadInProject={handleNewThreadInProject}
                       onNewThreadOnBranch={handleNewThreadOnBranch}

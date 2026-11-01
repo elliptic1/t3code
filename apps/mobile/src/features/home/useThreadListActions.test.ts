@@ -142,6 +142,8 @@ vi.mock("../../state/threads", () => ({
 }));
 
 import { useArchivedThreadListActions, useThreadListActions } from "./useThreadListActions";
+import { registerThreadDismissal } from "./thread-dismissal";
+import { scopedThreadKey } from "../../lib/scopedEntities";
 
 const primaryEnvironmentId = EnvironmentId.make("primary");
 const otherEnvironmentId = EnvironmentId.make("other");
@@ -185,6 +187,47 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("thread list operation permissions", () => {
+  it("still waits for the row animation when settling from the list", async () => {
+    const thread = makeThread();
+    const animation = Promise.withResolvers<void>();
+    const unregister = registerThreadDismissal(
+      scopedThreadKey(thread.environmentId, thread.id),
+      () => ({
+        finished: animation.promise,
+        restore: vi.fn(),
+      }),
+    );
+    try {
+      const settled = useThreadListActions().settleThread(thread);
+      expect(state.requests).toEqual([]);
+      animation.resolve();
+      expect(await settled).toBe(true);
+      expect(state.requests).toMatchObject([{ action: "settle" }]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("settles from the thread screen without waiting for a hidden list animation", async () => {
+    const thread = makeThread();
+    const dismiss = vi.fn(() => ({
+      finished: new Promise<void>(() => {}),
+      restore: vi.fn(),
+    }));
+    const unregister = registerThreadDismissal(
+      scopedThreadKey(thread.environmentId, thread.id),
+      dismiss,
+    );
+    try {
+      const settled = await useThreadListActions({ dismissRows: false }).settleThread(thread);
+      expect(settled).toBe(true);
+      expect(state.requests).toMatchObject([{ action: "settle", input: { threadId: thread.id } }]);
+      expect(dismiss).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
   it.each(mutationCases)(
     "%s rejects a retained callback after its environment loses permission",
     async (handler) => {

@@ -31,6 +31,7 @@ import {
   getWindowFullscreenState,
   pasteAsText,
   startDictation,
+  stopDictation,
   pickProjectFavicon,
   probeRemoteEditors,
 } from "./window.ts";
@@ -347,7 +348,7 @@ it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-describe("startDictation", () => {
+describe.each([startDictation, stopDictation])("system dictation IPC", (method) => {
   it.effect("takes native focus for the requesting main renderer", () => {
     const start = vi.fn(() => true);
     const isFocused = vi.fn(() => true);
@@ -361,20 +362,23 @@ describe("startDictation", () => {
     return Effect.gen(function* () {
       // A preview webview that still reports focus must not block dictation in the composer.
       focusedWebContents.mockReturnValue({ id: 7 });
-      assert.isTrue(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      assert.isTrue(yield* method.handler(undefined, { sender: { id: 42 } }));
       assert.equal(focus.mock.calls.length, 1);
-      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 99 } }));
-      assert.isFalse(yield* startDictation.handler(undefined));
+      assert.isFalse(yield* method.handler(undefined, { sender: { id: 99 } }));
+      assert.isFalse(yield* method.handler(undefined));
       isFocused.mockReturnValue(false);
-      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      assert.isFalse(yield* method.handler(undefined, { sender: { id: 42 } }));
       isFocused.mockReturnValue(true);
       isDestroyed.mockReturnValue(true);
-      assert.isFalse(yield* startDictation.handler(undefined, { sender: { id: 42 } }));
+      assert.isFalse(yield* method.handler(undefined, { sender: { id: 42 } }));
       assert.equal(start.mock.calls.length, 1);
     }).pipe(
       Effect.provide([
         Layer.mock(ElectronWindow.ElectronWindow)({ main: Effect.succeedSome(window) }),
-        Layer.mock(ElectronMenu.ElectronMenu)({ startDictation: Effect.sync(start) }),
+        Layer.mock(ElectronMenu.ElectronMenu)({
+          startDictation: Effect.sync(start),
+          stopDictation: Effect.sync(start),
+        }),
       ]),
     );
   });

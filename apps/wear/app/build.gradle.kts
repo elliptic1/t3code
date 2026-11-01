@@ -11,12 +11,44 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        // Wear apps share the phone app's package id when published on Play.
-        applicationId = "com.t3tools.t3code"
+        // The Wear Data Layer only syncs between a phone app and a watch app with the same
+        // package id and signing certificate, so both follow the phone build being paired with.
+        applicationId = providers.gradleProperty("t3.applicationId").get()
         minSdk = 30
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+    }
+
+    signingConfigs {
+        // Expo prebuild's keystore, which signs the phone app's local builds. Pass
+        // -Pt3.keystore=<path> when the phone's android/ directory is not generated beside this one.
+        val phoneKeystore = providers.gradleProperty("t3.keystore").orNull
+            ?.let { file(it) } ?: rootProject.file("../mobile/android/app/debug.keystore")
+        if (phoneKeystore.exists()) {
+            getByName("debug") {
+                storeFile = phoneKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Local companion installs must retain the phone's signing identity.
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            ndk.debugSymbolLevel = "none"
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
+    }
+
+    // Native libraries come prebuilt from dependencies; the watch app needs no local NDK.
+    packaging {
+        jniLibs.keepDebugSymbols.add("**/*.so")
     }
 
     compileOptions {
@@ -51,6 +83,9 @@ dependencies {
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
     implementation(libs.mlkit.barcode)
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
+    testImplementation(libs.mockwebserver)
+    testImplementation("org.json:json:20240303")
 }

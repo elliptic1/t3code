@@ -77,6 +77,10 @@ The most common defect in this repo is a change that works on the path you teste
 
 ## Dev servers
 
+- After every requested mobile app change, finish the implementation, run focused checks, make a fresh build, and install that build onto Todd's physical phone before calling the task complete. Building and installing onto the phone are part of the authorized workflow; do not ask for confirmation again. Preserve the installed app's identity, signing, connections, and user data; update it in place rather than uninstalling it. Confirm installation succeeded and report any build or device-access blocker explicitly. A simulator build or a Metro refresh alone does not satisfy this requirement.
+
+- After desktop changes, always make a fresh macOS arm64 fork build with `bash scripts/fork-build.sh`. Todd uses `/Applications/T3 Code (Fork).app`, branded **T3 Code (Fork Nightly)**, with bundle ID `com.t3tools.t3code.fork`, Electron profile `t3code-fork`, and T3 home `~/.t3-fork`. Preserve that identity when installing updates; an Alpha build updates a different app.
+
 - `vp i` installs. Worktrees get this from the t3.json setup script; if module resolution looks broken, it probably did not run.
 - `vp run dev` starts server and web. In a worktree, state defaults to that worktree's gitignored `.t3`, which deliberately outranks an ambient `T3CODE_HOME` so you cannot land on shared state by accident. An explicit `--home-dir` still wins.
 - Ports derive from the worktree path and are stable across restarts, but read the real ones from the `[dev-runner]` line since occupied ports shift.
@@ -102,7 +106,7 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 - The server is event-sourced, and side effects run after the command commits. In tests, drain the effect worker (`OrchestrationEffectWorkerV2.drain`) or await the specific persisted event or `Deferred` that marks the milestone. Never wait on sleeps or polling. A test that needs a timeout to pass is wrong.
 - Upon request, user-visible frontend changes should get one integrated pass in a real client: `test-t3-app` for web, `test-t3-mobile` for mobile. The primary agent does this once after integrating. Subagents do not launch their own dev servers. Ask permission before doing computer use or spinning up browsers.
 
-For authorized mobile verification, a missing or outdated native client is a build step, not a blocker. Run `node scripts/mobile-native-client.ts ensure <ios|android> <device-id>` on the simulator host before starting Metro. It checks the local Expo fingerprint and builds/installs when needed. See `test-t3-mobile` for the full workflow.
+For authorized mobile verification, a missing or outdated native client is a build step, not a blocker. Run `node scripts/mobile-native-client.ts ensure android <device-id>` on the simulator host before starting Metro. It checks the local Expo fingerprint and builds/installs when needed. See `test-t3-mobile` for the full workflow.
 
 ## Pull requests
 

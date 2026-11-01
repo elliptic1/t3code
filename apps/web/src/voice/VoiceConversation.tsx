@@ -2,8 +2,9 @@ import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { startVoiceAgentConversation } from "@t3tools/client-runtime/voice-conversation/agent";
+import { updateVoiceTranscript } from "@t3tools/client-runtime/voice-conversation/session";
 import { randomUUID } from "../lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Mic, MicOff, PhoneOff, Settings } from "lucide-react";
 import { readThreadShell, useActiveEnvironmentId, useThreadShells } from "../state/entities";
@@ -57,8 +58,123 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<
-    ReadonlyArray<{ id: string; speaker: string; text: string }>
+    Array<{ id: string; speaker: string; text: string }>
   >([]);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+    vx: number;
+    vy: number;
+    time: number;
+  } | null>(null);
+  const flingFrameRef = useRef<number | null>(null);
+  const draggedRef = useRef(false);
+  const [bubblePosition, setBubblePosition] = useState<{ left: number; top: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem("t3-voice-bubble-position");
+      if (saved) {
+        const parsed = JSON.parse(saved) as { left?: unknown; top?: unknown };
+        if (typeof parsed.left === "number" && typeof parsed.top === "number")
+          return { left: parsed.left, top: parsed.top };
+      }
+    } catch {}
+    return null;
+  });
+  const clampBubble = useCallback((left: number, top: number) => {
+    const rect = bubbleRef.current?.getBoundingClientRect();
+    const width = rect?.width ?? 48;
+    const height = rect?.height ?? 48;
+    return {
+      left: Math.max(8, Math.min(left, window.innerWidth - width - 8)),
+      top: Math.max(8, Math.min(top, window.innerHeight - height - 8)),
+    };
+  }, []);
+  useEffect(() => {
+    if (!bubblePosition) return;
+    const clamped = clampBubble(bubblePosition.left, bubblePosition.top);
+    if (clamped.left !== bubblePosition.left || clamped.top !== bubblePosition.top)
+      setBubblePosition(clamped);
+    const handleResize = () => setBubblePosition((current) => current ? clampBubble(current.left, current.top) : null);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [bubblePosition, clampBubble]);
+  useEffect(() => () => {
+    if (flingFrameRef.current !== null) cancelAnimationFrame(flingFrameRef.current);
+  }, []);
+  const finishBubbleDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!draggedRef.current) return;
+    const rect = bubbleRef.current?.getBoundingClientRect();
+    const width = rect?.width ?? 48;
+    const height = rect?.height ?? 48;
+    let { left, top, vx, vy } = drag;
+    let previousTime = performance.now();
+    const settle = () => {
+      const midX = left + width / 2;
+      const midY = top + height / 2;
+      const snapped = clampBubble(
+        midX < window.innerWidth / 2 ? 8 : window.innerWidth - width - 8,
+        midY < window.innerHeight / 2 ? 8 : window.innerHeight - height - 8,
+      );
+      setBubblePosition(snapped);
+      localStorage.setItem("t3-voice-bubble-position", JSON.stringify(snapped));
+      flingFrameRef.current = null;
+    };
+    const animate = (now: number) => {
+      const elapsed = Math.min(now - previousTime, 32);
+      previousTime = now;
+      const friction = Math.pow(0.94, elapsed / 16.67);
+      left += vx * elapsed;
+      top += vy * elapsed;
+      const maxLeft = window.innerWidth - width - 8;
+      const maxTop = window.innerHeight - height - 8;
+      if (left < 8 || left > maxLeft) {
+        left = Math.max(8, Math.min(left, maxLeft));
+        vx *= -0.55;
+      }
+      if (top < 8 || top > maxTop) {
+        top = Math.max(8, Math.min(top, maxTop));
+        vy *= -0.55;
+      }
+      vx *= friction;
+      vy *= friction;
+      if (bubbleRef.current) {
+        bubbleRef.current.style.left = `${left}px`;
+        bubbleRef.current.style.top = `${top}px`;
+      }
+      if (Math.hypot(vx, vy) < 0.025) settle();
+      else flingFrameRef.current = requestAnimationFrame(animate);
+    };
+    if (Math.hypot(vx, vy) < 0.08) settle();
+    else flingFrameRef.current = requestAnimationFrame(animate);
+  };
+  const moveBubble = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    const now = performance.now();
+    const elapsed = Math.max(now - drag.time, 1);
+    if (Math.abs(dx) + Math.abs(dy) > 4) draggedRef.current = true;
+    if (draggedRef.current) {
+      const next = clampBubble(drag.left + dx, drag.top + dy);
+      setBubblePosition(next);
+      drag.left = next.left;
+      drag.top = next.top;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      drag.vx = (dx / elapsed) * 1.5 + drag.vx * 0.25;
+      drag.vy = (dy / elapsed) * 1.5 + drag.vy * 0.25;
+      drag.time = now;
+    }
+  };
   const stop = () => {
     session.current?.abort.abort();
     session.current?.connection?.close();
@@ -133,9 +249,11 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
         },
         () => focusedThread.current,
       ),
-      onTranscript: (speaker: "You" | "T3", text: string) => {
+      onTranscript: (speaker: "You" | "T3", text: string, id?: string) => {
         if (session.current === owner)
-          setTranscript((lines) => [...lines.slice(-39), { id: randomUUID(), speaker, text }]);
+          setTranscript((lines) =>
+            updateVoiceTranscript(lines, { id: id ?? randomUUID(), speaker, text }, 40),
+          );
       },
       onStatus: (value: string) => {
         if (session.current === owner) setStatus(value);
@@ -185,7 +303,11 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
   };
   if (!environmentId) return null;
   return (
-    <div className="fixed right-4 bottom-20 z-40 flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2">
+    <div
+      ref={bubbleRef}
+      className={`fixed z-40 flex max-w-[calc(100vw-2rem)] gap-2 ${bubblePosition ? "items-start" : "right-4 bottom-20 items-end"} ${bubblePosition && bubblePosition.top < window.innerHeight / 2 ? "flex-col-reverse" : "flex-col"}`}
+      style={bubblePosition ? { left: bubblePosition.left, top: bubblePosition.top } : undefined}
+    >
       {open ? (
         <section
           aria-label="Voice conversation"
@@ -275,10 +397,39 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
       ) : null}
       <button
         type="button"
-        className="flex size-12 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground shadow-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="flex size-12 touch-none items-center justify-center rounded-full border border-border bg-popover text-popover-foreground shadow-lg hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         aria-expanded={open}
         aria-label={running ? "Show voice conversation" : "Talk to T3"}
-        onClick={() => setOpen(!open)}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          const rect = bubbleRef.current?.getBoundingClientRect();
+          const left = rect?.left ?? window.innerWidth - 64;
+          const top = rect?.top ?? window.innerHeight - 128;
+          if (flingFrameRef.current !== null) cancelAnimationFrame(flingFrameRef.current);
+          flingFrameRef.current = null;
+          dragRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            left,
+            top,
+            vx: 0,
+            vy: 0,
+            time: performance.now(),
+          };
+          draggedRef.current = false;
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={moveBubble}
+        onPointerUp={finishBubbleDrag}
+        onPointerCancel={finishBubbleDrag}
+        onClick={() => {
+          if (draggedRef.current) {
+            draggedRef.current = false;
+            return;
+          }
+          setOpen(!open);
+        }}
       >
         <T3Wordmark aria-hidden="true" className="h-5 w-7" />
       </button>

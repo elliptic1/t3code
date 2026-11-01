@@ -178,6 +178,27 @@ describe("handoff budget", () => {
     assert.isAtMost(historyCost(selected.messages, selected.context), 3_000);
   });
 
+  it("compresses oversized history into bounded excerpts without changing source text", () => {
+    const original = message(
+      "huge",
+      "user",
+      "Opening constraint " + '界🧪\\"'.repeat(20_000) + " Final requirement",
+    );
+    const selected = selectHistory({
+      messages: [original],
+      coverage: "Recover full text with t3_thread_read",
+      budget: 2_000,
+      compressOversized: true,
+    });
+    assert.lengthOf(selected.messages, 1);
+    assert.include(selected.messages[0]!.text, "Compressed historical excerpt");
+    assert.include(selected.messages[0]!.text, "Opening constraint");
+    assert.include(selected.messages[0]!.text, "Final requirement");
+    assert.deepEqual(selected.omittedItemIds, [original.itemId]);
+    assert.isAtMost(historyCost(selected.messages, selected.context), 2_000);
+    assert.isAbove(original.text.length, 100_000);
+  });
+
   it("counts JSON escaping and UTF-8 bytes across many messages", () => {
     const candidates = Array.from({ length: 500 }, (_, i) =>
       message(`item:${i}`, i % 2 ? "assistant" : "user", '\u0000\\"🧪界'.repeat(15)),
@@ -436,10 +457,11 @@ describe("handoff delivery", () => {
         alreadyDeliveredItemIds: new Set(),
         inject: (value) => {
           assert.include(value.context, "omitted 2 items");
-          assert.notInclude(
-            value.messages.map((item) => item.itemId),
-            oversized.itemId,
+          assert.include(
+            value.messages.find((item) => item.itemId === oversized.itemId)!.text,
+            "Compressed historical excerpt",
           );
+          assert.isAtMost(historyCost(value.messages, value.context), 16_000);
           return Effect.succeed(native);
         },
         persist: (value) =>
@@ -452,7 +474,7 @@ describe("handoff delivery", () => {
       assert.equal(durable.delivery?.status, native ? "injected" : "inline");
       assert.deepEqual(
         durable.delivery?.itemIds,
-        messages.map((item) => item.itemId),
+        [...messages, oversized].map((item) => item.itemId),
       );
       assert.deepEqual(durable.delivery?.omittedItemIds, [omittedBeforeDelivery, oversized.itemId]);
       assert.deepEqual(decodeHandoff(durable).delivery, durable.delivery);
@@ -669,7 +691,7 @@ describe("handoff delivery", () => {
     }),
   );
 
-  it.effect("fails before delivery when even the coverage marker cannot fit", () =>
+  it.effect("omits history without blocking the request when the coverage marker cannot fit", () =>
     Effect.gen(function* () {
       let calls = 0;
       const result = yield* deliverContextHandoffs({
@@ -684,7 +706,11 @@ describe("handoff delivery", () => {
           }),
         persist: () => Effect.void,
       }).pipe(Effect.result);
-      assert.equal(result._tag, "Failure");
+      assert.equal(result._tag, "Success");
+      if (result._tag === "Success") {
+        assert.equal(result.success.context, "");
+        yield* result.success.delivered;
+      }
       assert.equal(calls, 0);
     }),
   );

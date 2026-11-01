@@ -1226,6 +1226,7 @@ export function EnvironmentProviderSettings({
         environmentLabel={environmentLabel}
         sources={settings.usageLimitSources}
         cursorKeychainUsageEnabled={settings.cursorKeychainUsageEnabled}
+        usageResetRemindersEnabled={settings.usageResetRemindersEnabled}
         readOnly={readOnly}
       />
 

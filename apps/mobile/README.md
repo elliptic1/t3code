@@ -26,8 +26,7 @@ For simulator/emulator development, select and boot a device, then ensure its na
 this checkout before starting Metro:
 
 ```bash
-node ../../scripts/mobile-native-client.ts ensure ios <simulator-udid>
-# Or: node ../../scripts/mobile-native-client.ts ensure android <emulator-serial>
+node ../../scripts/mobile-native-client.ts ensure android <emulator-serial>
 vp run dev:client
 ```
 
@@ -56,50 +55,10 @@ can otherwise reference its previous pnpm package path. Ordinary Metro starts st
 Component edits use Fast Refresh. See [mobile development lifecycle](../../docs/internals/mobile-development.md)
 before changing runtime ownership or refresh behavior.
 
-Build and run the local iOS dev client:
-
-```bash
-vp run ios:dev
-```
-
-After changing a native dependency patch, rerun CocoaPods before rebuilding an existing iOS
-project. pnpm gives each patch hash a new package path; Pods can otherwise keep compiling the
-previous directory.
-
-If your Xcode account only has a Personal Team, use a bundle identifier you control and opt into the
-reduced-capability local build. Personal Team builds omit the widget and share extensions, push
-entitlement, and native Sign in with Apple entitlement; builds without this opt-in are unchanged.
-
-```bash
-T3CODE_IOS_PERSONAL_TEAM=1 \
-T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code.dev \
-vp run ios:dev
-```
-
-Build and install a self-contained Release app that does not need Metro:
-
-```bash
-vp run ios:release
-```
-
-The Personal Team equivalent also needs a unique bundle identifier:
-
-```bash
-T3CODE_IOS_PERSONAL_TEAM=1 \
-T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code \
-vp run ios:release
-```
-
-Build and run the local iOS preview app:
-
-```bash
-vp run ios:preview
-```
-
 Force the review diff highlighter engine:
 
 ```bash
-EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE=javascript vp run ios:dev
+EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE=javascript vp run dev:client
 ```
 
 `javascript` is the default and recommended setting for the review diff screen. Set `EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE=native` only when you explicitly want to test the native Shiki engine.
@@ -117,7 +76,7 @@ Run static checks for mobile native code:
 node ../../scripts/mobile-native-static-check.ts
 ```
 
-The native lint task runs SwiftLint for Swift plus ktlint and detekt for Kotlin. Missing native tools are reported as warnings and skipped locally. CI installs the default toolset from `apps/mobile/Brewfile` before running the native checks.
+The native lint task runs ktlint and detekt for Kotlin. Missing native tools are reported as warnings and skipped locally. CI installs the default toolset from `apps/mobile/Brewfile` before running the native checks.
 
 ## EAS Builds
 
@@ -129,25 +88,7 @@ For preview or production EAS environments, set `T3CODE_CLERK_PUBLISHABLE_KEY`,
 `T3CODE_CLERK_JWT_TEMPLATE`, and `T3CODE_RELAY_URL`
 as EAS environment variables. Expo config maps the canonical values into the mobile build.
 
-Create a PR preview dev-client build manually:
-
-```bash
-vp run eas:ios:preview:dev
-```
-
-Create a cloud dev-client build:
-
-```bash
-vp run eas:ios:dev
-```
-
-Create a persistent preview build:
-
-```bash
-vp run eas:ios:preview
-```
-
-Android equivalents:
+Create builds:
 
 ```bash
 vp run eas:android:dev

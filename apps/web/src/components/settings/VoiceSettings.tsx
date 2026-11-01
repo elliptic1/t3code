@@ -1,6 +1,26 @@
-import { VOICE_CONNECTION_PRESETS, type VoiceConnectionSettings } from "@t3tools/contracts";
+import { useRef } from "react";
+import {
+  type VoiceConnectionSettings,
+  type VoiceConnectionProfile,
+  type VoiceProviderId,
+} from "@t3tools/contracts";
+import {
+  selectVoiceProvider,
+  selectVoiceTransport,
+  updateVoiceConnection,
+  voiceProviderId,
+  voiceTransportOptions,
+} from "@t3tools/shared/voiceSettings";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { serverEnvironment } from "../../state/server";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+import {
+  useScopedSettings,
+  useScopedSettingsMixed,
+  useUpdateScopedSettings,
+} from "./useScopedSettings";
+import { Textarea } from "../ui/textarea";
+import { useSettingsScope } from "./SettingsScopeContext";
 import { DraftInput } from "../ui/draft-input";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -8,9 +28,40 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 
 export function VoiceSettings() {
   const value = useScopedSettings((settings) => settings.voiceConnection);
+  const instructions = useScopedSettings((settings) => settings.voiceInstructions);
+  const instructionsMixed = useScopedSettingsMixed(["voiceInstructions"]);
+  const { targets } = useSettingsScope();
+  const scopeKey = targets.map((target) => target.environmentId).join(",");
+  const instructionsEdited = useRef(false);
   const update = useUpdateScopedSettings();
-  const patch = (next: Partial<VoiceConnectionSettings>) =>
-    update({ voiceConnection: { ...value, ...next } });
+  const saveConnection = useAtomCommand(serverEnvironment.updateSettings);
+  const queued = useRef(
+    new Map<string, { value: VoiceConnectionSettings; promise: Promise<unknown> }>(),
+  );
+  const changeConnection = (
+    change: (value: VoiceConnectionSettings) => VoiceConnectionSettings,
+  ) => {
+    for (const target of targets) {
+      const previous = queued.current.get(target.environmentId);
+      const next = change(previous?.value ?? target.settings.voiceConnection);
+      const promise = (previous?.promise ?? Promise.resolve())
+        .then(() =>
+          saveConnection({
+            environmentId: target.environmentId,
+            input: { patch: { voiceConnection: next } },
+          }),
+        )
+        .finally(() => {
+          if (queued.current.get(target.environmentId)?.value === next)
+            queued.current.delete(target.environmentId);
+        });
+      queued.current.set(target.environmentId, { value: next, promise });
+    }
+  };
+  const patch = (
+    next: Partial<VoiceConnectionProfile> &
+      Partial<Pick<VoiceConnectionSettings, "enabled" | "mode">>,
+  ) => changeConnection((current) => updateVoiceConnection(current, next));
   return (
     <SettingsSection id="voice-conversation" title="Voice conversation">
       <SettingsRow
@@ -48,7 +99,46 @@ export function VoiceSettings() {
           </Select>
         }
       />
-      {value.mode === "agent" ? null : <VoiceProviderSettings value={value} patch={patch} />}
+      <SettingsRow
+        title="Saved instructions"
+        serverScoped
+        settingKeys={["voiceInstructions"]}
+        description="Your voice assistant remembers these instructions at every session start. Ask her to remember a role or preference, or edit them here. Clear them to forget. Shared across devices connected to this environment."
+      >
+        <div className="mt-3 max-w-2xl pb-3.5">
+          <Textarea
+            key={`${scopeKey}:${instructionsMixed}:${instructions}`}
+            aria-label="Saved voice instructions"
+            defaultValue={instructionsMixed ? "" : instructions}
+            placeholder={
+              instructionsMixed
+                ? "Mixed. Enter instructions for all selected environments."
+                : "Act as the COO of my company."
+            }
+            rows={4}
+            maxLength={16000}
+            onChange={() => {
+              instructionsEdited.current = true;
+            }}
+            onBlur={(event) => {
+              const next = event.target.value.trim();
+              if (instructionsEdited.current && (instructionsMixed || next !== instructions))
+                update({ voiceInstructions: next });
+              instructionsEdited.current = false;
+            }}
+          />
+        </div>
+      </SettingsRow>
+      {value.mode === "agent" ? null : (
+        <VoiceProviderSettings
+          value={value}
+          patch={patch}
+          selectProvider={(id) => changeConnection((current) => selectVoiceProvider(current, id))}
+          selectTransport={(transport) =>
+            changeConnection((current) => selectVoiceTransport(current, transport))
+          }
+        />
+      )}
     </SettingsSection>
   );
 }
@@ -56,17 +146,24 @@ export function VoiceSettings() {
 function VoiceProviderSettings({
   value,
   patch,
+  selectProvider,
+  selectTransport,
 }: {
   value: VoiceConnectionSettings;
-  patch: (next: Partial<VoiceConnectionSettings>) => void;
+  patch: (next: Partial<VoiceConnectionProfile>) => void;
+  selectProvider: (id: VoiceProviderId) => void;
+  selectTransport: (transport: VoiceConnectionSettings["transport"]) => void;
 }) {
+  const provider = voiceProviderId(value);
+  const providerLabel =
+    provider === "xai" ? "Grok" : provider === "openai" ? "OpenAI" : "Local / custom";
   return (
     <>
       <SettingsRow
-        title="Connection preset"
+        title="Voice provider"
         serverScoped
         settingKeys={["voiceConnection"]}
-        description="Start with a provider or customize a compatible local server below. Applying a preset clears the saved API key."
+        description="Each provider keeps its own API key, model, voice, and connection settings. Select a provider to switch; changes are saved automatically."
         control={
           <div className="flex gap-1">
             {(
@@ -79,8 +176,9 @@ function VoiceProviderSettings({
               <Button
                 key={id}
                 size="sm"
-                variant="outline"
-                onClick={() => patch({ ...VOICE_CONNECTION_PRESETS[id], enabled: value.enabled })}
+                variant={provider === id ? "secondary" : "outline"}
+                aria-pressed={provider === id}
+                onClick={() => selectProvider(id)}
               >
                 {label}
               </Button>
@@ -88,44 +186,60 @@ function VoiceProviderSettings({
           </div>
         }
       />
+      {provider === "local" ? (
+        <SettingsRow
+          title="Realtime protocol"
+          serverScoped
+          settingKeys={["voiceConnection"]}
+          control={
+            <Select
+              value={value.protocol}
+              onValueChange={(protocol) => {
+                if (protocol === "openai" || protocol === "xai") patch({ protocol });
+              }}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value="openai">OpenAI compatible</SelectItem>
+                <SelectItem value="xai">xAI compatible</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+      ) : null}
       <SettingsRow
-        title="Realtime protocol"
-        serverScoped
-        settingKeys={["voiceConnection"]}
-        control={
-          <Select
-            value={value.protocol}
-            onValueChange={(protocol) => {
-              if (protocol === "openai" || protocol === "xai") patch({ protocol });
-            }}
-          >
-            <SelectTrigger size="sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectPopup>
-              <SelectItem value="openai">OpenAI compatible</SelectItem>
-              <SelectItem value="xai">xAI compatible</SelectItem>
-            </SelectPopup>
-          </Select>
+        title="Connection method"
+        description={
+          provider === "xai"
+            ? "Grok uses WebSocket. The correct connection is selected automatically."
+            : provider === "openai"
+              ? "WebRTC is recommended for OpenAI on phones and browsers. Changing this also updates the OpenAI connection endpoint."
+              : "Choose the connection method supported by your custom server."
         }
-      />
-      <SettingsRow
-        title="Audio transport"
         serverScoped
         settingKeys={["voiceConnection"]}
         control={
           <Select
             value={value.transport}
             onValueChange={(transport) => {
-              if (transport === "webrtc" || transport === "websocket") patch({ transport });
+              if (transport === "webrtc" || transport === "websocket") selectTransport(transport);
             }}
           >
             <SelectTrigger size="sm">
               <SelectValue />
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="webrtc">WebRTC (SDP)</SelectItem>
-              <SelectItem value="websocket">WebSocket (PCM16, 24 kHz)</SelectItem>
+              {voiceTransportOptions(provider).map((transport) => (
+                <SelectItem key={transport} value={transport}>
+                  {transport === "webrtc"
+                    ? provider === "openai"
+                      ? "WebRTC (recommended)"
+                      : "WebRTC"
+                    : "WebSocket"}
+                </SelectItem>
+              ))}
             </SelectPopup>
           </Select>
         }
@@ -160,9 +274,13 @@ function VoiceProviderSettings({
         ] as const
       ).map(([key, title, description]) => (
         <SettingsRow
-          key={key}
-          title={title}
-          description={description}
+          key={`${provider}:${key}`}
+          title={`${providerLabel} ${title.toLowerCase()}`}
+          description={
+            key === "apiKey"
+              ? `Saved separately for ${providerLabel}. Enter a key once, then switch providers without re-entering it. Clear to remove only this provider’s key.`
+              : description
+          }
           serverScoped
           settingKeys={["voiceConnection"]}
           control={

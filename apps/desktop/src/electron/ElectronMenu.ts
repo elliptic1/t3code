@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as Electron from "electron";
+import { stopMacOsDictation } from "./MacOsDictation.ts";
 
 export interface ElectronMenuPosition {
   readonly x: number;
@@ -51,6 +52,7 @@ export class ElectronMenu extends Context.Service<
   ElectronMenu,
   {
     readonly startDictation: Effect.Effect<boolean>;
+    readonly stopDictation: Effect.Effect<boolean>;
     readonly setApplicationMenu: (
       template: readonly Electron.MenuItemConstructorOptions[],
     ) => Effect.Effect<void>;
@@ -196,6 +198,10 @@ export const make = Effect.gen(function* () {
       Electron.Menu.sendActionToFirstResponder("startDictation:");
       return true;
     }),
+    stopDictation:
+      platform !== "darwin"
+        ? Effect.succeed(false)
+        : Effect.tryPromise(stopMacOsDictation).pipe(Effect.orElseSucceed(() => false)),
     setApplicationMenu: (template) =>
       Effect.try({
         try: () => {

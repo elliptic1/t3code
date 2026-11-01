@@ -12,22 +12,11 @@ import * as Stream from "effect/Stream";
 import { Argument, Command } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-export type NativePlatform = "ios" | "android";
+export type NativePlatform = "android";
 const NativeClientRecord = Schema.Struct({ fingerprint: Schema.String, binary: Schema.String });
 const encodeRecord = Schema.encodeEffect(Schema.fromJsonString(NativeClientRecord));
 const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(NativeClientRecord));
 const encodeOutput = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
-const isNotLink = Schema.is(Schema.Struct({ code: Schema.Literal("EINVAL") }));
-const decodeSimulators = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(
-    Schema.Struct({
-      devices: Schema.Record(
-        Schema.String,
-        Schema.Array(Schema.Struct({ udid: Schema.String, state: Schema.String })),
-      ),
-    }),
-  ),
-);
 export type NativeClientRecord = typeof NativeClientRecord.Type;
 export type NativeClientStatus = "compatible" | "missing" | "unknown" | "stale";
 export class NativeClientError extends Schema.TaggedError<NativeClientError>()(
@@ -91,50 +80,6 @@ const digest = Effect.fn("nativeClient.digest")(function* (value: string | Uint8
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 });
 
-/** Hash fixed-size chunks to bound memory, including resources and symlink targets. */
-export const hashBundle = Effect.fn("hashBundle")(function* (root: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const entries: string[] = [];
-  const visit = (
-    relative: string,
-  ): Effect.Effect<void, FileSystemError, FileSystem.FileSystem | Crypto.Crypto> =>
-    Effect.gen(function* () {
-      const names = (yield* fs.readDirectory(path.join(root, relative))).sort((a, b) =>
-        a.localeCompare(b, "en"),
-      );
-      for (const name of names) {
-        const key = path.join(relative, name);
-        const absolute = path.join(root, key);
-        // FileSystem.stat follows links; readLink distinguishes them without following a cycle.
-        const link = yield* fs.readLink(absolute).pipe(
-          Effect.catchIf(
-            (error) => isNotLink(error.reason.cause),
-            () => Effect.succeed(null),
-          ),
-        );
-        if (link !== null) {
-          entries.push(`link:${key}:${link}`);
-          continue;
-        }
-        const info = yield* fs.stat(absolute);
-        if (info.type === "Directory") {
-          entries.push(`directory:${key}`);
-          yield* visit(key);
-        } else {
-          const chunks = yield* fs.stream(absolute, { chunkSize: 65536 }).pipe(
-            Stream.mapEffect((chunk) => digest(chunk)),
-            Stream.runCollect,
-          );
-          entries.push(`file:${key}:${yield* digest(chunks.join("\n"))}`);
-        }
-      }
-    });
-  yield* visit("");
-  return yield* digest(entries.map((entry) => `${entry.length}:${entry}`).join(""));
-});
-type FileSystemError = import("effect/PlatformError").PlatformError;
-
 const bundleId = "com.t3tools.t3code.dev";
 const roots = Effect.gen(function* () {
   const path = yield* Path.Path;
@@ -182,7 +127,6 @@ const command = Effect.fn("nativeClient.command")(function* (
         ...environment,
         APP_VARIANT: "development",
         MOBILE_VERSION_POLICY: "appVersion",
-        T3CODE_IOS_PERSONAL_TEAM: "0",
         CI: "1",
         EXPO_NO_GIT_STATUS: "1",
       },
@@ -221,33 +165,12 @@ const validateDevice = Effect.fn("nativeClient.validateDevice")(function* (
   platform: NativePlatform,
   device: string,
 ) {
-  if (platform === "ios") {
-    if ((yield* HostProcess.Platform) !== "darwin")
-      return yield* new NativeClientError({
-        message: "Run iOS check/ensure on the Mac that hosts the simulator.",
-      });
-    const listing = yield* decodeSimulators(
-      yield* command("xcrun", ["simctl", "list", "devices", "available", "--json"]),
-    );
-    const simulator = Object.values(listing.devices)
-      .flat()
-      .find((entry) => entry.udid === device);
-    if (!simulator)
-      return yield* new NativeClientError({
-        message: `No available iOS simulator with UDID ${device}.`,
-      });
-    if (simulator.state !== "Booted")
-      return yield* new NativeClientError({
-        message: `Boot the selected simulator first: xcrun simctl boot ${device}`,
-      });
-  } else {
-    if ((yield* command("adb", ["-s", device, "get-state"])) !== "device")
-      return yield* new NativeClientError({ message: "Android device is not connected." });
-    if ((yield* command("adb", ["-s", device, "shell", "getprop", "ro.kernel.qemu"])) !== "1")
-      return yield* new NativeClientError({
-        message: "Select an Android emulator, not a physical device.",
-      });
-  }
+  if ((yield* command("adb", ["-s", device, "get-state"])) !== "device")
+    return yield* new NativeClientError({ message: "Android device is not connected." });
+  if ((yield* command("adb", ["-s", device, "shell", "getprop", "ro.kernel.qemu"])) !== "1")
+    return yield* new NativeClientError({
+      message: "Select an Android emulator, not a physical device.",
+    });
 });
 
 export const installedBinary = Effect.fn("installedBinary")(function* (
@@ -255,13 +178,6 @@ export const installedBinary = Effect.fn("installedBinary")(function* (
   device: string,
   run: typeof command = command,
 ) {
-  if (platform === "ios") {
-    const apps = yield* run("xcrun", ["simctl", "listapps", device]);
-    if (!apps.includes(`"${bundleId}"`)) return null;
-    return yield* hashBundle(
-      yield* run("xcrun", ["simctl", "get_app_container", device, bundleId, "app"]),
-    );
-  }
   const installed = yield* run("adb", ["-s", device, "shell", "pm", "list", "packages", bundleId]);
   if (!installed.split("\n").some((line) => line.trim() === `package:${bundleId}`)) return null;
   const packages = yield* run("adb", ["-s", device, "shell", "pm", "path", bundleId]);
@@ -288,7 +204,7 @@ const main = Command.make(
   "mobile-native-client",
   {
     mode: Argument.Literals("mode", ["check", "ensure"]),
-    platform: Argument.Literals("platform", ["ios", "android"]),
+    platform: Argument.Literals("platform", ["android"]),
     device: Argument.String("device"),
   },
   Effect.fn("nativeClient.main")(function* ({ mode, platform, device }) {
@@ -338,55 +254,11 @@ const main = Command.make(
           ["exec", "expo", "prebuild", "--clean", "--platform", platform, "--no-install"],
           true,
         );
-        if (platform === "ios") {
-          const output = yield* fs.makeTempDirectoryScoped({ prefix: "t3-native-client-" });
-          const { mobile } = yield* roots;
-          yield* command("pod", ["install"], true, path.join(mobile, "ios"));
-          // Target this simulator only, without Expo's desktop activation or log streaming.
-          yield* command(
-            "xcrun",
-            [
-              "xcodebuild",
-              "-workspace",
-              path.join(mobile, "ios/T3CodeDev.xcworkspace"),
-              "-scheme",
-              "T3CodeDev",
-              "-configuration",
-              "Debug",
-              "-destination",
-              `id=${device}`,
-              "-derivedDataPath",
-              output,
-              "build",
-            ],
-            true,
-          );
-          yield* command(
-            "xcrun",
-            [
-              "simctl",
-              "install",
-              device,
-              path.join(output, "Build/Products/Debug-iphonesimulator/T3CodeDev.app"),
-            ],
-            true,
-          );
-        } else {
-          yield* command(
-            "vp",
-            [
-              "exec",
-              "expo",
-              "run:android",
-              "--device",
-              device,
-              "--no-bundler",
-              "--variant",
-              "debug",
-            ],
-            true,
-          );
-        }
+        yield* command(
+          "vp",
+          ["exec", "expo", "run:android", "--device", device, "--no-bundler", "--variant", "debug"],
+          true,
+        );
       }).pipe(Effect.scoped),
       saveRecord: Effect.fn(function* (record: NativeClientRecord) {
         yield* fs.makeDirectory(path.dirname(recordPath), { recursive: true });

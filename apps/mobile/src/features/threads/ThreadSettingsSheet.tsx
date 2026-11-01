@@ -2,6 +2,7 @@ import { createV5StackNavigator as createNativeStackNavigator } from "../../nati
 import type {
   EnvironmentId,
   ModelSelection,
+  OrchestrationV2ModelFallback,
   ProviderInstanceId,
   ProviderOptionDescriptor,
   ProviderOptionSelection,
@@ -244,6 +245,8 @@ type ThreadSettingsSessionProps = {
   readonly providerInstanceId?: ProviderInstanceId;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
   readonly selectedModel: ModelSelection | null;
+  readonly modelFallback?: OrchestrationV2ModelFallback | null;
+  readonly onModelFallbackChange?: (policy: OrchestrationV2ModelFallback | null) => void;
   readonly reportedModelSelection?: ModelSelection | null;
   readonly onSelectModel: (option: ModelOption) => void;
   readonly optionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
@@ -294,6 +297,10 @@ export function useExistingThreadSettingsRoutePresentation() {
 }
 
 type ThreadSettingsSessionValue = {
+  readonly modelFallback: OrchestrationV2ModelFallback | null;
+  readonly onModelFallbackChange?: (policy: OrchestrationV2ModelFallback | null) => void;
+  readonly choosingFallback: boolean;
+  readonly toggleFallbackPicker: () => void;
   readonly environmentId: EnvironmentId | null;
   readonly providerInstanceId?: ProviderInstanceId;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
@@ -365,11 +372,17 @@ function ThreadSettingsSessionProvider(
   );
   const [pendingModel, setPendingModel] = useState<ModelOption | null>(null);
 
+  const [choosingFallback, setChoosingFallback] = useState(false);
+  const toggleFallbackPicker = useCallback(() => {
+    setChoosingFallback((value) => !value);
+    setPendingModel(null);
+  }, []);
+  const appliedSelection = choosingFallback ? props.modelFallback?.fallback : props.selectedModel;
   const isApplied = useCallback(
     (option: ModelOption) =>
-      option.selection.instanceId === props.selectedModel?.instanceId &&
-      option.selection.model === props.selectedModel.model,
-    [props.selectedModel],
+      option.selection.instanceId === appliedSelection?.instanceId &&
+      option.selection.model === appliedSelection.model,
+    [appliedSelection],
   );
   // The list highlights the staged pick; Save turns it into the applied one.
   const isDisplayed = useCallback(
@@ -421,10 +434,28 @@ function ThreadSettingsSessionProvider(
         return false;
       }
       void Haptics.selectionAsync();
-      props.onSelectModel(pendingModel);
+      if (choosingFallback && props.onModelFallbackChange) {
+        const preferred = props.modelFallback?.preferred ?? props.selectedModel;
+        if (!preferred || preferred.instanceId === pendingModel.selection.instanceId) {
+          Alert.alert(
+            "Choose another provider account",
+            "The fallback needs a separate usage allowance.",
+          );
+          return false;
+        }
+        props.onModelFallbackChange({ preferred, fallback: pendingModel.selection });
+      } else props.onSelectModel(pendingModel);
     }
     return true;
-  }, [pendingModel, props.onSelectModel, props.providerGroups]);
+  }, [
+    pendingModel,
+    props.onSelectModel,
+    props.providerGroups,
+    choosingFallback,
+    props.onModelFallbackChange,
+    props.modelFallback,
+    props.selectedModel,
+  ]);
 
   const applyOptionChange = useCallback(
     (id: string, value: string | boolean) => {
@@ -471,6 +502,10 @@ function ThreadSettingsSessionProvider(
 
   const value = useMemo<ThreadSettingsSessionValue>(
     () => ({
+      modelFallback: props.modelFallback ?? null,
+      onModelFallbackChange: props.onModelFallbackChange,
+      choosingFallback,
+      toggleFallbackPicker,
       environmentId: props.environmentId,
       providerInstanceId: props.providerInstanceId,
       providerGroups: props.providerGroups,
@@ -511,6 +546,10 @@ function ThreadSettingsSessionProvider(
       isApplied,
       isDisplayed,
       props.environmentId,
+      choosingFallback,
+      toggleFallbackPicker,
+      props.modelFallback,
+      props.onModelFallbackChange,
       props.selectedModel,
       props.reportedModelSelection,
       props.providerInstanceId,
@@ -854,9 +893,9 @@ function ThreadSettingsMainContent(props: {
   const listItems = useMemo<ReadonlyArray<ThreadSettingsCatalogItem>>(
     () => [
       ...(catalogItems.length === 0 ? ([{ kind: "empty", key: "empty" }] as const) : catalogItems),
-      { kind: "options", key: "options" },
+      ...(!session.choosingFallback ? [{ kind: "options", key: "options" } as const] : []),
     ],
-    [catalogItems],
+    [catalogItems, session.choosingFallback],
   );
   const renderCatalogItem = useCallback(
     (itemProps: LegendListRenderItemProps<ThreadSettingsCatalogItem>) => {
@@ -939,6 +978,36 @@ function ThreadSettingsMainContent(props: {
       maintainVisibleContentPosition={THREAD_SETTINGS_MAINTAIN_VISIBLE_CONTENT_POSITION}
       ListHeaderComponent={
         <>
+          {session.onModelFallbackChange ? (
+            <View className="mx-4 my-2 gap-2">
+              <Text className="text-sm text-muted-foreground">
+                {session.choosingFallback
+                  ? "Choose the model to use when your preferred provider hits its usage limit."
+                  : session.modelFallback
+                    ? `Preferred: ${session.modelFallback.preferred.model} · Fallback: ${session.modelFallback.fallback.model}`
+                    : "Automatically continue with another model when usage runs out."}
+              </Text>
+              <MaterialButton
+                label={
+                  session.choosingFallback
+                    ? "Cancel fallback selection"
+                    : session.modelFallback
+                      ? "Change fallback"
+                      : "Set fallback model"
+                }
+                onPress={session.toggleFallbackPicker}
+              />
+              {session.modelFallback ? (
+                <MaterialButton
+                  label="Disable auto switching"
+                  onPress={() => {
+                    session.onModelFallbackChange?.(null);
+                    if (session.choosingFallback) session.toggleFallbackPicker();
+                  }}
+                />
+              ) : null}
+            </View>
+          ) : null}
           {Platform.OS === "android" ? (
             <View className="px-4 pb-2 pt-3">
               <View

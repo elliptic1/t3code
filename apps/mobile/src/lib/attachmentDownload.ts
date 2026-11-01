@@ -202,6 +202,40 @@ export async function openAttachmentInViewer(input: {
   }
 }
 
+export function isApkFile(attachment: AttachmentFileMetadata): boolean {
+  return (
+    /\.apk$/i.test(attachment.name) ||
+    attachment.mimeType.split(";", 1)[0]?.trim() === "application/vnd.android.package-archive"
+  );
+}
+
+/** Downloads an APK, installs it after the system confirmation, and opens it. */
+export async function installAndOpenApk(input: {
+  readonly url: string;
+  readonly attachment: AttachmentFileMetadata;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const file = await downloadAttachmentForPreview(input);
+  if (file === null) return;
+  const endHandoff = beginForegroundHandoff();
+  try {
+    const { requireNativeModule } = await import("expo");
+    const problem = await Promise.race([
+      requireNativeModule<{ installAndOpenApk(uri: string): Promise<string | null> }>(
+        "T3NativeControls",
+      ).installAndOpenApk(file.uri),
+      // Some Android versions never report a dismissed confirmation.
+      new Promise<null>((resolve) =>
+        input.signal.addEventListener("abort", () => resolve(null), { once: true }),
+      ),
+    ]);
+    if (problem !== null) throw new Error(problem);
+  } finally {
+    endHandoff();
+    file.dispose();
+  }
+}
+
 /** The caller owns this cached file until disposal, unless it has been shared with another app. */
 export async function downloadAttachmentForPreview(input: {
   readonly url: string;

@@ -16,6 +16,14 @@ export function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
+    readonly settled: boolean;
+    /** Absent when the connection cannot operate threads. */
+    readonly onToggleSettled?: () => void;
+    readonly regeneratingTitle?: boolean;
+    /** Absent when the connection cannot operate threads. */
+    readonly onRegenerateTitle?: () => void;
+    /** Absent when the server does not support thread artifacts. */
+    readonly onOpenArtifacts?: () => void;
   },
 ) {
   const navigation = useNavigation();
@@ -59,8 +67,36 @@ export function ThreadHeader(
         onPress: onMergeBack,
       });
     }
+    if (props.onRegenerateTitle) {
+      actions.push({
+        accessibilityLabel: props.regeneratingTitle ? "Regenerating title…" : "Regenerate title",
+        icon: "arrow.clockwise",
+        disabled: props.regeneratingTitle,
+        onPress: props.onRegenerateTitle,
+      });
+    }
+    // Last, so these land in the overflow menu rather than crowding the header.
+    if (props.onOpenArtifacts) {
+      actions.push({
+        accessibilityLabel: "Artifacts",
+        icon: "archivebox",
+        onPress: props.onOpenArtifacts,
+      });
+    }
+    if (props.onToggleSettled) {
+      actions.push({
+        accessibilityLabel: props.settled ? "Move out of settled" : "Settle thread",
+        icon: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
+        onPress: props.onToggleSettled,
+      });
+    }
     return actions;
   }, [
+    props.onOpenArtifacts,
+    props.settled,
+    props.onToggleSettled,
+    props.regeneratingTitle,
+    props.onRegenerateTitle,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,

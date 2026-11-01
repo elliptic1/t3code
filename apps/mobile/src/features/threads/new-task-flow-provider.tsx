@@ -119,7 +119,10 @@ import {
   resolveNewTaskBranchWorktreePath,
   resolveNewTaskLocalWorkspaceSelection,
 } from "./new-task-context-presentation";
-import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
+import {
+  resolveEnvironmentProjectMatch,
+  resolveSelectedDraftProject,
+} from "./new-task-project-selection";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
 
 type WorkspaceMode = "local" | "worktree";
@@ -357,18 +360,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     };
   }, [editingPendingTask]);
 
-  const selectedProject =
-    projectsForEnvironment.find(
-      (project) => scopedProjectKey(project.environmentId, project.id) === selectedProjectKey,
-    ) ??
-    // While editing a queued task whose project shell is absent, keep the task
-    // pinned to its own project — falling through to an arbitrary first
-    // project would silently retarget it (and its reused turn identifiers).
-    (editingPendingProject !== null &&
-    selectedProjectKey ===
-      scopedProjectKey(editingPendingProject.environmentId, editingPendingProject.id)
-      ? editingPendingProject
-      : (projectsForEnvironment[0] ?? null));
+  const selectedProject = resolveSelectedDraftProject(
+    projectsForEnvironment,
+    selectedProjectKey,
+    editingPendingProject,
+  );
 
   const selectedEnvironmentServerConfig = useEnvironmentServerConfig(
     selectedProject?.environmentId ?? null,
@@ -466,11 +462,8 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     : selectedProject
       ? activeDraftKey
       : null;
-  // selectedProject can resolve without setProject ever running (the
-  // environment's first project is the fallback, and the draft screen skips
-  // setProject when the route's project already matches it). The composer
-  // still needs a draft to write into, so bind one the moment a project is
-  // in view and nothing else owns the key.
+  // A restored project selection still needs a draft when nothing else owns
+  // the key. Unselected projects never create drafts in the background.
   useEffect(() => {
     if (activeDraftKey !== null || editingPendingTask !== null || selectedProject === null) {
       return;
@@ -814,9 +807,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       if (!isNewTaskDraftKey(draftKey) || !stamp) {
         return false;
       }
-      // The stamped project must be loaded: selectedProject falls back to
-      // the environment's first project otherwise, and the draft would be
-      // sent somewhere the user never chose.
+      // The stamped project must be loaded before its draft can be resumed.
       const projectLoaded = projects.some(
         (project) =>
           project.environmentId === stamp.environmentId && project.id === stamp.projectId,

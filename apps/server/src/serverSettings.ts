@@ -33,6 +33,7 @@ import {
   ServerSettingsError,
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
+import { voiceProviderId, voiceConnectionProfile } from "@t3tools/shared/voiceSettings";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -253,6 +254,12 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
     voiceConnection: {
       ...settings.voiceConnection,
       apiKey: redactSecret(settings.voiceConnection.apiKey),
+      profiles: Object.fromEntries(
+        Object.entries(settings.voiceConnection.profiles ?? {}).map(([id, profile]) => [
+          id,
+          { ...profile, apiKey: redactSecret(profile.apiKey) },
+        ]),
+      ),
     },
   };
 }
@@ -1059,6 +1066,26 @@ const make = Effect.gen(function* () {
           );
         voiceConnection.apiKey = Option.isSome(secret) ? textDecoder.decode(secret.value) : "";
       }
+      if (voiceConnection.profiles) {
+        const profiles = { ...voiceConnection.profiles };
+        for (const id of ["openai", "xai", "local"] as const) {
+          const profile = profiles[id];
+          if (!profile || profile.apiKey !== SECRET_REDACTED) continue;
+          const secret = yield* secretStore
+            .get(`voice-profile-${id}-api-key`)
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({ settingsPath, operation: "read-secret", cause }),
+              ),
+            );
+          profiles[id] = {
+            ...profile,
+            apiKey: Option.isSome(secret) ? textDecoder.decode(secret.value) : "",
+          };
+        }
+        voiceConnection.profiles = profiles;
+      }
       const storedSecrets = new Map<string, string>();
       for (const slot of sourceControlHostSecretSlots(settings.sourceControlHosts)) {
         if (slot.value !== SECRET_REDACTED) continue;
@@ -1114,7 +1141,7 @@ const make = Effect.gen(function* () {
   );
 
   const persistProviderEnvironmentSecrets = (current: ServerSettings, next: ServerSettings) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       const providerInstances: Record<string, ProviderInstanceConfig> = {
         ...next.providerInstances,
       };
@@ -1225,18 +1252,57 @@ const make = Effect.gen(function* () {
         });
       }
 
-      const voiceConnection = { ...next.voiceConnection };
-      let voiceKey = voiceConnection.apiKey;
-      if (voiceKey === SECRET_REDACTED) {
-        voiceKey = current.voiceConnection.apiKey;
-      }
-      if (voiceKey !== SECRET_REDACTED) {
-        const secretName = "voice-connection-api-key";
-        if (voiceKey.length === 0)
+      const currentProvider = voiceProviderId(current.voiceConnection);
+      const nextProvider = voiceProviderId(next.voiceConnection);
+      const currentProfiles = {
+        ...current.voiceConnection.profiles,
+        [currentProvider]: voiceConnectionProfile(current.voiceConnection),
+      };
+      const profiles = {
+        ...currentProfiles,
+        ...next.voiceConnection.profiles,
+        [nextProvider]: voiceConnectionProfile(next.voiceConnection),
+      };
+      let activeKey = "";
+      for (const id of ["openai", "xai", "local"] as const) {
+        const profile = profiles[id];
+        if (!profile) continue;
+        let key = profile.apiKey;
+        if (key === SECRET_REDACTED) {
+          const existing = currentProfiles[id];
+          key = existing?.apiKey ?? "";
+          if (key === SECRET_REDACTED) {
+            const secret = yield* secretStore
+              .get(
+                id === currentProvider ? "voice-connection-api-key" : `voice-profile-${id}-api-key`,
+              )
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({ settingsPath, operation: "read-secret", cause }),
+                ),
+              );
+            key = Option.isSome(secret) ? textDecoder.decode(secret.value) : "";
+          }
+        }
+        const secretName = `voice-profile-${id}-api-key`;
+        if (key.length === 0)
           changes.push({ kind: "remove", secretName, operation: "remove-secret" });
-        else changes.push({ kind: "write", secretName, value: textEncoder.encode(voiceKey) });
-        voiceConnection.apiKey = voiceKey.length === 0 ? "" : SECRET_REDACTED;
+        else changes.push({ kind: "write", secretName, value: textEncoder.encode(key) });
+        profiles[id] = { ...profile, apiKey: key.length === 0 ? "" : SECRET_REDACTED };
+        if (id === nextProvider) activeKey = key;
       }
+      const secretName = "voice-connection-api-key";
+      if (activeKey.length === 0)
+        changes.push({ kind: "remove", secretName, operation: "remove-secret" });
+      else changes.push({ kind: "write", secretName, value: textEncoder.encode(activeKey) });
+      const voiceConnection = {
+        ...next.voiceConnection,
+        ...(next.voiceConnection.provider || next.voiceConnection.profiles
+          ? { provider: nextProvider, profiles }
+          : {}),
+        apiKey: activeKey.length === 0 ? "" : SECRET_REDACTED,
+      };
       // Hand-edited plaintext not yet in the store, so the redaction marker can move it there.
       const inlineSecrets = new Map(
         sourceControlHostSecretSlots(current.sourceControlHosts).flatMap((slot) =>

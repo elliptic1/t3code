@@ -213,7 +213,6 @@ const layerDesktopLocalEnvironmentAuth = DesktopLocalEnvironmentAuth.layer.pipe(
 );
 
 const layerDesktopApplication = Layer.mergeAll(
-  DesktopLifecycle.layer,
   layerDesktopAppActivation,
   DesktopWebLinks.layer,
   DesktopApplicationMenu.layer,
@@ -222,6 +221,7 @@ const layerDesktopApplication = Layer.mergeAll(
   DesktopShellEnvironment.layer,
   layerDesktopSsh,
 ).pipe(
+  Layer.provideMerge(DesktopLifecycle.layer),
   Layer.provideMerge(layerDesktopSnapShot),
   Layer.provideMerge(DesktopUpdates.layer),
   Layer.provideMerge(layerDesktopWslBackend),

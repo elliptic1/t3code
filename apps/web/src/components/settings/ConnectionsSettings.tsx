@@ -10,7 +10,7 @@ import {
   TerminalIcon,
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -50,6 +50,7 @@ import {
   RelayConnectionRegistration,
   RelayConnectionTarget,
   connectionRoutes,
+  connectionDiagnostics,
   connectionStatusText,
   environmentMcpUrl,
 } from "@t3tools/client-runtime/connection";
@@ -183,6 +184,7 @@ import {
   usePrimaryEnvironmentId,
 } from "~/state/environments";
 import { APP_VERSION } from "~/branding";
+import { isElectron } from "~/env";
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { primaryServerKeybindingsAtom, serverEnvironment } from "~/state/server";
@@ -1500,6 +1502,33 @@ function SavedBackendListRow({
   const enabled = environment.entry.enabled && !unsupported;
   const isConnected = environment.connection.phase === "connected";
   const isRemoving = removingEnvironmentId === environmentId;
+  const supervisor = useAtomValue(environmentCatalog.stateAtom(environmentId));
+  const { copyToClipboard: copyDiagnostics, isCopied: diagnosticsCopied } = useCopyToClipboard({
+    target: "connection diagnostics",
+    onError: (error) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not copy diagnostics",
+          description: error.message,
+        }),
+      );
+    },
+  });
+  function copyErrorAndContext() {
+    copyDiagnostics(
+      connectionDiagnostics({
+        environment,
+        state: Option.getOrNull(AsyncResult.value(supervisor)),
+        client: {
+          surface: isElectron ? "desktop" : "web",
+          version: APP_VERSION,
+          platform: navigator.userAgent,
+        },
+        capturedAt: new Date().toISOString(),
+      }),
+    );
+  }
   const errorTraceId = environment.connection.traceId;
   const { copyToClipboard: copyTraceIdToClipboard } = useCopyToClipboard<{ traceId: string }>({
     target: "trace ID",
@@ -1684,11 +1713,20 @@ function SavedBackendListRow({
         </span>
       }
       below={
-        serverUpdateState.status !== "idle" ? (
-          <div className="mt-1 max-w-md">
-            <ServerUpdateProgress state={serverUpdateState} />
-          </div>
-        ) : null
+        <>
+          {environment.connection.error !== null ? (
+            <div className="mt-1">
+              <Button variant="outline" size="sm" onClick={copyErrorAndContext}>
+                {diagnosticsCopied ? "Diagnostics copied" : "Copy error and context"}
+              </Button>
+            </div>
+          ) : null}
+          {serverUpdateState.status !== "idle" ? (
+            <div className="mt-1 max-w-md">
+              <ServerUpdateProgress state={serverUpdateState} />
+            </div>
+          ) : null}
+        </>
       }
       detail={
         <>

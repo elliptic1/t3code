@@ -1,3 +1,6 @@
+import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 import { AuthRelayWriteScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "../../state/session";
 import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
@@ -19,7 +22,10 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { supportsAgentAwarenessPush } from "../agent-awareness/capabilities";
+import {
+  supportsAgentAwarenessPush,
+  supportsUsageResetReminders,
+} from "../agent-awareness/capabilities";
 import {
   openAndroidLiveUpdateSettings,
   supportsAndroidLiveUpdateSettings,
@@ -78,6 +84,7 @@ export function SettingsNotificationsRouteScreen() {
 }
 
 function ConfiguredSettingsNotificationsRouteScreen() {
+  const { selectedTargets } = useSettingsEnvironmentFilter();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const agentAwarenessPushAvailable = supportsAgentAwarenessPush();
@@ -432,6 +439,20 @@ function ConfiguredSettingsNotificationsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
+        <SettingsSection title="Subscription usage">
+          {selectedTargets.length === 0 ? (
+            <Text className="p-4 text-foreground-muted">
+              Connect an environment to configure usage reset reminders.
+            </Text>
+          ) : (
+            selectedTargets.map((environment) => (
+              <UsageResetReminderSetting
+                key={environment.environmentId}
+                environment={environment}
+              />
+            ))
+          )}
+        </SettingsSection>
         <SettingsSection title="Agent activity">
           <SettingsSwitchRow
             icon="bell.badge"
@@ -501,5 +522,35 @@ function ConfiguredSettingsNotificationsRouteScreen() {
         </SettingsSection>
       </ScrollView>
     </SettingsScreen>
+  );
+}
+
+function UsageResetReminderSetting({ environment }: { readonly environment: SettingsTarget }) {
+  const permission = useAtomValue(
+    serverEnvironment.updateSettings.permissionAtom(environment.environmentId),
+  );
+  const update = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "update usage reset reminders",
+  });
+  const [pending, setPending] = useState(false);
+  return (
+    <SettingsSwitchRow
+      icon="clock"
+      label={`Usage reset reminders · ${environment.label}`}
+      subtitle={
+        supportsUsageResetReminders()
+          ? "One hour before Claude or Codex resets, with usage and remaining allowance. Requires Device Notifications and a T3 Connect link."
+          : "Install a newer app build to receive usage reset reminders."
+      }
+      value={environment.serverConfig.settings.usageResetRemindersEnabled ?? false}
+      disabled={!permission || pending}
+      onValueChange={(enabled) => {
+        setPending(true);
+        void update({
+          environmentId: environment.environmentId,
+          input: { patch: { usageResetRemindersEnabled: enabled } },
+        }).finally(() => setPending(false));
+      }}
+    />
   );
 }

@@ -124,16 +124,28 @@ export function getUserQueuedThreadRuns(
   );
 }
 
-export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQueueWorkflowState {
+/** Steering needs a live provider turn, including adapters that steer by restarting it. */
+export function threadSupportsActiveSteering(projection: Projection | null | undefined): boolean {
+  if (projection == null) return false;
   const activeRun = resolveActiveThreadRun(projection);
-  const session = resolveThreadProviderSession(projection);
-  const capabilities = session?.capabilities.turns;
+  const capabilities = resolveThreadProviderSession(projection)?.capabilities.turns;
   const hasSteerableProviderTurn =
     activeRun?.status === "running" &&
     activeRun.activeAttemptId !== null &&
     projection.providerTurns.some(
       (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
     );
+  return (
+    hasSteerableProviderTurn &&
+    (capabilities?.supportsActiveSteering === true ||
+      capabilities?.supportsSteeringByInterruptRestart === true)
+  );
+}
+
+export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQueueWorkflowState {
+  const activeRun = resolveActiveThreadRun(projection);
+  const session = resolveThreadProviderSession(projection);
+  const capabilities = session?.capabilities.turns;
   const queuedRuns = copySorted(
     getUserQueuedThreadRuns(projection),
     (left, right) =>
@@ -155,10 +167,7 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
     queuedRuns,
     isHeld: projection.runs.some((run) => run.status === "queued" && run.queueHeld === true),
     canReorder: capabilities?.supportsQueuedMessages === true,
-    canPromoteToSteer:
-      hasSteerableProviderTurn &&
-      (capabilities?.supportsActiveSteering === true ||
-        capabilities?.supportsSteeringByInterruptRestart === true),
+    canPromoteToSteer: threadSupportsActiveSteering(projection),
   };
 }
 

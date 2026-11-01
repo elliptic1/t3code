@@ -16,8 +16,9 @@ describe("voice session credentials", () => {
         apiKey: "permanent-secret",
         model: "custom-voice-model",
       };
-      const result = yield* createVoiceSession(settings, fetcher);
+      const result = yield* createVoiceSession(settings, fetcher, "Act as my COO.");
       expect(result.clientSecret).toBe("ephemeral");
+      expect(result.instructions).toBe("Act as my COO.");
       expect(result).not.toHaveProperty("apiKey");
       const [url, init] = fetcher.mock.calls[0]!;
       expect(url).toBe(settings.tokenEndpoint);

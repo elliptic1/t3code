@@ -1,3 +1,4 @@
+import { ThreadWorkflowsPanel } from "./ThreadWorkflowsPanel";
 import { useAtomValue } from "@effect/atom-react";
 import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
@@ -72,6 +73,7 @@ import {
 } from "react-native";
 import {
   KeyboardController,
+  KeyboardEvents,
   KeyboardStickyView,
   useKeyboardState,
 } from "react-native-keyboard-controller";
@@ -206,6 +208,7 @@ export interface ThreadDetailScreenProps {
   readonly composerDraftKey: string | null;
   readonly followUpBehavior: FollowUpBehavior;
   readonly canSteerActiveTurn: boolean;
+  readonly canStartParallelAgent: boolean;
   readonly isSavingQueuedEdit: boolean;
   readonly onCancelQueuedRunEdit: () => void;
   readonly onRemoveQueuedEditAttachment: (attachmentId: string) => void;
@@ -388,8 +391,15 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
         setKeyboardStateSuspect(true);
       }
     });
+    // A real show animation always emits keyboardWillShow, even when the frozen state already
+    // reads open at the same height, so neither the state effect below nor a focus gain fires
+    // (the editor keeps focus across background). Without this the composer stays under the IME.
+    const showSubscription = KeyboardEvents.addListener("keyboardWillShow", () => {
+      setKeyboardStateSuspect(false);
+    });
     return () => {
       subscription.remove();
+      showSubscription.remove();
     };
   }, []);
   useEffect(() => {
@@ -1025,6 +1035,10 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
       // A sent message makes the snapshot stale; a refused send leaves it in place.
       clearUsageLimitsFor(targetThreadKey);
 
+      if (followUp === "parallel") {
+        composerEditorRef.current?.blur();
+        return messageId;
+      }
       setSubmittedMessageId(messageId);
       setAnchorMessageId(
         resolveThreadFeedSubmissionAnchor({
@@ -1144,6 +1158,11 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
 
   return (
     <View className="flex-1">
+      <ThreadWorkflowsPanel
+        key={selectedThreadKey}
+        environmentId={props.environmentId}
+        threadId={props.selectedThread.id}
+      />
       {!usesNativeWorkspaceColumns ? <NativeLayoutObserver onChange={setScreenMetrics} /> : null}
       {showContent ? (
         <View
@@ -1476,6 +1495,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                         draftKey={props.composerDraftKey ?? undefined}
                         followUpBehavior={props.followUpBehavior}
                         canSteerActiveTurn={props.canSteerActiveTurn}
+                        canStartParallelAgent={props.canStartParallelAgent}
                         queuedEdit={
                           props.queuedRunEdit === null
                             ? null

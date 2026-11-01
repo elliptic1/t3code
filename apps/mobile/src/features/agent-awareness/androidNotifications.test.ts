@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     configure?: ReturnType<typeof vi.fn>;
     clear?: ReturnType<typeof vi.fn>;
     openLiveUpdateSettings?: ReturnType<typeof vi.fn>;
+    supportsUsageResetReminders?: ReturnType<typeof vi.fn>;
   } | null,
   config: { scheme: ["t3code-preview"], extra: { iosPersonalTeamBuild: false } },
   requireModule: vi.fn(),
@@ -97,4 +98,11 @@ describe("Android native notification capability", () => {
     expect(supportsAgentAwarenessPush()).toBe(false);
     expect(mocks.requireModule).not.toHaveBeenCalled();
   });
+});
+
+it("requires a native build that preserves activity during usage reminders", async () => {
+  const { supportsAndroidUsageResetReminders } = await import("./androidNotifications");
+  expect(supportsAndroidUsageResetReminders()).toBe(false);
+  mocks.native!.supportsUsageResetReminders = vi.fn(() => true);
+  expect(supportsAndroidUsageResetReminders()).toBe(true);
 });

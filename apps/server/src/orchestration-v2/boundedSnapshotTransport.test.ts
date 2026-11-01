@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
+  AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthSessionId,
   EnvironmentAuthenticatedAuth,
@@ -39,6 +40,7 @@ import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import { subscribeOrchestrationV2Thread } from "../ws.ts";
 import * as OrchestrationHttp from "./http.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
@@ -230,6 +232,7 @@ const TestLayer = Layer.mergeAll(
   Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({}),
   Layer.mock(ProjectStore.ProjectStoreV2)({}),
   Layer.mock(ProjectEnrichmentService.ProjectEnrichmentService)({}),
+  ServerSettings.layerTest(),
 ).pipe(Layer.provideMerge(store));
 
 const withHttp = <A>(use: (get: (path: string) => Promise<Response>) => Promise<A>) =>
@@ -367,4 +370,51 @@ it.layer(TestLayer)("compact bounded snapshot transport", (it) => {
       }),
     );
   });
+});
+
+const voiceOperateAuth = Layer.succeed(EnvironmentAuthenticatedAuth, (effect) =>
+  effect.pipe(
+    Effect.provideService(EnvironmentAuthenticatedPrincipal, {
+      sessionId: AuthSessionId.make("voice-session"),
+      subject: "voice-session",
+      method: "browser-session-cookie",
+      scopes: new Set([AuthOrchestrationOperateScope]),
+    }),
+  ),
+);
+
+it.layer(TestLayer)("voice session HTTP endpoint", (it) => {
+  it.effect("maps a VoiceSessionError to 400 when voice is disabled", () =>
+    Effect.gen(function* () {
+      const context = yield* Effect.context<Layer.Success<typeof TestLayer>>();
+      const appLayer = HttpApiBuilder.layer(OrchestrationApi).pipe(
+        Layer.provide(OrchestrationHttp.layer),
+        Layer.provide(voiceOperateAuth),
+        Layer.provide(Layer.succeedContext(context)),
+        Layer.provide(NodeHttpPlatform.layer),
+        Layer.provide(Etag.layerWeak),
+        Layer.provide(NodeServices.layer),
+      );
+      return yield* Effect.acquireUseRelease(
+        Effect.sync(() => HttpRouter.toWebHandler(appLayer, { disableLogger: true })),
+        ({ handler }) =>
+          Effect.promise(() =>
+            handler(
+              new Request("http://environment.test/api/orchestration/voice-session", {
+                method: "POST",
+                headers: {
+                  [ORCHESTRATION_PROTOCOL_HEADER]: String(ORCHESTRATION_PROTOCOL_VERSION),
+                },
+              }),
+            ),
+          ),
+        ({ dispose }) => Effect.promise(() => dispose()),
+      ).pipe(
+        Effect.map((response) => {
+          assert.strictEqual(response.status, 400);
+          return response;
+        }),
+      );
+    }),
+  );
 });

@@ -22,6 +22,8 @@ class T3AgentNotificationsModule : Module() {
       }
     }
 
+    Function("supportsUsageResetReminders") { true }
+
     Function("clear") {
       appContext.reactContext?.let { AgentNotifications.clear(it) }
     }

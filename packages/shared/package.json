@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./voiceSettings": {
+      "types": "./src/voiceSettings.ts",
+      "import": "./src/voiceSettings.ts"
+    },
     "./authScopeOptions": {
       "types": "./src/authScopeOptions.ts",
       "import": "./src/authScopeOptions.ts"

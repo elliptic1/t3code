@@ -16,6 +16,7 @@ import { AndroidAnchoredMenu } from "../../components/AndroidAnchoredMenu";
 import { ControlPillMenu } from "../../components/ControlPill";
 import { MaterialSearchField } from "../../components/MaterialSearchField";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
+import { ProviderLimitsStrip } from "../usage/ProviderLimitsStrip";
 import { WorkspaceConnectionTitle } from "./WorkspaceConnectionTitle";
 import { useWorkspaceState } from "../../state/workspace";
 import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
@@ -29,6 +30,7 @@ export function MaterialThreadListToolbar(props: {
   readonly filterCustomized: boolean;
   readonly onFilterAction: NonNullable<ComponentProps<typeof ControlPillMenu>["onPressAction"]>;
   readonly onOpenSettings: () => void;
+  readonly onOpenUsage?: () => void;
   readonly onOpenEnvironments: () => void;
   readonly sidebar?: boolean;
   readonly onLayout?: (event: LayoutChangeEvent) => void;
@@ -108,6 +110,13 @@ export function MaterialThreadListToolbar(props: {
                   brand={<CompactBrandTitle allowFontScaling={false} />}
                 />
               </View>
+              {props.onOpenUsage ? (
+                <AndroidHeaderIconButton
+                  accessibilityLabel="Open usage settings"
+                  icon="chart.bar.xaxis"
+                  onPress={props.onOpenUsage}
+                />
+              ) : null}
               <AndroidHeaderIconButton
                 accessibilityLabel="Search threads"
                 icon="magnifyingglass"
@@ -121,6 +130,9 @@ export function MaterialThreadListToolbar(props: {
             </>
           )}
         </View>
+        {!searching && props.onOpenUsage ? (
+          <ProviderLimitsStrip onPress={props.onOpenUsage} />
+        ) : null}
       </View>
       {/* Keep the filter above the New thread FAB at every text size. */}
       {state.hasConnections ? (

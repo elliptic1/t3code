@@ -12,8 +12,12 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as DesktopApplicationMenu from "./DesktopApplicationMenu.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopLifecycle from "../app/DesktopLifecycle.ts";
+import * as DesktopShutdown from "../app/DesktopShutdown.ts";
+import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
+import * as ElectronTheme from "../electron/ElectronTheme.ts";
 
 const environmentInput = {
   dirname: "/repo/apps/desktop/dist-electron",
@@ -97,6 +101,7 @@ const layerElectronMenu = (
 ) =>
   Layer.succeed(ElectronMenu.ElectronMenu, {
     startDictation: Effect.succeed(false),
+    stopDictation: Effect.succeed(false),
     setApplicationMenu: (template) =>
       Deferred.succeed(applicationMenuTemplate, template).pipe(Effect.asVoid),
     popupTemplate: () => Effect.void,
@@ -117,8 +122,18 @@ const configureMenu = (
         Layer.provideMerge(layerElectronMenu(applicationMenuTemplate)),
         Layer.provideMerge(layerDesktopWindow(selectedAction)),
         Layer.provideMerge(layerDesktopUpdates),
+        Layer.provideMerge(
+          Layer.succeed(DesktopLifecycle.DesktopLifecycle, {
+            relaunch: (reason) =>
+              Deferred.succeed(selectedAction, `restart:${reason}`).pipe(Effect.asVoid),
+            register: Effect.void,
+          }),
+        ),
         Layer.provideMerge(layerElectronDialog),
         Layer.provideMerge(layerElectronApp),
+        Layer.provideMerge(DesktopShutdown.layer),
+        Layer.provideMerge(DesktopState.layer),
+        Layer.provideMerge(ElectronTheme.layer),
         Layer.provideMerge(
           DesktopEnvironment.layer({ ...environmentInput, ...environment }).pipe(
             Layer.provide(Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({}))),
@@ -159,6 +174,35 @@ describe("DesktopApplicationMenu", () => {
         applicationMenu.submenu.find((item) => item.role === "quit")?.label,
         "Quit T3 Code (Nightly)",
       );
+    }),
+  );
+
+  it.effect("relaunches the app from the macOS application menu", () =>
+    Effect.gen(function* () {
+      const selectedAction = yield* Deferred.make<string>();
+      const applicationMenuTemplate =
+        yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+
+      yield* configureMenu(selectedAction, applicationMenuTemplate, { platform: "darwin" });
+
+      const template = yield* Deferred.await(applicationMenuTemplate);
+      const applicationMenu = template[0];
+      assert.isDefined(applicationMenu);
+      if (!Array.isArray(applicationMenu.submenu)) {
+        throw new Error("Expected application menu submenu to be an array.");
+      }
+      const restartItem = applicationMenu.submenu.find(
+        (item) => item.label === `Restart ${applicationMenu.label}`,
+      );
+      assert.isDefined(restartItem);
+      const quitIndex = applicationMenu.submenu.findIndex((item) => item.role === "quit");
+      assert.equal(applicationMenu.submenu.indexOf(restartItem), quitIndex - 1);
+      if (typeof restartItem.click !== "function") {
+        throw new Error("Expected Restart menu item to have a click handler.");
+      }
+
+      restartItem.click({} as Electron.MenuItem, {} as Electron.BrowserWindow, {} as KeyboardEvent);
+      assert.equal(yield* Deferred.await(selectedAction), "restart:application-menu");
     }),
   );
 

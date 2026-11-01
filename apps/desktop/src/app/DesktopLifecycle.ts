@@ -174,6 +174,17 @@ export const make = DesktopLifecycle.of({
         yield* electronApp.exit(75);
         return;
       }
+      // A KeepAlive LaunchAgent restarts the app itself; relaunching too would run two copies.
+      const launchdJob = process.env.XPC_SERVICE_NAME;
+      if (
+        process.platform === "darwin" &&
+        launchdJob &&
+        launchdJob !== "0" &&
+        !launchdJob.startsWith("application.")
+      ) {
+        yield* electronApp.exit(0);
+        return;
+      }
       yield* electronApp.relaunch({
         execPath: process.execPath,
         args: process.argv.slice(1),

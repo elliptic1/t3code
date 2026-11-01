@@ -51,6 +51,7 @@ import {
 
 vi.mock("./androidNotifications", () => ({
   supportsAndroidAgentNotifications: vi.fn(() => true),
+  supportsAndroidUsageResetReminders: vi.fn(() => true),
   configureAndroidAgentNotifications: vi.fn(),
   clearAndroidAgentNotifications: vi.fn(),
 }));
@@ -302,6 +303,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         notifyOnInput: true,
         notifyOnCompletion: true,
         notifyOnFailure: true,
+        usageResetRemindersSupported: true,
       },
     });
   });
@@ -378,6 +380,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         notifyOnInput: true,
         notifyOnCompletion: true,
         notifyOnFailure: true,
+        usageResetRemindersSupported: true,
       },
     });
   });

@@ -26,6 +26,11 @@ describe("T3 orchestration provider instructions", () => {
     assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "bindToCurrentThread=false");
   });
 
+  it("makes thread artifacts the default way to hand over files", () => {
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "publish it there with `artifact_publish`");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "never start a temporary HTTP server");
+  });
+
   it("injects prompt fallback only for an MCP-enabled first run", () => {
     const prompt = "Inspect the repository.";
     const injected = t3OrchestrationPromptForFirstRun({

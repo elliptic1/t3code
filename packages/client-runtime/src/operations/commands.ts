@@ -6,6 +6,7 @@ import {
   CheckpointScopeId,
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationV2CheckpointUnavailableError,
+  OrchestrationDispatchCommandError,
   WS_METHODS,
   type ChatAttachment,
   type MessageId,
@@ -123,6 +124,7 @@ export interface VisitThreadInput extends ThreadCommandInput {
 export type MarkThreadUnreadInput = ThreadCommandInput;
 
 export interface UpdateThreadMetadataInput extends ThreadCommandInput {
+  readonly modelFallback?: import("@t3tools/contracts").OrchestrationV2ModelFallback | null;
   readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecoveryUpdate | null;
   readonly title?: string;
   readonly modelSelection?: ModelSelection;
@@ -181,7 +183,7 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
   readonly interactionMode: ProviderInteractionMode;
   readonly bootstrap?: StartThreadBootstrap;
   readonly sourceProposedPlan?: { readonly threadId: ThreadId; readonly planId: PlanId };
-  readonly dispatchMode?: "auto" | "queue" | "steer" | "restart" | "start";
+  readonly dispatchMode?: "auto" | "queue" | "steer" | "restart" | "parallel" | "start";
 }
 
 export interface InterruptThreadTurnInput extends ThreadCommandInput {
@@ -564,6 +566,14 @@ export const markThreadUnread = Effect.fn("EnvironmentCommands.markThreadUnread"
 export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadMetadata")(
   function* (input: UpdateThreadMetadataInput) {
     const commandId = yield* allocateCommandId(input);
+    if (
+      input.modelFallback &&
+      (yield* getInitialServerConfig()).environment.capabilities.modelFallback !== true
+    ) {
+      return yield* new OrchestrationDispatchCommandError({
+        message: "Update this server to use automatic model switching.",
+      });
+    }
     let result = null;
     if (
       input.title !== undefined ||
@@ -571,11 +581,13 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
       input.worktreePath !== undefined ||
       input.regenerateTitle !== undefined ||
       input.linkedPullRequest !== undefined ||
-      input.limitRecovery !== undefined
+      input.limitRecovery !== undefined ||
+      input.modelFallback !== undefined
     ) {
       result = yield* dispatch({
         type: "thread.metadata.update",
         ...(input.limitRecovery === undefined ? {} : { limitRecovery: input.limitRecovery }),
+        ...(input.modelFallback === undefined ? {} : { modelFallback: input.modelFallback }),
         commandId,
         threadId: input.threadId,
         ...(input.title === undefined ? {} : { title: input.title }),
@@ -600,6 +612,7 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
         commandId: result === null ? commandId : CommandId.make(`${commandId}:model-selection`),
         threadId: input.threadId,
         modelSelection: input.modelSelection,
+        ...(input.modelFallback === undefined ? {} : { modelFallback: input.modelFallback }),
       });
     }
     return result ?? { sequence: 0 };
@@ -632,6 +645,14 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
   input: StartThreadTurnInput,
 ) {
   const commandId = yield* allocateCommandId(input);
+  if (input.dispatchMode === "parallel") {
+    const config = yield* getInitialServerConfig();
+    if (config.environment.capabilities.composerParallelTasks !== true) {
+      return yield* new OrchestrationDispatchCommandError({
+        message: "Update this server to start parallel work from the composer.",
+      });
+    }
+  }
   const attachments = yield* persistAttachments(
     input.threadId,
     input.message.messageId,
@@ -642,6 +663,29 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
     input.message.attachments,
     attachments,
   );
+  if (input.dispatchMode === "parallel") {
+    if (input.bootstrap !== undefined) {
+      return yield* new OrchestrationDispatchCommandError({
+        message: "Parallel work needs an existing thread with an active turn.",
+      });
+    }
+    const modelSelection =
+      input.modelSelection ?? (yield* getProjection(input.threadId)).thread.modelSelection;
+    return yield* dispatch({
+      type: "delegated_task.request",
+      commandId,
+      createdBy: "user",
+      creationSource: input.creationSource ?? "web",
+      parentThreadId: input.threadId,
+      task: input.message.text.trim() || "Please review the attached content.",
+      attachments,
+      ...(context ? { context } : {}),
+      modelSelection,
+      runtimeMode: input.runtimeMode,
+      interactionMode: input.interactionMode,
+      completionWake: "always",
+    });
+  }
   const bootstrap = input.bootstrap?.createThread;
   const prepareWorktree = input.bootstrap?.prepareWorktree;
   if (bootstrap !== undefined || prepareWorktree !== undefined) {

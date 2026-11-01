@@ -64,8 +64,8 @@ export function HomeHeader(props: HomeHeaderProps) {
           // Static header config (glass, title, fonts) lives in Stack.tsx
           // (GLASS_HEADER_OPTIONS). Only dynamic values are set here.
           headerTintColor: iconColor,
-          unstable_headerRightItems: () =>
-            sidebarHeader
+          unstable_headerRightItems: () => [
+            ...(sidebarHeader
               ? createSidebarHeaderItems({
                   filterIcon: hasCustomListOptions
                     ? "line.3.horizontal.decrease.circle.fill"
@@ -82,7 +82,16 @@ export function HomeHeader(props: HomeHeaderProps) {
                     onPress: props.onOpenSettings,
                     type: "button",
                   }),
-                ],
+                ]),
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "Open usage settings",
+              icon: { name: "chart.bar.xaxis", type: "sfSymbol" } as const,
+              identifier: "home-usage",
+              label: "",
+              onPress: props.onOpenUsage,
+              type: "button",
+            }),
+          ],
           // The keys below are set per-branch (not `undefined`) so a later
           // reapply cannot clobber options owned by NativeHeaderToolbar.
           ...(sidebarHeader

@@ -316,6 +316,8 @@ export function useThreadComposerState() {
         }),
   );
   const canSteerActiveTurn = queueWorkflow?.canPromoteToSteer === true;
+  const canStartParallelAgent =
+    queueWorkflow?.activeRun?.rootNodeId != null && queueWorkflow.activeRun.status !== "preparing";
   const queuedRunEdit = useQueuedRunEdit(selectedThreadKey);
   const composerDraftKey =
     selectedThreadKey === null
@@ -673,11 +675,17 @@ export function useThreadComposerState() {
       // Steering travels as "auto" so a turn that ends in the meantime degrades
       // to a queued run on the server instead of failing the delivery and
       // bouncing the message back into the draft.
-      const followUpAction = resolveComposerDispatchMode({
-        running: activeThreadBusy && canSteerActiveTurn,
-        alternateModifier: followUpOverride !== undefined && followUpOverride !== followUpBehavior,
-        activeTurnDefault: followUpBehavior,
-      });
+      const followUpAction =
+        followUpOverride ??
+        resolveComposerDispatchMode({
+          running: activeThreadBusy && canSteerActiveTurn,
+          alternateModifier: false,
+          activeTurnDefault: followUpBehavior,
+        });
+      if (followUpAction === "parallel" && !canStartParallelAgent) {
+        setThreadComposerError(threadKey, "Parallel work needs an active turn.");
+        return null;
+      }
       // A send while the worktree is still being set up waits behind that setup,
       // so the server can hold it if the setup ends without a worktree.
       // Before detail loads, the shell's latest run can be a queued follow-up
@@ -685,13 +693,16 @@ export function useThreadComposerState() {
       const setupRunning = [selectedThreadActivityRun?.status, selectedThreadRuntime?.status].some(
         (status) => status === "preparing" || status === "starting",
       );
-      const followUpDispatchMode = setupRunning
-        ? "queue"
-        : followUpAction === "auto"
-          ? null
-          : followUpAction === "queue"
+      const followUpDispatchMode =
+        followUpAction === "parallel"
+          ? "parallel"
+          : setupRunning
             ? "queue"
-            : "auto";
+            : followUpAction === "auto"
+              ? null
+              : followUpAction === "queue"
+                ? "queue"
+                : "auto";
 
       const metadata = makeQueuedMessageMetadata();
       const messageId = MessageId.make(metadata.messageId);
@@ -744,6 +755,7 @@ export function useThreadComposerState() {
     [
       activeThreadBusy,
       canSteerActiveTurn,
+      canStartParallelAgent,
       followUpBehavior,
       saveQueuedRunEdit,
       selectedEnvironmentRuntime?.connectionState,
@@ -1086,6 +1098,7 @@ export function useThreadComposerState() {
     composerDraftKey,
     followUpBehavior,
     canSteerActiveTurn,
+    canStartParallelAgent,
     queuedRunEdit,
     isSavingQueuedEdit,
     cancelQueuedRunEdit,

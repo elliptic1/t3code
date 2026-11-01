@@ -1,9 +1,30 @@
 import {
+  ThreadArtifactListInput,
+  ThreadArtifactListResult,
+  ThreadArtifactTarget,
+  ThreadArtifactChangeInput,
+  ThreadArtifactRenameInput,
+  ThreadArtifactPublishInput,
+  ThreadArtifactUploadInput,
+  ThreadArtifactUrlResult,
+  ThreadArtifactResult,
+  ThreadArtifactError,
+} from "./threadArtifact.ts";
+import {
+  WorkflowGetInput,
+  WorkflowListInput,
+  WorkflowListResult,
+  WorkflowCreateInput,
+  WorkflowControlInput,
+  WorkflowResult,
+  WorkflowError,
+} from "./workflow.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
 } from "./orchestrationV2.ts";
-import { VoiceSessionConnection, VoiceSessionError } from "./voice.ts";
+import { VoiceConversationHistory, VoiceSessionConnection, VoiceSessionError } from "./voice.ts";
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import {
   McpAppCallToolInput,
@@ -483,6 +504,7 @@ export const WS_METHODS = {
   serverRunStorageCleanup: "server.runStorageCleanup",
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetSettings: "server.getSettings",
+  serverSyncVoiceHistory: "server.syncVoiceHistory",
   serverCreateVoiceSession: "server.createVoiceSession",
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
@@ -512,6 +534,18 @@ export const WS_METHODS = {
   serverRefreshUsageRates: "server.refreshUsageRates",
 
   // Scheduled tasks
+  artifactsList: "artifacts.list",
+  artifactsSubscribe: "artifacts.subscribe",
+  artifactsPublish: "artifacts.publish",
+  artifactsRename: "artifacts.rename",
+  artifactsDelete: "artifacts.delete",
+  artifactsCreateUploadUrl: "artifacts.createUploadUrl",
+  artifactsCreateDownloadUrl: "artifacts.createDownloadUrl",
+  workflowsGet: "workflows.get",
+  workflowsList: "workflows.list",
+  workflowsSubscribe: "workflows.subscribe",
+  workflowsCreate: "workflows.create",
+  workflowsControl: "workflows.control",
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
@@ -745,6 +779,15 @@ const WsServerCommitDesktopUpdateRpc = Rpc.make(WS_METHODS.serverCommitDesktopUp
   payload: DesktopUpdateCommitInput,
   success: ServerSelfUpdateResult,
   error: Schema.Union([ServerSelfUpdateError, EnvironmentAuthorizationError]),
+});
+
+const WsServerSyncVoiceHistoryRpc = Rpc.make(WS_METHODS.serverSyncVoiceHistory, {
+  payload: Schema.Struct({
+    lines: VoiceConversationHistory,
+    reset: Schema.optional(Schema.Boolean),
+  }),
+  success: VoiceConversationHistory,
+  error: Schema.Union([VoiceSessionError, EnvironmentAuthorizationError]),
 });
 
 const WsServerCreateVoiceSessionRpc = Rpc.make(WS_METHODS.serverCreateVoiceSession, {
@@ -1760,6 +1803,70 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const WsArtifactsListRpc = Rpc.make(WS_METHODS.artifactsList, {
+  payload: ThreadArtifactListInput,
+  success: ThreadArtifactListResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsSubscribeRpc = Rpc.make(WS_METHODS.artifactsSubscribe, {
+  payload: ThreadArtifactListInput,
+  success: ThreadArtifactListResult,
+  stream: true,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsPublishRpc = Rpc.make(WS_METHODS.artifactsPublish, {
+  payload: ThreadArtifactPublishInput,
+  success: ThreadArtifactResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsRenameRpc = Rpc.make(WS_METHODS.artifactsRename, {
+  payload: ThreadArtifactRenameInput,
+  success: ThreadArtifactResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsDeleteRpc = Rpc.make(WS_METHODS.artifactsDelete, {
+  payload: ThreadArtifactChangeInput,
+  success: Schema.Void,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsCreateUploadUrlRpc = Rpc.make(WS_METHODS.artifactsCreateUploadUrl, {
+  payload: ThreadArtifactUploadInput,
+  success: ThreadArtifactUrlResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsCreateDownloadUrlRpc = Rpc.make(WS_METHODS.artifactsCreateDownloadUrl, {
+  payload: ThreadArtifactTarget,
+  success: ThreadArtifactUrlResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkflowsGetRpc = Rpc.make(WS_METHODS.workflowsGet, {
+  payload: WorkflowGetInput,
+  success: WorkflowResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsListRpc = Rpc.make(WS_METHODS.workflowsList, {
+  payload: WorkflowListInput,
+  success: WorkflowListResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsSubscribeRpc = Rpc.make(WS_METHODS.workflowsSubscribe, {
+  payload: WorkflowListInput,
+  success: WorkflowListResult,
+  stream: true,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsCreateRpc = Rpc.make(WS_METHODS.workflowsCreate, {
+  payload: WorkflowCreateInput,
+  success: WorkflowResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+const WsWorkflowsControlRpc = Rpc.make(WS_METHODS.workflowsControl, {
+  payload: WorkflowControlInput,
+  success: WorkflowResult,
+  error: Schema.Union([WorkflowError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -1861,6 +1968,16 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
   { error: EnvironmentAuthorizationError },
 ) {}
 
+export const ThreadArtifactRpcGroup = RpcGroup.make(
+  WsArtifactsListRpc,
+  WsArtifactsSubscribeRpc,
+  WsArtifactsPublishRpc,
+  WsArtifactsRenameRpc,
+  WsArtifactsDeleteRpc,
+  WsArtifactsCreateUploadUrlRpc,
+  WsArtifactsCreateDownloadUrlRpc,
+).middleware(RpcScopeAuthorization);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -1886,6 +2003,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerCommitDesktopUpdateRpc,
   WsServerUpsertKeybindingRpc,
   WsServerRemoveKeybindingRpc,
+  WsServerSyncVoiceHistoryRpc,
   WsServerCreateVoiceSessionRpc,
   WsServerRunStorageCleanupRpc,
   WsServerGetStorageCleanupReportRpc,
@@ -1913,6 +2031,18 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
   WsServerSignalProcessRpc,
+  WsArtifactsListRpc,
+  WsArtifactsSubscribeRpc,
+  WsArtifactsPublishRpc,
+  WsArtifactsRenameRpc,
+  WsArtifactsDeleteRpc,
+  WsArtifactsCreateUploadUrlRpc,
+  WsArtifactsCreateDownloadUrlRpc,
+  WsWorkflowsGetRpc,
+  WsWorkflowsListRpc,
+  WsWorkflowsSubscribeRpc,
+  WsWorkflowsCreateRpc,
+  WsWorkflowsControlRpc,
   WsScheduledTasksListRpc,
   WsScheduledTasksSubscribeRpc,
   WsScheduledTasksUpsertRpc,

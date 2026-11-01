@@ -6,6 +6,8 @@ import {
   WS_METHODS,
   ORCHESTRATION_V2_WS_METHODS,
   type EnvironmentId,
+  type ModelSelection,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import type { VoiceAction } from "@t3tools/client-runtime/voice-conversation";
 import {
@@ -16,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
+import { readCustomModelEntries } from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { AsyncResult } from "effect/reactivity";
 import type { AtomRegistry } from "effect/reactivity";
@@ -83,13 +86,137 @@ export function createVoiceActionBindings<R, ER>(deps: {
     focusedThread: () => string | null = () => null,
   ) {
     const createdThreads = new Map<ThreadId, Parameters<typeof readThreadShell>[0]>();
+    const readSettings = () => {
+      const settings = appAtomRegistry.get(serverEnvironment.settingsValueAtom(environmentId));
+      if (!settings) throw new Error("Environment settings are not loaded.");
+      return settings;
+    };
+    const modelCatalog = () => {
+      const config = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
+      if (!config) throw new Error("Environment model catalog is not loaded.");
+      const settings = readSettings();
+      return config.providers
+        .filter(
+          (provider) =>
+            provider.enabled && provider.installed && provider.availability !== "unavailable",
+        )
+        .map((provider) => {
+          const customConfig = settings.providerInstances[provider.instanceId]?.config;
+          const custom = readCustomModelEntries(
+            customConfig && typeof customConfig === "object" && "customModels" in customConfig
+              ? customConfig.customModels
+              : undefined,
+          );
+          return {
+            instanceId: provider.instanceId,
+            name: provider.displayName ?? provider.driver,
+            models: [
+              ...provider.models,
+              ...custom.filter(
+                (model) => !provider.models.some((entry) => entry.slug === model.slug),
+              ),
+            ].map((model) => ({ model: model.slug, name: model.name })),
+          };
+        });
+    };
+    const validateSelection = (selection: ModelSelection) => {
+      if (
+        !modelCatalog().some(
+          (provider) =>
+            provider.instanceId === selection.instanceId &&
+            provider.models.some((model) => model.model === selection.model),
+        )
+      )
+        throw new Error(
+          "Model is not available in this environment. Use list_models to choose a model.",
+        );
+    };
+    const projectModel = (project: EnvironmentProject, settings: ServerSettings) => {
+      const resolved = resolveProjectSettings(settings, project.id, project);
+      const config = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
+      const provider = config?.providers.find(
+        (entry) =>
+          entry.enabled &&
+          entry.installed &&
+          entry.availability !== "unavailable" &&
+          entry.models.length > 0,
+      );
+      const model = provider?.models.find((entry) => entry.isDefault) ?? provider?.models[0];
+      return {
+        projectId: project.id,
+        modelOverride: resolved.overrides.defaultModelSelection ?? null,
+        defaultModelSelection:
+          resolved.settings.defaultModelSelection ??
+          (provider && model ? { instanceId: provider.instanceId, model: model.slug } : null),
+        source: resolved.settings.defaultModelSelection
+          ? resolved.sources.defaultModelSelection
+          : "provider_fallback",
+      };
+    };
+
     return async (action: VoiceAction): Promise<unknown> => {
       const projects = readProjects().filter((project) => project.environmentId === environmentId);
       switch (action.action) {
-        case "get_context":
-          return { environmentId, currentThreadId: focusedThread() };
+        case "get_voice_settings": {
+          const settings = appAtomRegistry.get(serverEnvironment.settingsValueAtom(environmentId));
+          if (!settings) throw new Error("Environment settings are not loaded.");
+          return { instructions: settings.voiceInstructions };
+        }
+        case "update_voice_settings": {
+          const settings = voiceResult(
+            await runAtomCommand(appAtomRegistry, serverEnvironment.updateSettings, {
+              environmentId,
+              input: { patch: { voiceInstructions: action.instructions } },
+            }),
+          );
+          return { instructions: settings.voiceInstructions };
+        }
+        case "get_context": {
+          const threadId = focusedThread();
+          // A route can outlive its thread after archival or deletion. Resolve it
+          // against the current shell on every call rather than trusting the route ID.
+          const thread = threadId
+            ? readThreadShell(scopeThreadRef(environmentId, ThreadId.make(threadId)))
+            : null;
+          return {
+            environmentId,
+            currentThreadId:
+              thread && thread.archivedAt === null && thread.deletedAt === null ? thread.id : null,
+          };
+        }
         case "list_projects":
-          return projects.map(({ id, title, workspaceRoot }) => ({ id, title, workspaceRoot }));
+          return projects.map((project) => ({
+            id: project.id,
+            title: project.title,
+            workspaceRoot: project.workspaceRoot,
+            ...projectModel(project, readSettings()),
+          }));
+        case "list_models":
+          return modelCatalog();
+        case "get_project_model":
+        case "set_project_model": {
+          const project = projects.find((entry) => entry.id === action.projectId);
+          if (!project)
+            throw new Error("Project not found in this environment. List projects first.");
+          const settings = readSettings();
+          if (action.action === "get_project_model") return projectModel(project, settings);
+          const config = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
+          if (!config?.environment?.capabilities.projectSettingsOverrides)
+            throw new Error(
+              "This environment does not support project settings overrides. Update its server first.",
+            );
+          if (action.modelSelection !== null) validateSelection(action.modelSelection);
+          const overrides = { ...resolveProjectSettings(settings, project.id, project).overrides };
+          if (action.modelSelection === null) delete overrides.defaultModelSelection;
+          else overrides.defaultModelSelection = action.modelSelection;
+          const saved = voiceResult(
+            await runAtomCommand(appAtomRegistry, serverEnvironment.updateSettings, {
+              environmentId,
+              input: { patch: { projectSettingsOverrides: { [project.id]: overrides } } },
+            }),
+          );
+          return projectModel(project, saved);
+        }
         case "list_threads": {
           const threads = readThreadShells().filter(
             (thread) =>
@@ -114,11 +241,13 @@ export function createVoiceActionBindings<R, ER>(deps: {
                 id: thread.id,
                 projectId: thread.projectId,
                 title: thread.title,
+                modelSelection: thread.modelSelection,
               })),
             active: threads.slice(0, 100).map((thread) => ({
               id: thread.id,
               projectId: thread.projectId,
               title: thread.title,
+              modelSelection: thread.modelSelection,
               status: thread.runtime?.status ?? "idle",
               error: thread.runtime?.lastError,
               settled: thread.settledOverride,
@@ -161,18 +290,9 @@ export function createVoiceActionBindings<R, ER>(deps: {
           const settings = appAtomRegistry.get(serverEnvironment.settingsValueAtom(environmentId));
           if (!settings) throw new Error("Environment settings are not loaded.");
           const effective = resolveProjectSettings(settings, project.id, project).settings;
-          const config = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
-          const provider = config?.providers.find(
-            (entry) =>
-              entry.enabled &&
-              entry.installed &&
-              entry.availability !== "unavailable" &&
-              entry.models.length > 0,
-          );
-          const model = provider?.models.find((entry) => entry.isDefault) ?? provider?.models[0];
+          if (action.modelSelection) validateSelection(action.modelSelection);
           const modelSelection =
-            effective.defaultModelSelection ??
-            (provider && model ? { instanceId: provider.instanceId, model: model.slug } : null);
+            action.modelSelection ?? projectModel(project, settings).defaultModelSelection;
           if (!modelSelection)
             throw new Error(
               "Configure a default coding model in Settings before creating a voice thread.",
@@ -189,6 +309,15 @@ export function createVoiceActionBindings<R, ER>(deps: {
                 modelSelection,
                 runtimeMode: effective.defaultRuntimeMode,
                 interactionMode: "default",
+                ...(action.message === undefined
+                  ? {}
+                  : {
+                      initialMessage: {
+                        messageId: MessageId.make(randomUUID()),
+                        text: action.message,
+                        attachments: [],
+                      },
+                    }),
                 workspaceStrategy:
                   effective.defaultThreadEnvMode === "worktree"
                     ? { type: "worktree", baseRef: "HEAD", startFromOrigin: false }
@@ -203,7 +332,10 @@ export function createVoiceActionBindings<R, ER>(deps: {
               `Thread ${threadId} was created but has not appeared in the UI yet. Do not create it again.`,
             );
           await openThread(threadId);
-          return { threadId };
+          return {
+            threadId,
+            modelSelection: readThreadShell(ref)?.modelSelection ?? modelSelection,
+          };
         }
       }
       const threadId = ThreadId.make(action.threadId);
@@ -223,6 +355,16 @@ export function createVoiceActionBindings<R, ER>(deps: {
         if (!thread) throw new Error("Thread not found in this environment. List threads first.");
       }
       switch (action.action) {
+        case "set_thread_model": {
+          validateSelection(action.modelSelection);
+          voiceResult(
+            await runAtomCommand(appAtomRegistry, threadEnvironment.updateMetadata, {
+              environmentId,
+              input: { threadId, modelSelection: action.modelSelection },
+            }),
+          );
+          return { threadId, modelSelection: action.modelSelection };
+        }
         case "open_thread":
           await openThread(threadId);
           return { opened: threadId };
@@ -235,6 +377,7 @@ export function createVoiceActionBindings<R, ER>(deps: {
           );
           return {
             title: projection.thread.title,
+            modelSelection: projection.thread.modelSelection,
             messages: projection.messages
               .slice(-12)
               .map((message) => ({ role: message.role, text: message.text.slice(0, 6000) })),
