@@ -75,6 +75,7 @@ import Migration0069WebhookDedupeSource from "./Migrations/067_WebhookDedupe.ts"
 
 const Migration0069WebhookDedupe: typeof Migration0068RepairClientSettlementTimestamps =
   Migration0069WebhookDedupeSource;
+import Migration0071EnsureThreadArtifacts from "./Migrations/071_EnsureThreadArtifacts.ts";
 import Migration0070ShellStopRequestIndexSource from "./Migrations/068_ShellStopRequestIndex.ts";
 
 const Migration0070ShellStopRequestIndex: typeof Migration0068RepairClientSettlementTimestamps =
@@ -153,6 +154,7 @@ const migrationEntries = [
   [68, "RepairClientSettlementTimestamps", Migration0068RepairClientSettlementTimestamps],
   [69, "WebhookDedupe", Migration0069WebhookDedupe],
   [70, "ShellStopRequestIndex", Migration0070ShellStopRequestIndex],
+  [71, "EnsureThreadArtifacts", Migration0071EnsureThreadArtifacts],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -197,6 +199,32 @@ const reconcileForkWorkflowMigration = Effect.gen(function* () {
           WHERE migration_id = 62 AND name = 'Workflows'`;
         }
       }
+    }),
+  );
+});
+
+// Local artifact builds recorded 62 and 64 under ids that belong to other migrations. Dropping
+// the 64 row lets the migrator run 64 onward, which is safe because they are all idempotent
+// against those databases, and migration 71 keeps the existing thread_artifacts table.
+const reconcileForkArtifactMigrations = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledger.length === 0) return;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const collisions = yield* sql`SELECT migration_id FROM effect_sql_migrations
+        WHERE migration_id = 62 AND name = 'ThreadArtifacts'`;
+      if (collisions.length > 0) {
+        const indexes = yield* sql`SELECT name FROM sqlite_master WHERE type = 'index'
+          AND name = 'orchestration_v2_projection_turn_items_failed_error_idx'`;
+        if (indexes.length === 0) yield* Migration0062;
+        yield* sql`UPDATE effect_sql_migrations SET name = 'ThreadFailureLookupIndex'
+          WHERE migration_id = 62 AND name = 'ThreadArtifacts'`;
+      }
+      yield* sql`DELETE FROM effect_sql_migrations
+        WHERE migration_id = 64 AND name = 'EnsureThreadArtifacts'`;
     }),
   );
 });
@@ -336,6 +364,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
       yield* reconcileUpstreamMigrationIds;
     }
     yield* reconcileForkWorkflowMigration;
+    yield* reconcileForkArtifactMigrations;
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
   const executedMigrations = [

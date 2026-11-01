@@ -6,7 +6,11 @@ import { expect, it } from "@effect/vitest";
 import {
   ChatAttachmentId,
   CommandId,
+  ComposerContextId,
   EventId,
+  NodeId,
+  ProviderInstanceId,
+  RunId,
   RuntimeRequestId,
   ThreadId,
   TurnItemId,

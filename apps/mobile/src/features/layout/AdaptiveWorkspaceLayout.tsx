@@ -490,6 +490,12 @@ function AdaptiveWorkspaceLayoutContent(
     }
     setSupplementaryPanePreferredWidth(nextWidth);
   };
+  const handleOpenUsage = () => {
+    navigation.navigate("SettingsSheet", {
+      screen: "SettingsContent",
+      params: { screen: "SettingsUsage" },
+    });
+  };
   const handleOpenSettings = () => {
     navigation.navigate("SettingsSheet", {
       screen: "SettingsContent",
@@ -877,6 +883,7 @@ function AdaptiveWorkspaceLayoutContent(
                           onRequestVisibility={revealPrimarySidebar}
                           selectedThreadKey={selectedThreadKey}
                           onOpenSettings={handleOpenSettings}
+                          onOpenUsage={handleOpenUsage}
                           onOpenEnvironmentSettings={handleOpenEnvironmentSettings}
                           onNewThreadInProject={handleNewThreadInProject}
                           onNewThreadOnBranch={handleNewThreadOnBranch}

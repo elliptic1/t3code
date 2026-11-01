@@ -7,6 +7,9 @@ import * as Option from "effect/Option";
 import type * as Electron from "electron";
 import { beforeEach, vi } from "vite-plus/test";
 
+const { stopDictationMock } = vi.hoisted(() => ({ stopDictationMock: vi.fn(async () => true) }));
+vi.mock("./MacOsDictation", () => ({ stopMacOsDictation: stopDictationMock }));
+
 const { sendActionMock, buildFromTemplateMock, createFromNamedImageMock, setApplicationMenuMock } =
   vi.hoisted(() => ({
     sendActionMock: vi.fn(),
@@ -263,6 +266,7 @@ describe("system dictation", () => {
     (platform) =>
       Effect.gen(function* () {
         sendActionMock.mockClear();
+        stopDictationMock.mockClear();
         const menu = yield* ElectronMenu.ElectronMenu;
         assert.equal(yield* menu.startDictation, platform === "darwin");
         assert.equal(yield* menu.stopDictation, platform === "darwin");
@@ -270,6 +274,7 @@ describe("system dictation", () => {
           sendActionMock.mock.calls,
           platform === "darwin" ? [["startDictation:"], ["stopDictation:"]] : [],
         );
+        assert.equal(stopDictationMock.mock.calls.length, platform === "darwin" ? 1 : 0);
       }).pipe(
         Effect.provide(
           ElectronMenu.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform))),

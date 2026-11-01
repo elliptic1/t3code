@@ -27,7 +27,6 @@ import { useAssetUrl } from "../../state/assets";
 import { assetImageSource } from "../../lib/assetImageSource";
 import { beginQueuedRunEdit, useQueuedRunEdit } from "../../state/queued-run-edit";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import {
   REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
@@ -37,6 +36,7 @@ import {
   resolveThreadQueueRowControls,
 } from "./threadQueueControlPresentation";
 import { threadDragGapOffset } from "./threadDragGap";
+import { useThreadQueueCommand } from "./useThreadQueueCommand";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 const REMOVE_ACTION_WIDTH = 76;
@@ -68,10 +68,22 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const workflow = useThreadQueueWorkflow(target);
   const threadKey = scopedThreadKey(target.environmentId, target.threadId);
   const editing = useQueuedRunEdit(threadKey);
-  const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun, "reorder queued message");
-  const promote = useAtomCommand(threadEnvironment.promoteQueuedRun, "promote queued message");
-  const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun, "remove queued message");
-  const resume = useAtomCommand(threadEnvironment.resumeThreadQueue, "resume queue");
+  const reorder = useThreadQueueCommand(
+    threadEnvironment.reorderQueuedRun,
+    "Could not reorder message",
+  );
+  const promote = useThreadQueueCommand(
+    threadEnvironment.promoteQueuedRun,
+    "Could not send queued message",
+  );
+  const cancel = useThreadQueueCommand(
+    threadEnvironment.cancelQueuedRun,
+    "Could not remove message",
+  );
+  const resume = useThreadQueueCommand(
+    threadEnvironment.resumeThreadQueue,
+    "Could not resume queue",
+  );
   const [resuming, setResuming] = useState(false);
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
   const busyRef = useRef(false);
@@ -182,6 +194,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     <ScrollView
       nestedScrollEnabled
       className="flex-1"
+      keyboardShouldPersistTaps="handled"
       scrollEnabled={draggedRunId === null}
       // The iOS header is translucent and floats over this view; UIKit has to
       // inset the content or the first row sits underneath the title.
@@ -379,7 +392,6 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                           ? "min-w-0 flex-1 text-sm text-foreground-muted"
                           : "min-w-0 flex-1 text-sm text-foreground"
                       }
-                      numberOfLines={1}
                     >
                       {title}
                     </Text>
@@ -403,6 +415,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                         <Text className="font-t3-medium text-xs text-primary-foreground">
                           {workflow?.canSendNow ? "Send now" : "Steer"}
                         </Text>
+                        {controls.isEditing ? (
+                          <Text className="shrink-0 text-2xs uppercase tracking-wide text-primary">
+                            Editing
+                          </Text>
+                        ) : null}
                       </Pressable>
                     ) : null}
                   </Pressable>

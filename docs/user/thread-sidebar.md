@@ -261,3 +261,9 @@ several selected threads together. Choose **Wake thread** to bring a thread back
 A snoozed thread keeps working and stays hidden until its wake time, even while
 its agent wakes itself for background work. It comes back early only when it needs
 an approval or answer from you, when a run fails, or when you send it a message.
+
+## Keep files with a thread
+
+Open **Artifacts** in the thread details on web or desktop, or in the thread’s **More actions** menu on mobile. Add files from your device, or ask the agent to publish a file it created, such as an APK, report, or archive. Artifacts are copied onto the thread’s server and can be downloaded from any client connected to that environment. The server must be online.
+
+You or the agent can rename, replace, or delete an artifact. On mobile, use **Open** to hand a file to another app, or **Save or share** to keep a copy. On Android, APK artifacts show **Install and open** instead of **Open**; the first time, Android asks you to allow installs from T3 Code. Each file can be up to 2 GB. Settling a thread keeps its artifacts; deleting the thread removes them.

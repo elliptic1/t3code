@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
+  AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
@@ -44,6 +45,11 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
 
+  [WS_METHODS.artifactsPublish]: AuthFilesystemReadScope,
+  [WS_METHODS.artifactsRename]: AuthOrchestrationOperateScope,
+  [WS_METHODS.artifactsDelete]: AuthOrchestrationOperateScope,
+  [WS_METHODS.artifactsCreateUploadUrl]: AuthOrchestrationOperateScope,
+  [WS_METHODS.artifactsCreateDownloadUrl]: AuthFilesystemReadScope,
   [WS_METHODS.workflowsCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.workflowsControl]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
@@ -62,6 +68,8 @@ export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
+  if (method === WS_METHODS.artifactsPublish)
+    return [AuthFilesystemReadScope, AuthOrchestrationOperateScope];
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);
     if (payload.mode === "worktree" && payload.threadId !== undefined)

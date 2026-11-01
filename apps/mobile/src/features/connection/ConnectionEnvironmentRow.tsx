@@ -240,6 +240,23 @@ export function ConnectionEnvironmentRow(props: {
         </View>
       ) : null}
 
+      {props.environment.connectionError !== null ? (
+        <View className="px-4 pb-3">
+          <Button
+            label={
+              copiedError === props.environment.connectionError
+                ? "Diagnostics copied"
+                : "Copy error and context"
+            }
+            tone="secondary"
+            disabled={presentation === null}
+            onPress={() => {
+              void copyDiagnostics();
+            }}
+          />
+        </View>
+      ) : null}
+
       {props.expanded ? (
         <Animated.View
           entering={FadeIn.duration(200)}

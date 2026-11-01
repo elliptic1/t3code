@@ -129,6 +129,7 @@ layer("064_CanonicalizeThreadPullRequestLinks", (it) => {
         [68, "RepairClientSettlementTimestamps"],
         [69, "WebhookDedupe"],
         [70, "ShellStopRequestIndex"],
+        [71, "EnsureThreadArtifacts"],
       ]);
       assert.deepEqual(yield* runMigrations(), []);
       const rows = yield* sql<{ readonly thread_id: string; readonly payload_json: string }>`

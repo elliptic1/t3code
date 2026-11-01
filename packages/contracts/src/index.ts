@@ -70,3 +70,4 @@ export * from "./clientRpcPermissions.ts";
 
 export * from "./watchCompanion.ts";
 export * from "./workflow.ts";
+export * from "./threadArtifact.ts";

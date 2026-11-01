@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off -- The fork update job must outlive this app, so it cannot be a scoped Effect child.
+import * as NodeChildProcess from "node:child_process";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -9,7 +11,9 @@ import type * as Electron from "electron";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
+import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopLifecycle from "../app/DesktopLifecycle.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 
@@ -33,6 +37,8 @@ export class DesktopApplicationMenu extends Context.Service<
 >()("@t3tools/desktop/window/DesktopApplicationMenu") {}
 
 type DesktopApplicationMenuRuntimeServices =
+  | DesktopLifecycle.DesktopLifecycle
+  | DesktopLifecycle.DesktopLifecycleRuntimeServices
   | DesktopUpdates.DesktopUpdates
   | DesktopWindow.DesktopWindow
   | ElectronDialog.ElectronDialog;
@@ -92,6 +98,27 @@ const handleCheckForUpdatesMenuClick = Effect.gen(function* () {
   const updates = yield* DesktopUpdates.DesktopUpdates;
   const electronDialog = yield* ElectronDialog.ElectronDialog;
   const disabledReason = yield* updates.disabledReason;
+  const { forkSourceDir } = yield* DesktopConfig.DesktopConfig;
+  if (Option.isSome(disabledReason) && Option.isSome(forkSourceDir)) {
+    const { response } = yield* electronDialog.showMessageBox({
+      type: "question",
+      title: "Update from upstream",
+      message: "Pull upstream T3 Code, rebuild, and relaunch?",
+      detail: `Merges upstream main into ${forkSourceDir.value}, has Claude resolve any conflicts, rebuilds the app and relaunches it. This takes a while; progress goes to ntfy (T3Code).`,
+      buttons: ["Update", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return;
+    // Detached so the script outlives this app when it swaps the bundle and relaunches.
+    yield* Effect.sync(() =>
+      NodeChildProcess.spawn("/bin/bash", [`${forkSourceDir.value}/scripts/fork-update.sh`], {
+        detached: true,
+        stdio: "ignore",
+      }).unref(),
+    );
+    return;
+  }
   if (Option.isSome(disabledReason)) {
     yield* logUpdaterInfo("manual update check requested, but updates are disabled", {
       disabledReason: disabledReason.value,
@@ -140,6 +167,13 @@ export const make = Effect.gen(function* () {
     const checkForUpdatesClick = () => {
       runMenuEffect("check-for-updates", handleCheckForUpdatesMenuClick);
     };
+    const restartClick = () => {
+      const lifecycle = Effect.gen(function* () {
+        const desktopLifecycle = yield* DesktopLifecycle.DesktopLifecycle;
+        yield* desktopLifecycle.relaunch("application-menu");
+      });
+      runMenuEffect("restart", lifecycle);
+    };
     const settingsClick = () => {
       runMenuEffect("open-settings", dispatchMenuAction("open-settings"));
     };
@@ -185,6 +219,7 @@ export const make = Effect.gen(function* () {
           { role: "hideOthers" },
           { role: "unhide" },
           { type: "separator" },
+          { label: `Restart ${environment.displayName}`, click: restartClick },
           { role: "quit", label: `Quit ${environment.displayName}` },
         ],
       });

@@ -44,6 +44,13 @@ class T3NativeControlsModule : Module() {
       }
     }
 
+    AsyncFunction("installAndOpenApk") { uri: String, promise: Promise ->
+      val context = appContext.reactContext?.applicationContext ?: error("The app is not active.")
+      val file = File(URI(uri)).canonicalFile
+      require(file.isFile) { "The file is no longer available." }
+      installAndOpenApk(context, file, { appContext.currentActivity }, promise)
+    }
+
     OnActivityResult { _, (requestCode) ->
       if (requestCode == 7343) {
         filePreviewPromise?.resolve(null)

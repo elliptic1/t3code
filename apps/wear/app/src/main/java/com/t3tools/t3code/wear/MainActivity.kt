@@ -148,6 +148,8 @@ private fun WearApp(prefs: SharedPreferences, pairingLink: String?, openThreadId
                 onPaired = onPaired,
                 onMessage = { message = it },
             )
+        } else if (baseUrl == null) {
+            PhoneConnectionScreen(message)
         } else {
             key("paired-phone") {
                 val api = remember(context) { T3Api(context) }
@@ -385,6 +387,16 @@ private fun SessionsScreen(
                         if (showSettled) items(settled, key = { "thread:${it.id}" }, contentType = { "session" }) { row ->
                             SessionButton(row) { onOpen(row) }
                         }
+                        if (showSettled) items(settled, key = { "thread:${it.id}" }, contentType = { "session" }) { row ->
+                            SessionButton(row) { onOpen(row) }
+                        }
+                    }
+                    item(key = "refresh", contentType = "control") {
+                        CompactButton(
+                            onClick = { refreshKey++ },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = activeColors(),
+                        ) { Text("Refresh") }
                     }
                     item(key = "refresh", contentType = "control") {
                         CompactButton(

@@ -10,6 +10,7 @@ import {
   ServerSettings,
   UsageLimitSourceId,
 } from "@t3tools/contracts";
+import { selectVoiceProvider, updateVoiceConnection } from "@t3tools/shared/voiceSettings";
 import { createModelSelection } from "@t3tools/shared/model";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";

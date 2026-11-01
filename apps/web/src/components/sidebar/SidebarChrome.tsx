@@ -31,6 +31,9 @@ import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
+import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+import { providerClients } from "../settings/providerDriverMeta";
+import { describeProviderLimits, useProviderLimitSummary } from "../usage/useProviderLimitSummary";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
@@ -185,6 +188,51 @@ function SidebarUtilityItem({
   );
 }
 
+/** Quota left per provider, next to the Usage button; clicking opens the Usage page. */
+const SidebarProviderLimits = memo(function SidebarProviderLimits({
+  onClick,
+}: {
+  onClick: () => void;
+}) {
+  const summaries = useProviderLimitSummary();
+  if (summaries.size === 0) return null;
+  return (
+    <>
+      {[...summaries].map(([driver, summary]) => {
+        const label = providerClients.get(driver)?.label ?? String(driver);
+        return (
+          <SidebarMenuItem key={driver} className="min-w-0 shrink">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`${label}: ${describeProviderLimits(summary)}`}
+                    onClick={onClick}
+                    className="flex h-8 cursor-pointer items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground tabular-nums hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <ProviderInstanceIcon
+                      driverKind={driver}
+                      displayName={label}
+                      showBadge={false}
+                      className="size-4"
+                      iconClassName="size-4"
+                    />
+                    {summary.remainingPercent}%
+                  </button>
+                }
+              />
+              <TooltipPopup side="top">
+                {label}: {describeProviderLimits(summary)}
+              </TooltipPopup>
+            </Tooltip>
+          </SidebarMenuItem>
+        );
+      })}
+    </>
+  );
+});
+
 export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
@@ -250,6 +298,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Usage"
             onClick={handleUsageClick}
           />
+          <SidebarProviderLimits onClick={handleUsageClick} />
         </>
       )}
       <SidebarUpdatePill />

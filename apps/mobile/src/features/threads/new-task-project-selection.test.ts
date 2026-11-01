@@ -7,6 +7,7 @@ import {
   newTaskDestination,
   resolveDraftProjectSelection,
   resolveEnvironmentProjectMatch,
+  resolveSelectedDraftProject,
 } from "./new-task-project-selection";
 
 function makeProject(
@@ -91,6 +92,32 @@ describe("resolveEnvironmentProjectMatch", () => {
     const unindexed = makeProject("unindexed", "server", { workspaceRoot: "/srv/t3code" });
     expect(resolveEnvironmentProjectMatch([fork, unindexed], selected)).toBe(unindexed);
     expect(resolveEnvironmentProjectMatch([fork], selected)).toBe(fork);
+  });
+});
+
+describe("resolveSelectedDraftProject", () => {
+  const glytch = makeProject("glytch");
+  const code = makeProject("t3code");
+  const projects = [glytch, code];
+
+  it("leaves a new draft unselected instead of using the first project", () => {
+    expect(resolveSelectedDraftProject(projects, null, null)).toBeNull();
+  });
+
+  it("uses the project explicitly chosen by the user", () => {
+    expect(resolveSelectedDraftProject(projects, "environment:t3code", null)).toBe(code);
+  });
+
+  it("does not move a missing project selection into another project", () => {
+    expect(resolveSelectedDraftProject(projects, "environment:removed", null)).toBeNull();
+  });
+
+  it("keeps an offline pending task pinned to its saved project", () => {
+    const pendingProject = makeProject("offline");
+    expect(resolveSelectedDraftProject(projects, "environment:offline", pendingProject)).toBe(
+      pendingProject,
+    );
+    expect(resolveSelectedDraftProject(projects, null, pendingProject)).toBeNull();
   });
 });
 

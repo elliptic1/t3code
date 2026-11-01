@@ -90,6 +90,7 @@ import {
 } from "react-native";
 import {
   KeyboardController,
+  KeyboardEvents,
   KeyboardStickyView,
   useKeyboardState,
 } from "react-native-keyboard-controller";
@@ -508,8 +509,15 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
         setKeyboardStateSuspect(!ownedInputFocusedRef.current);
       }
     });
+    // A real show animation always emits keyboardWillShow, even when the frozen state already
+    // reads open at the same height, so neither the state effect below nor a focus gain fires
+    // (the editor keeps focus across background). Without this the composer stays under the IME.
+    const showSubscription = KeyboardEvents.addListener("keyboardWillShow", () => {
+      setKeyboardStateSuspect(false);
+    });
     return () => {
       subscription.remove();
+      showSubscription.remove();
     };
   }, []);
   useEffect(() => {

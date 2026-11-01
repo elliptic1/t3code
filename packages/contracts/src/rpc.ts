@@ -1,4 +1,16 @@
 import {
+  ThreadArtifactListInput,
+  ThreadArtifactListResult,
+  ThreadArtifactTarget,
+  ThreadArtifactChangeInput,
+  ThreadArtifactRenameInput,
+  ThreadArtifactPublishInput,
+  ThreadArtifactUploadInput,
+  ThreadArtifactUrlResult,
+  ThreadArtifactResult,
+  ThreadArtifactError,
+} from "./threadArtifact.ts";
+import {
   WorkflowGetInput,
   WorkflowListInput,
   WorkflowListResult,
@@ -493,8 +505,8 @@ export const WS_METHODS = {
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetDatabaseStorage: "server.getDatabaseStorage",
   serverGetSettings: "server.getSettings",
-  serverCreateVoiceSession: "server.createVoiceSession",
   serverSyncVoiceHistory: "server.syncVoiceHistory",
+  serverCreateVoiceSession: "server.createVoiceSession",
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverSearchAcpRegistry: "server.searchAcpRegistry",
@@ -523,6 +535,13 @@ export const WS_METHODS = {
   serverRefreshUsageRates: "server.refreshUsageRates",
 
   // Scheduled tasks
+  artifactsList: "artifacts.list",
+  artifactsSubscribe: "artifacts.subscribe",
+  artifactsPublish: "artifacts.publish",
+  artifactsRename: "artifacts.rename",
+  artifactsDelete: "artifacts.delete",
+  artifactsCreateUploadUrl: "artifacts.createUploadUrl",
+  artifactsCreateDownloadUrl: "artifacts.createDownloadUrl",
   workflowsGet: "workflows.get",
   workflowsList: "workflows.list",
   workflowsSubscribe: "workflows.subscribe",
@@ -1817,6 +1836,43 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const WsArtifactsListRpc = Rpc.make(WS_METHODS.artifactsList, {
+  payload: ThreadArtifactListInput,
+  success: ThreadArtifactListResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsSubscribeRpc = Rpc.make(WS_METHODS.artifactsSubscribe, {
+  payload: ThreadArtifactListInput,
+  success: ThreadArtifactListResult,
+  stream: true,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsPublishRpc = Rpc.make(WS_METHODS.artifactsPublish, {
+  payload: ThreadArtifactPublishInput,
+  success: ThreadArtifactResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsRenameRpc = Rpc.make(WS_METHODS.artifactsRename, {
+  payload: ThreadArtifactRenameInput,
+  success: ThreadArtifactResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsDeleteRpc = Rpc.make(WS_METHODS.artifactsDelete, {
+  payload: ThreadArtifactChangeInput,
+  success: Schema.Void,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsCreateUploadUrlRpc = Rpc.make(WS_METHODS.artifactsCreateUploadUrl, {
+  payload: ThreadArtifactUploadInput,
+  success: ThreadArtifactUrlResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+const WsArtifactsCreateDownloadUrlRpc = Rpc.make(WS_METHODS.artifactsCreateDownloadUrl, {
+  payload: ThreadArtifactTarget,
+  success: ThreadArtifactUrlResult,
+  error: Schema.Union([ThreadArtifactError, EnvironmentAuthorizationError]),
+});
+
 const WsWorkflowsGetRpc = Rpc.make(WS_METHODS.workflowsGet, {
   payload: WorkflowGetInput,
   success: WorkflowResult,
@@ -1939,6 +1995,16 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
   { error: EnvironmentAuthorizationError },
 ) {}
 
+export const ThreadArtifactRpcGroup = RpcGroup.make(
+  WsArtifactsListRpc,
+  WsArtifactsSubscribeRpc,
+  WsArtifactsPublishRpc,
+  WsArtifactsRenameRpc,
+  WsArtifactsDeleteRpc,
+  WsArtifactsCreateUploadUrlRpc,
+  WsArtifactsCreateDownloadUrlRpc,
+).middleware(RpcScopeAuthorization);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -1964,6 +2030,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerCommitDesktopUpdateRpc,
   WsServerUpsertKeybindingRpc,
   WsServerRemoveKeybindingRpc,
+  WsServerSyncVoiceHistoryRpc,
   WsServerCreateVoiceSessionRpc,
   WsServerSyncVoiceHistoryRpc,
   WsServerRunStorageCleanupRpc,
@@ -1993,6 +2060,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
   WsServerSignalProcessRpc,
+  WsArtifactsListRpc,
+  WsArtifactsSubscribeRpc,
+  WsArtifactsPublishRpc,
+  WsArtifactsRenameRpc,
+  WsArtifactsDeleteRpc,
+  WsArtifactsCreateUploadUrlRpc,
+  WsArtifactsCreateDownloadUrlRpc,
   WsWorkflowsGetRpc,
   WsWorkflowsListRpc,
   WsWorkflowsSubscribeRpc,

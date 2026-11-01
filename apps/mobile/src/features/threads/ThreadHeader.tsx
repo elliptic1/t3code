@@ -13,6 +13,8 @@ export function ThreadHeader(
     readonly onRename?: () => void;
     readonly onRegenerateTitle?: () => void;
     readonly regeneratingTitle?: boolean;
+    /** Absent when the server does not support thread artifacts. */
+    readonly onOpenArtifacts?: () => void;
     readonly onOpenUsage?: () => void;
     readonly usageBadge?: string;
     readonly usageAccessibilityLabel?: string;
@@ -70,6 +72,14 @@ export function ThreadHeader(
         onPress: props.onRegenerateTitle,
       });
     }
+    if (props.onOpenArtifacts) {
+      actions.push({
+        accessibilityLabel: "Artifacts",
+        icon: "archivebox",
+        overflowOnly: true,
+        onPress: props.onOpenArtifacts,
+      });
+    }
     if (props.hasWorkspaceRoot && props.gitControls.canOpenTerminal) {
       actions.push({
         accessibilityLabel: "Open terminal",
@@ -98,6 +108,7 @@ export function ThreadHeader(
     }
     return actions;
   }, [
+    props.onOpenArtifacts,
     props.onRegenerateTitle,
     props.regeneratingTitle,
     props.onOpenUsage,

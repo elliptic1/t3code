@@ -58,6 +58,7 @@ it.effect.each(["Workflows", "DropUnusedV1Projections"] as const)(
         [68, "RepairClientSettlementTimestamps"],
         [69, "WebhookDedupe"],
         [70, "ShellStopRequestIndex"],
+        [71, "EnsureThreadArtifacts"],
       ]);
       const tables = yield* sql<{ name: string }>`SELECT name FROM sqlite_master
         WHERE type = 'table' AND name IN ('workflows', 'workflow_commands') ORDER BY name`;

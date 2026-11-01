@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as Electron from "electron";
+import { stopMacOsDictation } from "./MacOsDictation.ts";
 
 export interface ElectronMenuPosition {
   readonly x: number;

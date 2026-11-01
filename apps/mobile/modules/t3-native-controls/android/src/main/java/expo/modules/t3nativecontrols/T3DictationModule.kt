@@ -12,10 +12,12 @@ class T3DictationModule : Module() {
   private var pending: Promise? = null
   private var requestCode = 24000
   private var owner: Activity? = null
+  private val launchGuard = DictationLaunchGuard()
 
   private fun cancel() {
     val promise = pending ?: return
     pending = null
+    launchGuard.clear()
     owner?.finishActivity(requestCode)
     owner = null
     promise.resolve(null)
@@ -45,6 +47,19 @@ class T3DictationModule : Module() {
       pending = promise
       try {
         activity.startActivityForResult(intent, requestCode)
+        // A broken recognizer can remain INITIALIZING without ever adding a window.
+        // Android pauses us but leaves our window focused, making every control inert.
+        launchGuard.start(activity::hasWindowFocus) {
+          val failed = pending
+          pending = null
+          owner = null
+          activity.finishActivity(requestCode)
+          failed?.reject(
+            "ERR_DICTATION_LAUNCH",
+            "Speech recognition could not open. Try again or check your phone's speech recognition settings.",
+            null
+          )
+        }
       } catch (error: Exception) {
         pending = null
         owner = null
@@ -58,6 +73,7 @@ class T3DictationModule : Module() {
       if (result.requestCode == requestCode) {
         val promise = pending
         pending = null
+        launchGuard.clear()
         owner = null
         when (result.resultCode) {
           Activity.RESULT_OK -> promise?.resolve(

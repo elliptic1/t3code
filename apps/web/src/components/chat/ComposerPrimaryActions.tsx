@@ -318,13 +318,16 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       ? formatContextWindowTokens(compactBeforeSendTokens)
       : null;
   const compactsBeforeSend = compactTokens !== null && !keepFullHistory;
+  const compactsWithoutMessage = compactsBeforeSend && !hasSendableContent;
 
   const submitLabel = showResume
     ? "Resume thread"
     : isEditingQueuedMessage
       ? "Update queued message"
       : compactsBeforeSend
-        ? "Compact and send"
+        ? compactsWithoutMessage
+          ? "Compact context"
+          : "Compact and send"
         : isQueuing
           ? "Queue message"
           : isRunning
@@ -420,7 +423,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         isSendDisabled ||
         isConnecting ||
         isEnvironmentUnavailable ||
-        (!hasSendableContent && !showResume)
+        (!hasSendableContent && !showResume && !compactsBeforeSend)
       }
       aria-label={submitStatus ?? submitLabel}
     >

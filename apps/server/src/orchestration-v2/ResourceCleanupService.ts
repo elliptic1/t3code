@@ -6,6 +6,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
+import * as Artifacts from "../artifacts/ThreadArtifactService.ts";
 import * as ServerConfig from "../config.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
@@ -45,6 +46,7 @@ export const layer = Layer.effect(
     const fileSystem = yield* FileSystem.FileSystem;
     const config = yield* ServerConfig.ServerConfig;
     const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
+    const artifacts = yield* Artifacts.ThreadArtifactService;
     return {
       cleanupScheduledTasks: (threadId: ThreadId) =>
         scheduledTasks
@@ -64,13 +66,12 @@ export const layer = Layer.effect(
             ),
           ),
       cleanupPreviews: (threadId: string) =>
-        previews
-          .close({ threadId: ThreadId.make(threadId) })
-          .pipe(
-            Effect.mapError(
-              (cause) => new ResourceCleanupError({ operation: "preview", threadId, cause }),
-            ),
+        previews.close({ threadId: ThreadId.make(threadId) }).pipe(
+          Effect.andThen(() => artifacts.cleanupDeletedThread(threadId)),
+          Effect.mapError(
+            (cause) => new ResourceCleanupError({ operation: "preview", threadId, cause }),
           ),
+        ),
       cleanupAttachments: (attachmentIds: ReadonlyArray<string>) =>
         Effect.forEach(
           attachmentIds,

@@ -122,7 +122,10 @@ import {
   resolveNewTaskLocalWorkspaceSelection,
   resolveNewTaskWorkspaceSelection,
 } from "./new-task-context-presentation";
-import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
+import {
+  resolveEnvironmentProjectMatch,
+  resolveSelectedDraftProject,
+} from "./new-task-project-selection";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
 
 type WorkspaceMode = "local" | "worktree";
@@ -344,18 +347,11 @@ export function NewTaskFlowProvider(
     };
   })();
 
-  const selectedProject =
-    projectsForEnvironment.find(
-      (project) => scopedProjectKey(project.environmentId, project.id) === selectedProjectKey,
-    ) ??
-    // While editing a queued task whose project shell is absent, keep the task
-    // pinned to its own project — falling through to an arbitrary first
-    // project would silently retarget it (and its reused turn identifiers).
-    (editingPendingProject !== null &&
-    selectedProjectKey ===
-      scopedProjectKey(editingPendingProject.environmentId, editingPendingProject.id)
-      ? editingPendingProject
-      : (projectsForEnvironment[0] ?? null));
+  const selectedProject = resolveSelectedDraftProject(
+    projectsForEnvironment,
+    selectedProjectKey,
+    editingPendingProject,
+  );
 
   const selectedEnvironmentServerConfig = useEnvironmentServerConfig(
     selectedProject?.environmentId ?? null,

@@ -26,6 +26,7 @@ const KNOWN_BAILOUTS: Record<string, string> = {
   "src/features/terminal/ThreadTerminalRouteScreen.tsx": "ref read during render",
   "src/features/threads/PendingUserInputCard.tsx": "mutates a frozen value",
   "src/features/threads/ThreadArrangementSheet.tsx": "ref read during render",
+  "src/features/threads/ThreadArtifactsModal.tsx": "dynamic import, try/finally",
   "src/features/voice-input/VoiceInputProvider.tsx": "ref read during render",
   "src/features/voice-input/useVoiceInputController.ts": "ref read during render",
   "src/features/voice-conversation/VoiceConversation.tsx": "dynamic import, try/finally",

@@ -12,8 +12,12 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as DesktopApplicationMenu from "./DesktopApplicationMenu.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopLifecycle from "../app/DesktopLifecycle.ts";
+import * as DesktopShutdown from "../app/DesktopShutdown.ts";
+import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
+import * as ElectronTheme from "../electron/ElectronTheme.ts";
 
 const environmentInput = {
   dirname: "/repo/apps/desktop/dist-electron",
@@ -119,8 +123,18 @@ const configureMenu = (
         Layer.provideMerge(layerElectronMenu(applicationMenuTemplate)),
         Layer.provideMerge(layerDesktopWindow(selectedAction)),
         Layer.provideMerge(layerDesktopUpdates),
+        Layer.provideMerge(
+          Layer.succeed(DesktopLifecycle.DesktopLifecycle, {
+            relaunch: (reason) =>
+              Deferred.succeed(selectedAction, `restart:${reason}`).pipe(Effect.asVoid),
+            register: Effect.void,
+          }),
+        ),
         Layer.provideMerge(layerElectronDialog),
         Layer.provideMerge(layerElectronApp),
+        Layer.provideMerge(DesktopShutdown.layer),
+        Layer.provideMerge(DesktopState.layer),
+        Layer.provideMerge(ElectronTheme.layer),
         Layer.provideMerge(
           DesktopEnvironment.layer({ ...environmentInput, ...environment }).pipe(
             Layer.provide(Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({}))),

@@ -1114,6 +1114,30 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:workflow:details",
       tag: WS_METHODS.workflowsGet,
     }),
+    artifactsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:artifacts:live",
+      tag: WS_METHODS.artifactsSubscribe,
+    }),
+    publishArtifact: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:artifacts:Publish",
+      tag: WS_METHODS.artifactsPublish,
+    }),
+    renameArtifact: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:artifacts:Rename",
+      tag: WS_METHODS.artifactsRename,
+    }),
+    deleteArtifact: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:artifacts:Delete",
+      tag: WS_METHODS.artifactsDelete,
+    }),
+    createArtifactUploadUrl: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:artifacts:CreateUploadUrl",
+      tag: WS_METHODS.artifactsCreateUploadUrl,
+    }),
+    createArtifactDownloadUrl: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:artifacts:CreateDownloadUrl",
+      tag: WS_METHODS.artifactsCreateDownloadUrl,
+    }),
     workflowsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:workflows:live",
       tag: WS_METHODS.workflowsSubscribe,

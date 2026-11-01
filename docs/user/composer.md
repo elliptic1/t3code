@@ -199,7 +199,11 @@ and use **Attach again** or remove the missing file before sending.
 ## Voice conversation
 
 In **Settings → Integrations → Voice conversation**, select an OpenAI, Grok, or
-local/custom preset, configure its model and credentials, and enable **Talk to T3**.
+local/custom provider, configure its model and credentials, and enable **Talk to T3**.
+Each provider saves its own API key, model, voice, and connection settings. Select
+a provider to restore its setup; on mobile, tapping a provider also saves your
+current edits. OpenAI defaults to WebRTC, while Grok uses WebSocket. Changing
+OpenAI’s connection method also updates its endpoint automatically.
 Use the app's microphone button to start a conversation. You can create projects,
 open or message threads, settle or unsettle them, archive or restore them, ask for
 progress, and interrupt an agent. New errors and requests for attention are announced

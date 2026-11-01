@@ -588,6 +588,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerCatalogKnown,
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
+    modelFallback,
+    onModelFallbackChange,
     reportedModelSelection,
     activeProjectId,
     activeContextWindow,
@@ -1317,6 +1319,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : null;
   const showResumeAction =
     canResume && !composerDraftHasUserContent(composerDraft) && !isEditingQueuedMessage;
+  const compactsBeforeSend = props.resumeCompactionTokens !== null && !props.keepFullHistory;
   const collapsedComposerPrimaryActionDisabled =
     phase === "running" ||
     isSendBusy ||
@@ -1325,10 +1328,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     noProviderAvailable ||
     projectSelectionRequired ||
     environmentUnavailable !== null ||
-    (!composerSendState.hasSendableContent && !showResumeAction);
+    (!composerSendState.hasSendableContent && !showResumeAction && !compactsBeforeSend);
   const collapsedComposerPrimaryActionLabel = showResumeAction
     ? "Resume thread"
-    : props.resumeCompactionTokens !== null && !props.keepFullHistory
+    : compactsBeforeSend
       ? "Open composer to compact and send"
       : "Send message";
   const showMobilePendingAnswerActions =

@@ -31,6 +31,19 @@ import {
 import * as RpcAuthorization from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
+  it("authorizes artifact metadata, mutations and bytes separately", () => {
+    for (const method of [WS_METHODS.artifactsList, WS_METHODS.artifactsSubscribe])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    for (const method of [
+      WS_METHODS.artifactsRename,
+      WS_METHODS.artifactsDelete,
+      WS_METHODS.artifactsCreateUploadUrl,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.artifactsCreateDownloadUrl)).toBe(
+      AuthFilesystemReadScope,
+    );
+  });
   it("declares exactly one scope for every RPC in the server group", () => {
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
   });

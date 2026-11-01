@@ -103,6 +103,7 @@ import { threadRouteIsHydrating } from "./thread-route-hydration";
 import { useThreadPromptLink } from "../prompt-links/useThreadPromptLink";
 import { ThreadProviderUsageSheet } from "./ThreadProviderUsageSheet";
 import { threadModelUsageRemainingPercent } from "./threadModelUsage";
+import { ThreadArtifactsModal } from "./ThreadArtifactsModal";
 import { ThreadHeader } from "./ThreadHeader";
 import {
   useAndroidWorkspaceBack,
@@ -407,6 +408,7 @@ function ThreadRouteContent(
   const threadId = firstRouteParam(params.threadId);
   const routeThreadIdentity =
     environmentIdRaw !== null && threadId !== null ? `${environmentIdRaw}:${threadId}` : null;
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [inspectorSelection, setInspectorSelection] = useState<ThreadInspectorSelection | null>(
     () => (props.renderInspector ? { routeThreadIdentity, mode: "route" } : null),
   );
@@ -1017,6 +1019,11 @@ function ThreadRouteContent(
                 canOperateThread ? () => void regenerateThreadTitle(selectedThread) : undefined
               }
               regeneratingTitle={selectedThread.titleRegeneration != null}
+              onOpenArtifacts={
+                serverConfig?.environment.capabilities.threadArtifacts === true
+                  ? () => setArtifactsOpen(true)
+                  : undefined
+              }
               onOpenUsage={() =>
                 setUsageThreadKey(scopedThreadKey(selectedThread.environmentId, selectedThread.id))
               }
@@ -1148,6 +1155,13 @@ function ThreadRouteContent(
       {activeInspectorRenderer ? <InspectorPaneRoleActivation /> : null}
 
       {renderThreadRouteBody()}
+      {selectedThread && artifactsOpen ? (
+        <ThreadArtifactsModal
+          environmentId={selectedThread.environmentId}
+          threadId={selectedThread.id}
+          onClose={() => setArtifactsOpen(false)}
+        />
+      ) : null}
       {selectedThread &&
       headerModelSelection &&
       usageThreadKey === scopedThreadKey(selectedThread.environmentId, selectedThread.id) ? (

@@ -1,3 +1,5 @@
+import { ArtifactToolkit } from "./toolkits/artifacts/tools.ts";
+import * as ArtifactHandlers from "./toolkits/artifacts/handlers.ts";
 import { WorkflowToolkit } from "./toolkits/workflows/tools.ts";
 import * as WorkflowHandlers from "./toolkits/workflows/handlers.ts";
 import * as Cause from "effect/Cause";
@@ -1010,6 +1012,7 @@ export const layerPreviewToolkit = Layer.mergeAll(
   layerPreviewSnapshotRegistration,
 );
 
+const layerArtifactToolkit = toolkitRegistration(ArtifactToolkit, ArtifactHandlers.layer);
 const layerWorkflowToolkit = toolkitRegistration(WorkflowToolkit, WorkflowHandlers.layer);
 
 export const layerOrchestratorToolkit = toolkitRegistration(
@@ -1072,6 +1075,7 @@ export const layerMcpTransport = McpServer.layerHttp({
 export const layer = Layer.mergeAll(
   layerPreviewToolkit,
   layerWorkflowToolkit,
+  layerArtifactToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,
   layerAttachmentToolkit,

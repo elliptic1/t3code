@@ -9,6 +9,23 @@ type DraftProjectSelectionResolution =
   | { readonly kind: "select"; readonly project: EnvironmentProject }
   | { readonly kind: "pick" };
 
+export function resolveSelectedDraftProject(
+  projects: ReadonlyArray<EnvironmentProject>,
+  selectedProjectKey: string | null,
+  editingPendingProject: EnvironmentProject | null,
+): EnvironmentProject | null {
+  return (
+    projects.find(
+      (project) => scopedProjectKey(project.environmentId, project.id) === selectedProjectKey,
+    ) ??
+    (editingPendingProject !== null &&
+    scopedProjectKey(editingPendingProject.environmentId, editingPendingProject.id) ===
+      selectedProjectKey
+      ? editingPendingProject
+      : null)
+  );
+}
+
 export function getProjectScopeSelectionTarget(
   scope: HomeProjectScope,
   preferredEnvironmentId: EnvironmentId | null,

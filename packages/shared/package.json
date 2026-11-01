@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./voiceSettings": {
+      "types": "./src/voiceSettings.ts",
+      "import": "./src/voiceSettings.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"
