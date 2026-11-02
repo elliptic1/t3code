@@ -23,8 +23,8 @@ export const makeVoiceHistory = Effect.fn("voice.makeHistory")(function* (filePa
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const lock = yield* Semaphore.make(1);
-  const sync = (incoming: readonly VoiceTranscriptLine[], reset = false) =>
-    Effect.gen(function* () {
+  const sync = Effect.fn("VoiceHistory.sync")(
+    function* (incoming: readonly VoiceTranscriptLine[], reset = false) {
       const raw = yield* fs.readFileString(filePath).pipe(
         Effect.catchIf(
           (error) => error.reason._tag === "NotFound",
@@ -48,16 +48,15 @@ export const makeVoiceHistory = Effect.fn("voice.makeHistory")(function* (filePa
         );
       }
       return lines;
-    }).pipe(
-      lock.withPermits(1),
-      Effect.mapError(
-        () =>
-          new VoiceSessionError({
-            message:
-              "Could not sync voice conversation history. Try again before switching devices.",
-          }),
-      ),
-    );
+    },
+    lock.withPermits(1),
+    Effect.mapError(
+      () =>
+        new VoiceSessionError({
+          message: "Could not sync voice conversation history. Try again before switching devices.",
+        }),
+    ),
+  );
   return { sync };
 });
 

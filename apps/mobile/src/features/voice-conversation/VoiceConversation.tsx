@@ -1,7 +1,9 @@
+/* oxlint-disable t3code/no-unreasoned-state-sync -- these effects run the live voice session: microphone, WebRTC, and speech playback outside React */
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { VoiceButton } from "./VoiceButton";
 import { useEffect, useRef, useState } from "react";
+import { openSettings } from "../settings/settings-navigation";
 import { AppState, Platform, Pressable, ScrollView, View } from "react-native";
 import { useNavigation, type NavigationState } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -261,6 +263,7 @@ function VoiceSession(props: {
         execute: createVoiceActions(
           props.environmentId,
           async (threadId) => {
+            // oxlint-disable-next-line t3code/no-ambiguous-detail-navigation -- voice results open the thread in place
             navigation.navigate("Thread", { environmentId: props.environmentId, threadId });
             props.setOpen(false);
           },
@@ -366,10 +369,7 @@ function VoiceSession(props: {
               label="Settings"
               onPress={() => {
                 props.setOpen(false);
-                navigation.navigate("SettingsSheet", {
-                  screen: "SettingsContent",
-                  params: { screen: "SettingsVoice" },
-                });
+                openSettings(navigation, "SettingsVoice");
               }}
             />
             <VoiceButton label="Hide" onPress={() => props.setOpen(false)} />

@@ -65,8 +65,10 @@ import * as EnvironmentLinks from "../environments/EnvironmentLinks.ts";
 import * as ManagedEndpointAllocations from "../environments/ManagedEndpointAllocations.ts";
 import * as ManagedEndpointProvider from "../environments/ManagedEndpointProvider.ts";
 import * as UsageResetReminderPublisher from "../agentActivity/UsageResetReminderPublisher.ts";
+import * as ManagedTunnelLimits from "../environments/ManagedTunnelLimits.ts";
 import * as AgentActivityPublisher from "../agentActivity/AgentActivityPublisher.ts";
 import * as EnvironmentPublishSignatures from "../environments/EnvironmentPublishSignatures.ts";
+import * as T3ChatAccounts from "../t3chat/T3ChatAccounts.ts";
 
 vi.mock("@clerk/backend", () => ({
   createClerkClient: vi.fn(),
@@ -129,6 +131,8 @@ describe("managed endpoint provisioning errors", () => {
           Layer.mock(EnvironmentLinks.EnvironmentLinks, {}),
           Layer.mock(ManagedEndpointProvider.ManagedEndpointProvider, {}),
           Layer.mock(Devices.Devices, {}),
+          Layer.mock(T3ChatAccounts.T3ChatAccounts, { available: false }),
+          Layer.mock(ManagedTunnelLimits.ManagedTunnelLimits, {}),
         ),
       ),
       Layer.provideMerge(
@@ -239,6 +243,8 @@ describe("device listing compatibility", () => {
               return Effect.succeed([iphone, android]);
             },
           }),
+          Layer.mock(T3ChatAccounts.T3ChatAccounts, { available: false }),
+          Layer.mock(ManagedTunnelLimits.ManagedTunnelLimits, {}),
         ),
       ),
       Layer.provideMerge(
@@ -319,6 +325,8 @@ describe("Cloudflare rate-limit retry hint", () => {
           Layer.mock(EnvironmentLinks.EnvironmentLinks, {}),
           Layer.mock(ManagedEndpointProvider.ManagedEndpointProvider, {}),
           Layer.mock(Devices.Devices, {}),
+          Layer.mock(T3ChatAccounts.T3ChatAccounts, { available: false }),
+          Layer.mock(ManagedTunnelLimits.ManagedTunnelLimits, {}),
         ),
       ),
       Layer.provideMerge(
@@ -1513,8 +1521,7 @@ describe("relay CORS", () => {
   );
 });
 
-// Sends a request through Effect's request handler, which applies pre-response
-// handlers to the response it sends, as the Workers runtime does.
+// Use the Workers request path so pre-response handlers apply.
 const sendRelayRequest = Effect.fnUntraced(function* <E, R>(
   httpEffect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
   request: Request,

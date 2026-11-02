@@ -7,7 +7,6 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as Electron from "electron";
-import { stopMacOsDictation } from "./MacOsDictation.ts";
 
 export interface ElectronMenuPosition {
   readonly x: number;
@@ -71,8 +70,7 @@ function normalizeContextMenuItems(source: readonly ContextMenuItem[]): ContextM
       continue;
     }
 
-    // Header items are decorative section labels for the web fallback only —
-    // Electron's native menu has no equivalent affordance, so we skip them.
+    // Native menus cannot display the web fallback's decorative headers.
     if (sourceItem.header === true) {
       continue;
     }
@@ -100,9 +98,7 @@ function normalizeContextMenuItems(source: readonly ContextMenuItem[]): ContextM
   return normalizedItems;
 }
 
-// Renderer positions arrive in CSS pixels; popup() expects window points, so
-// page zoom must be factored in or menus drift proportionally to their
-// distance from the window origin.
+// popup() takes window points; renderer CSS coordinates must account for page zoom.
 const normalizePosition = (
   position: Option.Option<ElectronMenuPosition>,
   zoomFactor: number,
@@ -115,7 +111,7 @@ const normalizePosition = (
     Option.map(({ x, y }) => ({ x: Math.floor(x * zoomFactor), y: Math.floor(y * zoomFactor) })),
   );
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const platform = yield* HostProcess.Platform;
   let destructiveMenuIconCache: Option.Option<Electron.NativeImage> | undefined;
@@ -203,8 +199,8 @@ export const make = Effect.gen(function* () {
       Electron.Menu.sendActionToFirstResponder("stopDictation:");
       return true;
     }),
-    setApplicationMenu: (template) =>
-      Effect.try({
+    setApplicationMenu: Effect.fn("ElectronMenu.setApplicationMenu")(function (template) {
+      return Effect.try({
         try: () => {
           Electron.Menu.setApplicationMenu(Electron.Menu.buildFromTemplate([...template]));
         },
@@ -216,9 +212,10 @@ export const make = Effect.gen(function* () {
             itemCount: template.length,
             cause,
           }),
-      }).pipe(Effect.orDie),
-    popupTemplate: (input) =>
-      input.template.length === 0
+      }).pipe(Effect.orDie);
+    }),
+    popupTemplate: Effect.fn("ElectronMenu.popupTemplate")(function (input) {
+      return input.template.length === 0
         ? Effect.void
         : Effect.try({
             try: () =>
@@ -234,9 +231,10 @@ export const make = Effect.gen(function* () {
                 itemCount: input.template.length,
                 cause,
               }),
-          }).pipe(Effect.orDie),
-    showContextMenu: (input) =>
-      Effect.callback<Option.Option<string>>((resume) => {
+          }).pipe(Effect.orDie);
+    }),
+    showContextMenu: Effect.fn("ElectronMenu.showContextMenu")(function (input) {
+      return Effect.callback<Option.Option<string>>((resume) => {
         const normalizedItems = normalizeContextMenuItems(input.items);
         if (normalizedItems.length === 0) {
           resume(Effect.succeedNone);
@@ -288,7 +286,8 @@ export const make = Effect.gen(function* () {
             ),
           );
         }
-      }),
+      });
+    }),
   });
 });
 

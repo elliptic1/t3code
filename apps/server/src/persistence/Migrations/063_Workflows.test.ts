@@ -59,6 +59,14 @@ it.effect.each(["Workflows", "DropUnusedV1Projections"] as const)(
         [69, "WebhookDedupe"],
         [70, "ShellStopRequestIndex"],
         [71, "EnsureThreadArtifacts"],
+        [72, "ThreadMessageSearch"],
+        [73, "PeerLinks"],
+        [74, "PeerLinkFence"],
+        [75, "WaitingLinkRequestIndex"],
+        [76, "ActiveTurnItemIndexes"],
+        [77, "ExcludeAttachmentPlaceholdersFromSearch"],
+        [78, "SubagentDeliveryState"],
+        [79, "ProjectionProjectsPinArchive"],
       ]);
       const tables = yield* sql<{ name: string }>`SELECT name FROM sqlite_master
         WHERE type = 'table' AND name IN ('workflows', 'workflow_commands') ORDER BY name`;

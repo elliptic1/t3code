@@ -12,7 +12,6 @@ import { requireNativeModule } from "expo";
 import { EnvironmentSupervisor, EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { RemoteEnvironmentAuthorization } from "@t3tools/client-runtime/authorization";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
-import { requestGuarded } from "@t3tools/client-runtime/rpc";
 import { ShellSnapshotLoader } from "@t3tools/client-runtime/state/shell";
 import {
   BoundedThreadSnapshotLoader,
@@ -27,7 +26,6 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
-  WS_METHODS,
   WatchCompanionRequest,
   OrchestrationV2RpcSchemas,
   ORCHESTRATION_V2_WS_METHODS,
@@ -41,9 +39,9 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "../state/atom-registry";
 import { environmentShell } from "../state/shell";
-import { serverEnvironment } from "../state/server";
+import { environmentServerConfigsAtom, serverEnvironment } from "../state/server";
 import { makeTurnCommandMetadata } from "../lib/commandMetadata";
-import { activateCloudRelayAccount } from "../features/cloud/CloudAuthProvider";
+import { activateCloudRelayAccount } from "../features/cloud/cloudAccountService";
 import {
   resolveCloudPublicConfig,
   resolveRelayClerkTokenOptions,
@@ -128,11 +126,10 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
             Effect.option,
           );
           if (Option.isNone(ready)) continue;
-          const settings = yield* onEnvironment(
-            environmentId,
-            requestGuarded(WS_METHODS.serverGetSettings, {}),
-          );
-          if (!settings.voiceConnection.enabled) continue;
+          const settings = appAtomRegistry
+            .get(environmentServerConfigsAtom)
+            .get(environmentId)?.settings;
+          if (!settings?.voiceConnection.enabled) continue;
           const history = yield* phoneCommand(syncVoiceHistoryCommand, {
             environmentId,
             input: { lines: [] },

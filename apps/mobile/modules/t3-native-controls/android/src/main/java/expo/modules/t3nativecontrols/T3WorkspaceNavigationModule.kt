@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -65,14 +66,18 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 
-private val TABS = listOf("threads", "pullRequests", "usage", "settings")
-
 class T3WorkspaceNavigationModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("T3WorkspaceNavigation")
     View(T3WorkspaceNavigationView::class) {
+      Prop("tabs") { view: T3WorkspaceNavigationView, value: List<String> -> view.tabs = value }
       Prop("selectedTab") { view: T3WorkspaceNavigationView, value: String ->
         view.selectedTab = value
+      }
+      Prop("floating") { view: T3WorkspaceNavigationView, value: Boolean ->
+        view.floating = value
+        view.clipToPadding = !value
+        view.clipChildren = !value
       }
       Prop("rail") { view: T3WorkspaceNavigationView, value: Boolean -> view.rail = value }
       Prop("dark") { view: T3WorkspaceNavigationView, value: Boolean -> view.dark = value }
@@ -126,8 +131,10 @@ class T3WorkspaceNavigationView(
   private val onTabSelected by EventDispatcher()
   private val onNewThread by EventDispatcher()
   private val onOverlayChange by EventDispatcher()
+  var tabs by mutableStateOf(listOf("threads", "pullRequests", "usage", "settings"))
   var selectedTab by mutableStateOf("threads")
   var rail by mutableStateOf(false)
+  var floating by mutableStateOf(false)
   var dark by mutableStateOf(false)
   var textScale by mutableStateOf(1f)
   var newEnabled by mutableStateOf(false)
@@ -167,6 +174,7 @@ class T3WorkspaceNavigationView(
   init {
     addView(
       ComposeView(context).apply {
+        clipChildren = false
         setViewCompositionStrategy(
           ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool
         )
@@ -174,6 +182,8 @@ class T3WorkspaceNavigationView(
           MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
             if (rail) {
               rail()
+            } else if (floating) {
+              floatingTabs()
             } else {
               NavigationBar(
                 modifier = Modifier.fillMaxSize(),
@@ -181,7 +191,7 @@ class T3WorkspaceNavigationView(
                 tonalElevation = androidx.compose.ui.unit.Dp(0f),
                 windowInsets = WindowInsets(0),
               ) {
-                TABS.forEach { tab ->
+                tabs.forEach { tab ->
                   NavigationBarItem(
                     selected = selectedTab == tab,
                     onClick = { onTabSelected(mapOf("tab" to tab)) },
@@ -251,6 +261,48 @@ class T3WorkspaceNavigationView(
   private fun providerName(provider: String) = if (provider == "claude") "Claude" else "Codex"
 
   @Composable
+  private fun floatingTabs() {
+    Surface(
+      modifier = Modifier.fillMaxSize().padding(8.dp),
+      shape = CircleShape,
+      color = Color(containerColor),
+      shadowElevation = 6.dp,
+    ) {
+      Row(
+        modifier = Modifier.fillMaxSize().selectableGroup(),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        tabs.forEach { tab ->
+          val selected = selectedTab == tab
+          val tint = Color(if (selected) selectedColor else unselectedColor)
+          Box(
+            modifier = Modifier
+              .weight(1f)
+              .fillMaxHeight()
+              .clip(CircleShape)
+              .selectable(
+                selected = selected,
+                role = Role.Tab,
+                onClick = { onTabSelected(mapOf("tab" to tab)) },
+              )
+              .semantics { contentDescription = expandedTabTitle(tab) }
+              .padding(4.dp)
+              .background(if (selected) Color(indicatorColor) else Color.Transparent, CircleShape),
+            contentAlignment = Alignment.Center,
+          ) {
+            Icon(
+              tabIconPainter(tab),
+              contentDescription = null,
+              modifier = Modifier.size((24 * textScale).dp),
+              tint = tint,
+            )
+          }
+        }
+      }
+    }
+  }
+
+  @Composable
   private fun rail() {
     // One rail surface widens in place over the list. Material's ModalWideNavigationRail
     // instead moves its destinations into a dialog window copy, which blanks them for a few
@@ -283,6 +335,7 @@ class T3WorkspaceNavigationView(
       },
     ) {
       val fraction = progress.coerceIn(0f, 1f)
+      val railShape = RoundedCornerShape(topEnd = 16.dp * fraction, bottomEnd = 16.dp * fraction)
       if (fraction > 0f) {
         Scrim(
           contentDescription = "Close navigation rail",
@@ -294,8 +347,8 @@ class T3WorkspaceNavigationView(
         Modifier
           .fillMaxHeight()
           .width(lerp(RAIL_WIDTH, EXPANDED_RAIL_WIDTH, progress.coerceAtLeast(0f)))
-          .shadow(RAIL_SHADOW * fraction, RAIL_EXPANDED_SHAPE, clip = false)
-          .background(Color(containerColor), RAIL_EXPANDED_SHAPE)
+          .shadow(RAIL_SHADOW * fraction, railShape, clip = false)
+          .background(Color(containerColor), railShape)
           .padding(top = safeAreaTop.dp, bottom = safeAreaBottom.dp + 12.dp)
           .selectableGroup(),
       ) {
@@ -318,12 +371,17 @@ class T3WorkspaceNavigationView(
             )
           }
         }
-        newThreadButton(fraction) {
-          expanded = false
-          onNewThread(emptyMap<String, Any>())
+        // Other tabs keep the button's slot so the destinations below never move between tabs.
+        if (selectedTab == "threads") {
+          newThreadButton(fraction) {
+            expanded = false
+            onNewThread(emptyMap<String, Any>())
+          }
+        } else {
+          Spacer(Modifier.padding(top = 12.dp).height(FAB_SIZE))
         }
         Spacer(Modifier.weight(1f))
-        TABS.forEach { tab ->
+        tabs.forEach { tab ->
           railItem(tab, fraction) {
             expanded = false
             onTabSelected(mapOf("tab" to tab))
@@ -407,7 +465,7 @@ class T3WorkspaceNavigationView(
 
   private fun tabTitle(tab: String) = when (tab) {
     "threads" -> "Chats"
-    "pullRequests" -> "PRs"
+    "pullRequests" -> "Pulls"
     "usage" -> "Usage"
     else -> "Settings"
   }
@@ -434,7 +492,6 @@ class T3WorkspaceNavigationView(
     val FAB_SIZE = 48.dp
     val ICON_SIZE = 24.dp
     val RAIL_SHADOW = 6.dp
-    val RAIL_EXPANDED_SHAPE = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
     const val DISABLED_ALPHA = 0.4f
 
     // Labels fade in over the second half of the widening, once there is room for them, and

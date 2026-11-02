@@ -80,6 +80,14 @@ import Migration0070ShellStopRequestIndexSource from "./Migrations/068_ShellStop
 
 const Migration0070ShellStopRequestIndex: typeof Migration0068RepairClientSettlementTimestamps =
   Migration0070ShellStopRequestIndexSource;
+import Migration0072ThreadMessageSearch from "./Migrations/069_ThreadMessageSearch.ts";
+import Migration0073PeerLinks from "./Migrations/070_PeerLinks.ts";
+import Migration0074PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
+import Migration0075WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
+import Migration0076ActiveTurnItemIndexes from "./Migrations/073_ActiveTurnItemIndexes.ts";
+import Migration0077ExcludeAttachmentPlaceholdersFromSearch from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
+import Migration0078SubagentDeliveryState from "./Migrations/075_SubagentDeliveryState.ts";
+import Migration0079ProjectionProjectsPinArchive from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -155,6 +163,18 @@ const migrationEntries = [
   [69, "WebhookDedupe", Migration0069WebhookDedupe],
   [70, "ShellStopRequestIndex", Migration0070ShellStopRequestIndex],
   [71, "EnsureThreadArtifacts", Migration0071EnsureThreadArtifacts],
+  [72, "ThreadMessageSearch", Migration0072ThreadMessageSearch],
+  [73, "PeerLinks", Migration0073PeerLinks],
+  [74, "PeerLinkFence", Migration0074PeerLinkFence],
+  [75, "WaitingLinkRequestIndex", Migration0075WaitingLinkRequestIndex],
+  [76, "ActiveTurnItemIndexes", Migration0076ActiveTurnItemIndexes],
+  [
+    77,
+    "ExcludeAttachmentPlaceholdersFromSearch",
+    Migration0077ExcludeAttachmentPlaceholdersFromSearch,
+  ],
+  [78, "SubagentDeliveryState", Migration0078SubagentDeliveryState],
+  [79, "ProjectionProjectsPinArchive", Migration0079ProjectionProjectsPinArchive],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -229,11 +249,9 @@ const reconcileForkArtifactMigrations = Effect.gen(function* () {
   );
 });
 
-// Upstream released migration ids 64-68 after the shared migration 63. The fork
-// uses 64/65 for Workflows and 68 for settlement repair, so a
-// legacy upstream ledger must apply those fork migrations first, then move the
-// upstream rows to 66-70 in one transaction. Applying both before remapping is
-// essential because the migrator skips every id up to the highest recorded id.
+// The migrator skips every id up to the highest recorded one, so an upstream ledger
+// (ids 64-76 after shared 63) applies the fork's own migrations first, then moves its
+// rows to their fork ids in one transaction.
 const reconcileUpstreamMigrationIds = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const ledger = yield* sql`
@@ -241,7 +259,7 @@ const reconcileUpstreamMigrationIds = Effect.gen(function* () {
   `;
   if (ledger.length === 0) return;
   const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
-    SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id IN (64, 65, 66, 67, 68)
+    SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id BETWEEN 64 AND 76
   `;
   const moves = [
     [64, 66, "CanonicalizeThreadPullRequestLinks"],
@@ -249,6 +267,14 @@ const reconcileUpstreamMigrationIds = Effect.gen(function* () {
     [66, 68, "RepairClientSettlementTimestamps"],
     [67, 69, "WebhookDedupe"],
     [68, 70, "ShellStopRequestIndex"],
+    [69, 72, "ThreadMessageSearch"],
+    [70, 73, "PeerLinks"],
+    [71, 74, "PeerLinkFence"],
+    [72, 75, "WaitingLinkRequestIndex"],
+    [73, 76, "ActiveTurnItemIndexes"],
+    [74, 77, "ExcludeAttachmentPlaceholdersFromSearch"],
+    [75, 78, "SubagentDeliveryState"],
+    [76, 79, "ProjectionProjectsPinArchive"],
   ] as const;
   const pending = moves.flatMap(([from, to, name]) =>
     rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],

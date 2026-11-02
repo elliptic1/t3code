@@ -52,6 +52,9 @@ BASE_VERSION="${BASE_VERSION%%-nightly.*}"
 VERSION="${BASE_VERSION}-nightly.$(date -u +%Y%m%d).$(date -u +%Y%m%d%H%M)"
 export T3CODE_DESKTOP_UPDATE_REPOSITORY=""
 export GITHUB_REPOSITORY=""
+# The main checkout, even when building from a worktree. The app's update button pulls into it.
+T3CODE_SOURCE_DIR=${T3CODE_SOURCE_DIR:-$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")}
+export T3CODE_SOURCE_DIR
 node scripts/build-desktop-artifact.ts --platform mac --target dmg --arch arm64 \
   --build-version "$VERSION" --output-dir release "$@"
 echo "fork-build: built $VERSION in release/"

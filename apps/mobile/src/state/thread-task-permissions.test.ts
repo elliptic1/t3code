@@ -118,6 +118,7 @@ vi.mock("./threads", async () => {
       pendingRequestsAtom: () => Atom.make(state.pendingRequests),
       queueWorkflowAtom: () => Atom.make(null),
       checkpointSummariesAtom: () => Atom.make([]),
+      sequenceAtom: () => Atom.make(0),
     },
     threadEnvironment: {
       respondToApproval: state.approve,
@@ -164,7 +165,6 @@ vi.mock("./use-composer-drafts", async () => {
 });
 vi.mock("../lib/composerImages", () => ({
   convertPastedImagesToAttachments: vi.fn(),
-  pasteComposerClipboard: vi.fn(),
   pickComposerFiles: vi.fn(),
   pickComposerMedia: vi.fn(),
 }));

@@ -13,9 +13,7 @@ import * as Layer from "effect/Layer";
 import { Cookies, FetchHttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 
-import type { EnvironmentId } from "@t3tools/contracts";
 import { verifyDpopProof } from "@t3tools/shared/dpop";
-import type { SavedRemoteConnection } from "../../lib/connection";
 import * as Dpop from "../cloud/dpop";
 import * as ManagedRelayLayer from "../cloud/managedRelayLayer";
 import {
@@ -24,17 +22,14 @@ import {
   loadOrCreateAgentAwarenessDeviceId,
   saveAgentAwarenessRegistrationRecord,
 } from "../../persistence/imperative";
-import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
+import { makeRelayDeviceRegistrationRequest } from "./registrationPayload";
 import {
   __resetAgentAwarenessRemoteRegistrationForTest,
   getAgentAwarenessRegistrationStatus,
-  mergeAgentAwarenessRegistrationPreferences,
   refreshAgentAwarenessRegistration,
-  registerAgentAwarenessConnection,
   registerLiveActivityPushToken,
   releaseAgentAwarenessRelayTokenProvider,
   setAgentAwarenessRelayTokenProvider,
-  unregisterAgentAwarenessConnection,
   updateAgentAwarenessRegistrationPreferences,
 } from "./remoteRegistration";
 import * as Notifications from "expo-notifications";
@@ -43,7 +38,6 @@ import { configureAndroidAgentNotifications } from "./androidNotifications";
 
 vi.mock("./androidNotifications", () => ({
   supportsAndroidAgentNotifications: vi.fn(() => true),
-  supportsAndroidUsageResetReminders: vi.fn(() => true),
   configureAndroidAgentNotifications: vi.fn(),
   clearAndroidAgentNotifications: vi.fn(),
 }));
@@ -96,8 +90,7 @@ vi.mock("./agentLiveActivity", () => ({
   startAgentLiveActivity: widgetMocks.start,
 }));
 
-// The state modules pull the whole connection stack (and native expo modules)
-// into the import graph; the arming gate only needs the configs map.
+// Avoid importing the native connection stack; this gate only needs configs.
 vi.mock("../../state/atom-registry", () => ({
   appAtomRegistry: {
     get: () => environmentConfigsMock.configs,
@@ -203,18 +196,6 @@ function proofIat(proof: string): number {
   return decoded.iat;
 }
 
-function savedConnection(): SavedRemoteConnection {
-  return {
-    environmentId: "env-1" as EnvironmentId,
-    environmentLabel: "Desktop",
-    pairingUrl: "https://desktop.example/pair",
-    displayUrl: "https://desktop.example",
-    httpBaseUrl: "https://desktop.example",
-    wsBaseUrl: "wss://desktop.example/ws",
-    bearerToken: "bearer-token",
-  };
-}
-
 const layerRelayTest = ManagedRelayLayer.layer("https://relay.example.test").pipe(
   Layer.provide(Layer.mergeAll(FetchHttpClient.layer, Dpop.layer)),
 );
@@ -222,6 +203,7 @@ const layerRelayTest = ManagedRelayLayer.layer("https://relay.example.test").pip
 const runBackgroundOperations = Effect.fn("TestRemoteRegistration.runBackgroundOperations")(
   function* () {
     let idlePasses = 0;
+    // oxlint-disable-next-line t3code/no-polling-loop-in-tests -- This harness drains mocked runtime jobs and their promise continuations, not external I/O or elapsed time.
     for (;;) {
       yield* Effect.promise(() => Promise.resolve());
       const pending = backgroundRuntime.pending.shift();
@@ -269,65 +251,6 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     environmentConfigsMock.configs.clear();
   });
 
-  it("preserves disabled Live Activity preferences in relay registrations", () => {
-    expect(
-      makeRelayDeviceRegistrationRequest({
-        deviceId: "device-1",
-        label: "Julius's iPhone",
-        iosMajorVersion: 18,
-        appVersion: "1.0.0",
-        pushToken: "apns-token",
-        pushToStartToken: "push-to-start-token",
-        notificationsEnabled: true,
-        preferences: {
-          liveActivitiesEnabled: false,
-        },
-      }),
-    ).toEqual({
-      deviceId: "device-1",
-      label: "Julius's iPhone",
-      platform: "ios",
-      iosMajorVersion: 18,
-      appVersion: "1.0.0",
-      pushToken: "apns-token",
-      pushToStartToken: "push-to-start-token",
-      preferences: {
-        liveActivitiesEnabled: false,
-        notificationsEnabled: true,
-        notifyOnApproval: true,
-        notifyOnInput: true,
-        notifyOnCompletion: true,
-        notifyOnFailure: true,
-        usageResetRemindersSupported: true,
-      },
-    });
-  });
-
-  it("registers the app's APNs routing so the relay targets the right bundle", () => {
-    expect(
-      makeRelayDeviceRegistrationRequest({
-        deviceId: "device-1",
-        label: "Julius's iPhone",
-        iosMajorVersion: 18,
-        appVersion: "1.0.0",
-        bundleId: "com.t3tools.t3code.preview",
-        apsEnvironment: resolveApsEnvironment("preview"),
-        notificationsEnabled: true,
-        preferences: {},
-      }),
-    ).toMatchObject({
-      bundleId: "com.t3tools.t3code.preview",
-      apsEnvironment: "production",
-    });
-  });
-
-  it("routes development builds to the APNs sandbox", () => {
-    expect(resolveApsEnvironment("development")).toBe("sandbox");
-    expect(resolveApsEnvironment("preview")).toBe("production");
-    expect(resolveApsEnvironment("production")).toBe("production");
-    expect(resolveApsEnvironment(undefined)).toBe("production");
-  });
-
   it("disables push features in Personal Team relay registrations", () => {
     Constants.expoConfig!.extra = { iosPersonalTeamBuild: true };
 
@@ -348,49 +271,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     });
   });
 
-  it("marks notification delivery disabled when APNs permission is unavailable", () => {
-    expect(
-      makeRelayDeviceRegistrationRequest({
-        deviceId: "device-1",
-        label: "Julius's iPhone",
-        iosMajorVersion: 18,
-        appVersion: "1.0.0",
-        pushToStartToken: "push-to-start-token",
-        notificationsEnabled: false,
-        preferences: {
-          liveActivitiesEnabled: true,
-        },
-      }),
-    ).toEqual({
-      deviceId: "device-1",
-      label: "Julius's iPhone",
-      platform: "ios",
-      iosMajorVersion: 18,
-      appVersion: "1.0.0",
-      pushToStartToken: "push-to-start-token",
-      preferences: {
-        liveActivitiesEnabled: true,
-        notificationsEnabled: false,
-        notifyOnApproval: true,
-        notifyOnInput: true,
-        notifyOnCompletion: true,
-        notifyOnFailure: true,
-        usageResetRemindersSupported: true,
-      },
-    });
-  });
-
-  it("overrides persisted preferences for an in-flight registration", () => {
-    expect(
-      mergeAgentAwarenessRegistrationPreferences(
-        { liveActivitiesEnabled: false, baseFontSize: 18 },
-        { liveActivitiesEnabled: true },
-      ),
-    ).toEqual({ liveActivitiesEnabled: true, baseFontSize: 18 });
-  });
-
   it.effect("registers one push-token listener per Live Activity across wrappers", () => {
-    registerAgentAwarenessConnection(savedConnection());
     const addPushTokenListener = vi.fn();
     // getInstances() returns a new wrapper for the same native activity each call.
     const wrapper = () => ({
@@ -724,44 +605,6 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     }).pipe(Effect.provide(layerRelayTest));
   });
 
-  it.effect(
-    "keeps the user-scoped relay APNs device when an environment connection is removed",
-    () => {
-      const fetchMock = vi.fn((request: RequestInfo | URL) => {
-        const url = request instanceof Request ? request.url : String(request);
-        return Promise.resolve(
-          Response.json(
-            url.endsWith("/v1/client/dpop-token")
-              ? {
-                  access_token: "relay-dpop-token",
-                  issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
-                  token_type: "DPoP",
-                  expires_in: 300,
-                  scope: "mobile:registration",
-                }
-              : { ok: true },
-          ),
-        );
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      Constants.expoConfig!.extra = {
-        relay: {
-          url: "https://relay.example.test/",
-        },
-      };
-
-      registerAgentAwarenessConnection(savedConnection());
-      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
-      return Effect.gen(function* () {
-        yield* runBackgroundOperations();
-        fetchMock.mockClear();
-
-        unregisterAgentAwarenessConnection(savedConnection().environmentId);
-
-        expect(fetchMock).not.toHaveBeenCalled();
-      }).pipe(Effect.provide(layerRelayTest));
-    },
-  );
   it.effect.each(["ios", "android"] as const)(
     "does not enable %s notifications when a token rotates after permission is revoked",
     (os) => {
