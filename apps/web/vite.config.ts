@@ -49,6 +49,8 @@ const configuredDesktopUpdateRepository =
   process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
   process.env.GITHUB_REPOSITORY?.trim() ||
   "";
+// The checkout scripts/fork-build.sh built this app from, so the update button can pull and rebuild.
+const configuredSourceDir = process.env.T3CODE_SOURCE_DIR?.trim() || "";
 const configuredHostedAppUrl = (() => {
   const explicitHostedAppUrl = process.env.VITE_HOSTED_APP_URL?.trim();
   if (explicitHostedAppUrl) {
@@ -253,6 +255,7 @@ export default defineConfig(() => {
       "import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY": JSON.stringify(
         configuredDesktopUpdateRepository,
       ),
+      "import.meta.env.T3CODE_SOURCE_DIR": JSON.stringify(configuredSourceDir),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
       "import.meta.env.APP_BUILD_TIMESTAMP": JSON.stringify(appBuildTimestamp),
     },
