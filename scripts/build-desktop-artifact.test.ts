@@ -3,7 +3,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { extractFile } from "@electron/asar";
+import { createPackageWithOptions, extractFile } from "@electron/asar";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Deferred from "effect/Deferred";
@@ -22,6 +22,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
   buildDesktopBundles,
+  copyDesktopBuildArtifacts,
   DesktopBuildManifestRestoreError,
   BundleNotSelfContainedError,
   BuildCommandFailedError,
@@ -45,7 +46,9 @@ import {
   ancestorNodeModulesPaths,
   copyDirectoryPreservingSymlinks,
   LinuxBrowserSecretHostError,
+  MacPackagedAppMissingError,
   stageBrowserSecret,
+  validateMacPackagedPayload,
   validateWindowsPackagedPayload,
   verifyPackagedBundleIsSelfContained,
   WindowsPrimaryNativeProbeError,
@@ -209,6 +212,26 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
     generatedAsarPath,
     appExecutableName,
   } as const;
+});
+
+const makeMacPayloadFixture = Effect.fn("test.makeMacPayloadFixture")(function* (input: {
+  readonly serverEntrySource?: string;
+}) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-mac-payload-test-" });
+  const sourceDir = path.join(tempDir, "app-source");
+  const serverEntryPath = path.join(sourceDir, "apps/server/dist/bin.mjs");
+  yield* fs.makeDirectory(path.dirname(serverEntryPath), { recursive: true });
+  yield* fs.writeFileString(serverEntryPath, input.serverEntrySource ?? "console.log('server');\n");
+
+  const stageDistDir = path.join(tempDir, "dist");
+  const resourcesDir = path.join(stageDistDir, "mac-arm64/T3 Code.app/Contents/Resources");
+  yield* fs.makeDirectory(resourcesDir, { recursive: true });
+  yield* Effect.promise(() =>
+    createPackageWithOptions(sourceDir, path.join(resourcesDir, "app.asar"), {}),
+  );
+  return { stageDistDir } as const;
 });
 
 it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
@@ -473,76 +496,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
-  it("resolves the dedicated nightly updater channel from nightly versions", () => {
-    assert.equal(resolveDesktopUpdateChannel("0.0.17-nightly.20260413.42"), "nightly");
-    assert.equal(resolveDesktopUpdateChannel("0.0.17"), "latest");
-  });
-
-  it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.1.0"), "T3 Code (Fork)");
-    assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
-  });
-
-  it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
-    assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.17"), {
-      macIconPng: BRAND_ASSET_PATHS.productionMacIconPng,
-      linuxIconPng: BRAND_ASSET_PATHS.productionLinuxIconPng,
-      windowsIconIco: BRAND_ASSET_PATHS.productionWindowsIconIco,
-    });
-
-    assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.17-nightly.20260413.42"), {
-      macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
-      linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
-      windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
-    });
-  });
-
-  it("switches the bundled splash and favicon branding for nightly versions", () => {
-    assert.equal(resolveDesktopWebAssetBrand("0.0.17"), "production");
-    assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.20260413.42"), "nightly");
-  });
-
-  it.effect("resolves GitHub desktop publish config from Effect config", () =>
-    Effect.gen(function* () {
-      const latestConfig = yield* resolveGitHubPublishConfig("latest").pipe(
-        Effect.provide(
-          ConfigProvider.layer(
-            ConfigProvider.fromEnv({
-              env: {
-                T3CODE_DESKTOP_UPDATE_REPOSITORY: "pingdotgg/t3code",
-              },
-            }),
-          ),
-        ),
-      );
-      const nightlyConfig = yield* resolveGitHubPublishConfig("nightly").pipe(
-        Effect.provide(
-          ConfigProvider.layer(
-            ConfigProvider.fromEnv({
-              env: {
-                GITHUB_REPOSITORY: "pingdotgg/t3code",
-              },
-            }),
-          ),
-        ),
-      );
-
-      assert.deepStrictEqual(latestConfig, {
-        provider: "github",
-        owner: "pingdotgg",
-        repo: "t3code",
-        releaseType: "release",
-      });
-      assert.deepStrictEqual(nightlyConfig, {
-        provider: "github",
-        owner: "pingdotgg",
-        repo: "t3code",
-        releaseType: "prerelease",
-        channel: "nightly",
-      });
-    }),
-  );
-
   it.effect("omits update feeds for pull request preview builds", () =>
     Effect.gen(function* () {
       const preview = yield* createBuildConfig(
@@ -611,262 +564,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       }
     }),
   );
-
-  it("stages pnpm 11 allowBuilds and patchedDependencies in the workspace yaml", () => {
-    assert.deepStrictEqual(
-      createStageWorkspaceConfig({
-        platform: "linux",
-        arch: "x64",
-        allowBuilds: {
-          electron: true,
-          "node-pty": true,
-          "browser-tabs-lock": false,
-        },
-        patchedDependencies: {
-          "effect@4.0.0-beta.73": "patches/effect@4.0.0-beta.73.patch",
-        },
-        overrides: {
-          effect: "4.0.0-beta.73",
-        },
-      }),
-      {
-        supportedArchitectures: {
-          os: ["linux"],
-          cpu: ["x64"],
-          libc: ["glibc"],
-        },
-        packageExtensions: stagePackageExtensions,
-        allowBuilds: {
-          electron: true,
-          "node-pty": true,
-          "browser-tabs-lock": false,
-        },
-        patchedDependencies: {
-          "effect@4.0.0-beta.73": "patches/effect@4.0.0-beta.73.patch",
-        },
-        overrides: {
-          effect: "4.0.0-beta.73",
-        },
-      },
-    );
-
-    assert.deepStrictEqual(
-      createStageWorkspaceConfig({
-        platform: "mac",
-        arch: "arm64",
-        allowBuilds: {},
-        patchedDependencies: {},
-        overrides: {},
-      }),
-      {
-        supportedArchitectures: {
-          os: ["darwin"],
-          cpu: ["arm64"],
-        },
-        packageExtensions: stagePackageExtensions,
-      },
-    );
-  });
-
-  it("limits Electron locales and excludes separately packaged resources", () => {
-    assert.deepStrictEqual(DESKTOP_ELECTRON_LANGUAGES, ["en-US"]);
-    for (const resource of [
-      ...WSL_RUNTIME_EXTRA_RESOURCES,
-      ...LINUX_BROWSER_SECRET_EXTRA_RESOURCES,
-    ]) {
-      assert.include(
-        DESKTOP_FILE_EXCLUSIONS,
-        `!${resource.from}`,
-        `${resource.from} ships via extraResources and must be excluded from app.asar`,
-      );
-    }
-
-    assert.deepStrictEqual(DESKTOP_FILE_EXCLUSIONS, [
-      "!**/node_modules/@cursor/sdk-*/**/*",
-      "!apps/desktop/prod-resources/cursor-sdk",
-      "!apps/desktop/prod-resources/cursor-sdk/**/*",
-      "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
-      "!**/*.map",
-      "!**/*.d.cts",
-      "!apps/desktop/resources/browser-secret",
-      "!apps/desktop/resources/browser-secret/**/*",
-      "!apps/desktop/prod-resources/browser-secret",
-      "!apps/desktop/prod-resources/browser-secret/**/*",
-      "!apps/desktop/prod-resources/windows-server",
-      "!apps/desktop/prod-resources/windows-server/**/*",
-      "!apps/desktop/prod-resources/wsl-runtime.tar.gz",
-      "!apps/desktop/prod-resources/wsl-runtime.tar.gz.sha256",
-      "!apps/desktop/gnome-extension",
-      "!apps/desktop/gnome-extension/**/*",
-    ]);
-    assert.equal(WINDOWS_SERVER_RESOURCE_SOURCE_DIR, "apps/desktop/prod-resources/windows-server");
-    assert.deepStrictEqual(WINDOWS_SERVER_EXTRA_RESOURCES, [
-      {
-        from: "apps/desktop/prod-resources/windows-server",
-        to: ".",
-        filter: ["server.asar", "server.asar.unpacked/**/*"],
-      },
-    ]);
-  });
-
-  it.effect("applies platform-specific packaging to the build config", () =>
-    Effect.gen(function* () {
-      const mac = yield* createBuildConfig(
-        "mac",
-        "dmg",
-        "1.2.3",
-        false,
-        false,
-        undefined,
-        undefined,
-      );
-      const linux = yield* createBuildConfig(
-        "linux",
-        "AppImage",
-        "1.2.3",
-        false,
-        false,
-        undefined,
-        undefined,
-      );
-      const win = yield* createBuildConfig(
-        "win",
-        "nsis",
-        "1.2.3",
-        false,
-        false,
-        undefined,
-        undefined,
-        true,
-      );
-      const winWithoutWslRuntime = yield* createBuildConfig(
-        "win",
-        "nsis",
-        "1.2.3",
-        false,
-        false,
-        undefined,
-        undefined,
-        false,
-      );
-
-      assert.notProperty(mac, "asar");
-      assert.notProperty(linux, "asar");
-      assert.notProperty(mac, "asarUnpack");
-      assert.notProperty(linux, "asarUnpack");
-      assert.deepStrictEqual(win.asar, { smartUnpack: false });
-      assert.deepStrictEqual(win.asarUnpack, [WINDOWS_NATIVE_ASAR_UNPACK_GLOB]);
-      assert.deepStrictEqual(winWithoutWslRuntime.asar, win.asar);
-      assert.deepStrictEqual(winWithoutWslRuntime.asarUnpack, win.asarUnpack);
-      assert.deepStrictEqual(mac.extraResources, DESKTOP_EXTRA_RESOURCES);
-      assert.deepStrictEqual(linux.extraResources, [
-        ...DESKTOP_EXTRA_RESOURCES,
-        ...LINUX_CAPTURE_EXTRA_RESOURCES,
-        { from: "apps/desktop/prod-resources/browser-secret", to: "browser-secret" },
-      ]);
-      assert.deepStrictEqual(win.extraResources, [
-        ...DESKTOP_EXTRA_RESOURCES,
-        ...WINDOWS_SERVER_EXTRA_RESOURCES,
-        ...WSL_RUNTIME_EXTRA_RESOURCES,
-      ]);
-      assert.deepStrictEqual(winWithoutWslRuntime.extraResources, [
-        ...DESKTOP_EXTRA_RESOURCES,
-        ...WINDOWS_SERVER_EXTRA_RESOURCES,
-      ]);
-      assert.deepStrictEqual(win.nsis, {
-        differentialPackage: true,
-        include: "apps/desktop/resources/installer.nsh",
-      });
-      assert.deepStrictEqual(WINDOWS_SERVER_ASAR_IGNORE_GLOBS, [
-        "**/node_modules/@cursor/sdk-*",
-        "**/node_modules/@cursor/sdk-*/**",
-        "**/node_modules/@anthropic-ai/claude-agent-sdk-*",
-        "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
-        "**/node_modules/.bin",
-        "**/node_modules/.bin/**",
-        "**/*.map",
-      ]);
-      assert.deepStrictEqual(mac.dmg, {
-        title: "T3 Code (Fork) 1.2.3 Installer",
-        background: "dmg/dmg-background-latest.png",
-        window: { width: 640, height: 432 },
-        contents: [
-          { x: 166, y: 214, type: "file" },
-          { x: 474, y: 214, type: "link", path: "/Applications" },
-        ],
-        iconSize: 120,
-        iconTextSize: 12,
-      });
-      assert.deepStrictEqual((linux.linux as Record<string, unknown>).target, ["AppImage", "deb"]);
-      assert.deepStrictEqual((linux.linux as Record<string, unknown>).protocols, [
-        { name: "T3 Code", schemes: ["t3code", "t3code-dev"] },
-      ]);
-      assert.deepStrictEqual((mac.mac as Record<string, unknown>).protocols, [
-        { name: "T3 Code", schemes: ["t3code", "t3code-dev"] },
-        { name: "Web site URL", schemes: ["http", "https"], role: "Viewer" },
-      ]);
-      const macInfo = (mac.mac as { extendInfo: Record<string, unknown> }).extendInfo;
-      assert.strictEqual(macInfo.NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac, true);
-      assert.deepStrictEqual(macInfo.CFBundleDocumentTypes, [
-        {
-          CFBundleTypeName: "Web page",
-          CFBundleTypeRole: "Viewer",
-          LSHandlerRank: "Alternate",
-          LSItemContentTypes: ["public.html", "public.xhtml"],
-        },
-      ]);
-      assert.deepStrictEqual(linux.toolsets, { appimage: "1.0.3" });
-      assert.notProperty(mac, "toolsets");
-      assert.notProperty(win, "toolsets");
-      assert.deepStrictEqual(mac.files, [...DESKTOP_FILE_EXCLUSIONS, ...MAC_FILE_EXCLUSIONS]);
-      assert.deepStrictEqual(linux.files, [...DESKTOP_FILE_EXCLUSIONS, ...LINUX_FILE_EXCLUSIONS]);
-      assert.deepStrictEqual(win.files, DESKTOP_FILE_EXCLUSIONS);
-      assert.deepStrictEqual(winWithoutWslRuntime.files, win.files);
-      assert.notProperty(mac.mac as Record<string, unknown>, "sign");
-      assert.propertyVal(
-        (mac.mac as Record<string, unknown>).extendInfo as Record<string, unknown>,
-        "NSLocalNetworkUsageDescription",
-        "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
-      );
-      assert.propertyVal(
-        macInfo,
-        "NSMicrophoneUsageDescription",
-        "T3 Code uses the microphone for voice conversations and when commands run by terminals and coding agents access audio input.",
-      );
-      for (const config of [linux, win]) {
-        assert.deepStrictEqual(config.electronLanguages, DESKTOP_ELECTRON_LANGUAGES);
-      }
-      assert.deepStrictEqual(mac.electronLanguages, DESKTOP_ELECTRON_LANGUAGES);
-    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
-  );
-
-  it("unpacks native binaries while keeping their JavaScript and metadata archived", () => {
-    for (const file of [
-      "node_modules/@napi-rs/keyring/keyring.win32-x64-msvc.node",
-      "node_modules/@clerk/electron-passkeys/electron-passkeys.win32-x64-msvc.node",
-      "node_modules/@ff-labs/fff-bin-win32-x64/fff_c.dll",
-      "node_modules/node-pty/prebuilds/win32-x64/conpty/OpenConsole.exe",
-      "node_modules/native/addon.so",
-      "node_modules/native/addon.so.1",
-      "node_modules/native/addon.dylib",
-    ]) {
-      assert.isTrue(
-        NodePath.matchesGlob(file, WINDOWS_NATIVE_ASAR_UNPACK_GLOB),
-        `${file} must be available as a real file`,
-      );
-    }
-
-    for (const file of [
-      "node_modules/@napi-rs/keyring/index.js",
-      "node_modules/@napi-rs/keyring/keytar.js",
-      "node_modules/@clerk/electron-passkeys/index.js",
-    ]) {
-      assert.isFalse(
-        NodePath.matchesGlob(file, WINDOWS_NATIVE_ASAR_UNPACK_GLOB),
-        `${file} should remain inside the archive`,
-      );
-    }
-  });
 
   it("stages only the externals of both bundles in merged packages", () => {
     assert.deepStrictEqual(
@@ -1444,7 +1141,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
     return Effect.scoped(
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const fixture = yield* makeWindowsPayloadFixture({ copyUnpackedNatives: true });
         yield* validateWindowsPackagedPayload({
           stageDistDir: fixture.stageDistDir,
@@ -1456,7 +1152,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.isFalse(
           commands.some(
             (command) =>
-              command.command === path.join(fixture.packagedAppDir, fixture.appExecutableName),
+              command.command === NodePath.join(fixture.packagedAppDir, fixture.appExecutableName),
           ),
         );
         assert.isTrue(
@@ -1613,6 +1309,58 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
+  it.effect("rejects a macOS app whose packaged server bundle cannot resolve", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeMacPayloadFixture({
+          serverEntrySource: 'import "t3code-deliberately-missing-package";\n',
+        });
+        const error = yield* validateMacPackagedPayload({
+          stageDistDir: fixture.stageDistDir,
+        }).pipe(Effect.flip);
+
+        assert.instanceOf(error, BundleNotSelfContainedError);
+        assert.include(error.output, "t3code-deliberately-missing-package");
+      }),
+    ),
+  );
+
+  it.effect("accepts a macOS app whose packaged server bundle resolves", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeMacPayloadFixture({});
+        yield* validateMacPackagedPayload({ stageDistDir: fixture.stageDistDir });
+      }),
+    ),
+  );
+
+  it.effect("rejects a macOS stage without a packaged app", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const stageDistDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-mac-payload-test-" });
+        const error = yield* validateMacPackagedPayload({ stageDistDir }).pipe(Effect.flip);
+
+        assert.instanceOf(error, MacPackagedAppMissingError);
+      }),
+    ),
+  );
+
+  it.effect("rejects a macOS app without app.asar", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const stageDistDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-mac-payload-test-" });
+        yield* fs.makeDirectory(`${stageDistDir}/mac-arm64/T3 Code.app/Contents/Resources`, {
+          recursive: true,
+        });
+        const error = yield* validateMacPackagedPayload({ stageDistDir }).pipe(Effect.flip);
+
+        assert.instanceOf(error, BundleNotSelfContainedError);
+      }),
+    ),
+  );
+
   it.effect("leaves the bundle self-check of a cross-built payload to the verify job", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1645,7 +1393,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
 
     assert.deepStrictEqual(configuration, {
-      appId: "com.t3tools.t3code.fork",
+      appId: "com.t3tools.t3code",
       teamId: "ABC1234567",
       rpDomains: ["example.clerk.accounts.dev"],
       provisioningProfilePath: "/tmp/t3code.provisionprofile",
@@ -1668,10 +1416,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       "clerk.example.com",
       "example.clerk.accounts.dev",
     ]);
-    assert.include(entitlements, "<string>ABC1234567.com.t3tools.t3code.fork</string>");
+    assert.include(entitlements, "<string>ABC1234567.com.t3tools.t3code</string>");
     assert.include(entitlements, "<string>webcredentials:clerk.example.com</string>");
     assert.include(entitlements, "<string>webcredentials:example.clerk.accounts.dev</string>");
-    assert.include(entitlements, "<key>com.apple.security.device.audio-input</key>\n    <true/>");
     assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");
     assert.match(entitlements, /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\/>/u);
     assert.match(entitlements, /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u);
@@ -1815,64 +1562,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(error.message, "Failed to resolve macOS passkey signing configuration.");
     assert.notInclude(error.message, secret);
   });
-
-  it.effect("adds passkey entitlements and both renderer protocols to signed macOS builds", () =>
-    Effect.gen(function* () {
-      const config = yield* createBuildConfig("mac", "dmg", "1.2.3", true, false, undefined, {
-        entitlementsPath: "/tmp/entitlements.mac.plist",
-        provisioningProfilePath: "/tmp/t3code.provisionprofile",
-      });
-
-      const mac = config.mac as Record<string, unknown>;
-      assert.equal(config.appId, "com.t3tools.t3code.fork");
-      assert.equal(mac.entitlements, "/tmp/entitlements.mac.plist");
-      assert.equal(mac.provisioningProfile, "/tmp/t3code.provisionprofile");
-      assert.match(String(mac.sign), /[\\/]scripts[\\/]sign-macos\.ts$/);
-      assert.deepStrictEqual(mac.protocols, [
-        { name: "T3 Code", schemes: ["t3code", "t3code-dev"] },
-        { name: "Web site URL", schemes: ["http", "https"], role: "Viewer" },
-      ]);
-    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
-  );
-
-  it.effect("uses the nightly DMG background for nightly macOS builds", () =>
-    Effect.gen(function* () {
-      const config = yield* createBuildConfig(
-        "mac",
-        "dmg",
-        "1.2.3-nightly.20260815.1",
-        false,
-        false,
-        undefined,
-        undefined,
-      );
-
-      assert.equal(
-        (config.dmg as Record<string, unknown>).background,
-        "dmg/dmg-background-nightly.png",
-      );
-    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
-  );
-
-  it.effect("configures Windows executable metadata and native signing extensions", () =>
-    Effect.gen(function* () {
-      const config = yield* createBuildConfig(
-        "win",
-        "nsis",
-        "1.2.3",
-        false,
-        false,
-        undefined,
-        undefined,
-      );
-
-      const win = config.win as Record<string, unknown>;
-      assert.equal(win.icon, "icon.ico");
-      assert.deepStrictEqual(win.signExts, [".node", ".dll"]);
-      assert.equal(win.signAndEditExecutable, true);
-      assert.notProperty(win, "azureSignOptions");
-    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
-  );
 
   it.effect("signs Windows builds with signtool on Windows and the jsign hook elsewhere", () =>
     Effect.gen(function* () {
@@ -2059,4 +1748,58 @@ it.effect.skipIf(!symlinksSupported)("rebases packaged links into the isolated t
       resolvedCopiedPackage,
     );
   }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("preserves packaged app directories from the dir target", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-dir-artifact-" });
+    const stage = path.join(root, "stage");
+    const output = path.join(root, "output");
+    const app = path.join("mac-arm64", "T3 Code.app", "Contents");
+    yield* fs.makeDirectory(path.join(stage, app), { recursive: true });
+    yield* fs.writeFileString(path.join(stage, app, "Info.plist"), "built-app");
+    yield* fs.writeFileString(path.join(stage, "builder-debug.yml"), "debug");
+    const copied = yield* copyDesktopBuildArtifacts(stage, output, true);
+    assert.include(copied, path.join(output, "mac-arm64"));
+    assert.equal(yield* fs.readFileString(path.join(output, app, "Info.plist")), "built-app");
+    assert.equal(yield* fs.readFileString(path.join(stage, app, "Info.plist")), "built-app");
+    yield* fs.remove(path.join(stage, app, "Info.plist"));
+    yield* fs.writeFileString(path.join(stage, app, "New.plist"), "rebuilt-app");
+    yield* copyDesktopBuildArtifacts(stage, output, true);
+    assert.isFalse(yield* fs.exists(path.join(output, app, "Info.plist")));
+    assert.equal(yield* fs.readFileString(path.join(output, app, "New.plist")), "rebuilt-app");
+    const filesOnly = yield* copyDesktopBuildArtifacts(stage, path.join(root, "files-only"));
+    assert.deepEqual(filesOnly, [path.join(root, "files-only", "builder-debug.yml")]);
+    assert.isFalse(yield* fs.exists(path.join(root, "files-only", "mac-arm64")));
+    yield* fs.remove(path.join(stage, "mac-arm64"), { recursive: true });
+    yield* fs.writeFileString(path.join(stage, "mac-arm64"), "flattened");
+    yield* copyDesktopBuildArtifacts(stage, output, true);
+    assert.equal(yield* fs.readFileString(path.join(output, "mac-arm64")), "flattened");
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
+it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing dir artifacts", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-dir-artifact-links-" });
+    const stage = path.join(root, "stage");
+    const output = path.join(root, "output");
+    const app = path.join("mac-arm64", "T3 Code.app", "Contents");
+    yield* fs.makeDirectory(path.join(stage, app), { recursive: true });
+    yield* fs.writeFileString(path.join(stage, app, "Info.plist"), "built-app");
+    yield* fs.symlink("Info.plist", path.join(stage, app, "Current"));
+    yield* copyDesktopBuildArtifacts(stage, output, true);
+    assert.equal(yield* fs.readLink(path.join(output, app, "Current")), "Info.plist");
+    assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "built-app");
+
+    yield* fs.remove(path.join(stage, app, "Current"));
+    yield* fs.writeFileString(path.join(stage, app, "New.plist"), "rebuilt-app");
+    yield* fs.symlink("New.plist", path.join(stage, app, "Current"));
+    yield* copyDesktopBuildArtifacts(stage, output, true);
+    assert.equal(yield* fs.readLink(path.join(output, app, "Current")), "New.plist");
+    assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );

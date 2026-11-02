@@ -17,7 +17,7 @@ export function voiceProviderId(settings: VoiceConnectionSettings): VoiceProvide
   return "local";
 }
 
-export function voiceConnectionProfile(settings: VoiceConnectionProfile): VoiceConnectionProfile {
+function voiceConnectionProfile(settings: VoiceConnectionProfile): VoiceConnectionProfile {
   const { protocol, transport, endpoint, tokenEndpoint, transcriptionModel, model, voice, apiKey } =
     settings;
   return { protocol, transport, endpoint, tokenEndpoint, transcriptionModel, model, voice, apiKey };

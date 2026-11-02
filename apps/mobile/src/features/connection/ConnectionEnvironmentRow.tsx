@@ -3,7 +3,6 @@ import { ConnectionTraceId } from "./ConnectionTraceId";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import {
   connectionDiagnostics,
-  connectionStatusText,
   hasSavedBearerRoute,
   hostFreezeNotice,
 } from "@t3tools/client-runtime/connection";
@@ -14,7 +13,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import * as Option from "effect/Option";
 import Constants from "expo-constants";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 
@@ -26,7 +25,7 @@ import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { environmentCatalog } from "../../connection/catalog";
-import { environmentPresentations, useEnvironmentPresentation } from "../../state/presentation";
+import { useEnvironmentPresentation } from "../../state/presentation";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
 import { serverEnvironment } from "../../state/server";
 import { ConnectionDiagnosisDetails, useConnectionDiagnosis } from "./ConnectionDiagnosisDetails";
@@ -101,7 +100,7 @@ export function ConnectionEnvironmentRow(props: {
     enabled &&
     (props.environment.connectionState === "connecting" ||
       props.environment.connectionState === "reconnecting");
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
     const result = await props.onUpdate(props.environment.environmentId, {
       label: label.trim(),
       displayUrl: url.trim(),
@@ -115,7 +114,7 @@ export function ConnectionEnvironmentRow(props: {
       "Could not update environment",
       error instanceof Error ? error.message : "The environment could not be updated.",
     );
-  }, [label, url, props]);
+  };
 
   return (
     <Animated.View layout={LinearTransition.duration(250)} className="bg-grouped-card">
@@ -344,6 +343,9 @@ export function ConnectionEnvironmentRow(props: {
               )}
 
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Reconnect environment"
+                accessibilityState={{ disabled: !enabled }}
                 className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-input-border bg-input active:opacity-70 disabled:opacity-40"
                 disabled={!enabled}
                 onPress={() => props.onReconnect(props.environment.environmentId)}
@@ -357,6 +359,8 @@ export function ConnectionEnvironmentRow(props: {
               </Pressable>
 
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove environment"
                 className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-danger-border bg-danger active:opacity-70"
                 onPress={() => props.onRemove(props.environment.environmentId)}
               >

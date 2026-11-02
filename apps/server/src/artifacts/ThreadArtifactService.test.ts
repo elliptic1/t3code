@@ -323,6 +323,7 @@ it.effect("allows only one concurrent edit at a given artifact revision", () =>
   Effect.gen(function* () {
     const h = yield* setup;
     const { artifact } = yield* h.service.publish(h.publish);
+    // @effect-diagnostics-next-line allOfMapToForEach:off
     const results = yield* Effect.all(
       ["first.apk", "second.apk"].map((name) =>
         h.service

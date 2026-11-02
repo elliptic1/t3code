@@ -21,7 +21,7 @@ layer("055_OrchestrationV2", (it) => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         migrationManifest.map(([id]) => id),
-        Array.from({ length: 71 }, (_, index) => index + 1),
+        Array.from({ length: 79 }, (_, index) => index + 1),
       );
     }),
   );
@@ -51,6 +51,14 @@ layer("055_OrchestrationV2", (it) => {
         [69, "WebhookDedupe"],
         [70, "ShellStopRequestIndex"],
         [71, "EnsureThreadArtifacts"],
+        [72, "ThreadMessageSearch"],
+        [73, "PeerLinks"],
+        [74, "PeerLinkFence"],
+        [75, "WaitingLinkRequestIndex"],
+        [76, "ActiveTurnItemIndexes"],
+        [77, "ExcludeAttachmentPlaceholdersFromSearch"],
+        [78, "SubagentDeliveryState"],
+        [79, "ProjectionProjectsPinArchive"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
 
@@ -88,6 +96,14 @@ layer("055_OrchestrationV2", (it) => {
         { migration_id: 69, name: "WebhookDedupe" },
         { migration_id: 70, name: "ShellStopRequestIndex" },
         { migration_id: 71, name: "EnsureThreadArtifacts" },
+        { migration_id: 72, name: "ThreadMessageSearch" },
+        { migration_id: 73, name: "PeerLinks" },
+        { migration_id: 74, name: "PeerLinkFence" },
+        { migration_id: 75, name: "WaitingLinkRequestIndex" },
+        { migration_id: 76, name: "ActiveTurnItemIndexes" },
+        { migration_id: 77, name: "ExcludeAttachmentPlaceholdersFromSearch" },
+        { migration_id: 78, name: "SubagentDeliveryState" },
+        { migration_id: 79, name: "ProjectionProjectsPinArchive" },
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-unreasoned-state-sync, react/set-state-in-effect, t3code/no-manual-memo -- these effects run the live voice session: microphone, WebRTC, and speech playback outside React */
 import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
@@ -16,7 +17,7 @@ import {
 } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Mic, MicOff, PhoneOff, Settings } from "lucide-react";
-import { readThreadShell, useActiveEnvironmentId, useThreadShells } from "../state/entities";
+import { readThreadShell, useThreadShells } from "../state/entities";
 import { usePrimaryEnvironmentId, useEnvironment } from "../state/environments";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "../components/ui/button";
@@ -32,9 +33,7 @@ import { createBrowserSpeech } from "./browserSpeech";
 import { connectVoice, type VoiceConnection } from "./connection";
 
 export function VoiceConversation() {
-  const activeId = useActiveEnvironmentId();
-  const primaryId = usePrimaryEnvironmentId();
-  const environmentId = activeId ?? primaryId;
+  const environmentId = usePrimaryEnvironmentId();
   return environmentId ? (
     <EnabledVoiceConversation key={environmentId} environmentId={environmentId} />
   ) : null;

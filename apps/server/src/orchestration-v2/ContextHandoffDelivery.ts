@@ -3,6 +3,7 @@ import type {
   OrchestrationV2ProviderThread,
 } from "@t3tools/contracts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { ContextHandoffBudgetError } from "@t3tools/provider-core/server/failure";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
@@ -11,11 +12,11 @@ import {
   selectHistory,
 } from "@t3tools/provider-core/server/handoffBudget";
 
-/**
- * Persist before/after injection: an ambiguous pending delivery requires a fresh native thread.
- * Run `unsent` when the provider refused the turn before reading the prompt, so that
- * refusal does not leave an ambiguous marker behind.
- */
+/** The provider prompt for a turn that carries inline context ahead of the user's text. */
+export const withInlineContext = (context: string, userText: string): string =>
+  context === "" ? userText : `${context}\n\nUser message:\n${userText}`;
+
+/** Persist around injection; ambiguous delivery requires a fresh native thread. Call unsent if refused before prompt consumption. */
 export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextHandoffs")(
   function* <InjectError = never, PersistError = never, BudgetError = never>(input: {
     readonly handoffs: ReadonlyArray<OrchestrationV2ContextHandoff>;
@@ -67,23 +68,15 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
       oldContext && historyCost([], `${coverage}\n${oldContext}`) + 512 <= budget
         ? `${coverage}\n${oldContext}`
         : coverage;
-    let selected = selectHistory({
+    const selected = selectHistory({
       messages,
       coverage: fullCoverage,
       omittedItems: pending.reduce((sum, handoff) => sum + (handoff.history?.omittedItems ?? 0), 0),
       budget,
-      compressOversized: true,
     });
     if (historyCost(selected.messages, selected.context) > budget) {
       if (input.deferInline) return { context: "", delivered: Effect.void, unsent: Effect.void };
-      // Even metadata is optional when the destination has no history allowance.
-      // Preserve the request and record every omitted item for later retrieval.
-      selected = {
-        messages: [],
-        context: "",
-        omittedItemIds: messages.map((message) => message.itemId),
-        omittedItems: messages.length,
-      };
+      return yield* new ContextHandoffBudgetError();
     }
     const omittedItemIds = new Set(selected.omittedItemIds);
     const persist = (status: "pending" | "injected" | "inline") =>
@@ -98,14 +91,12 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
                   delivery: {
                     nativeThreadId,
                     status,
-                    omittedItemIds: Array.from(
-                      new Set([
-                        ...(handoff.history?.omittedItemIds ?? []),
-                        ...(handoff.history?.messages ?? [])
-                          .filter((message) => omittedItemIds.has(message.itemId))
-                          .map((message) => message.itemId),
-                      ]),
-                    ),
+                    omittedItemIds: [
+                      ...(handoff.history?.omittedItemIds ?? []),
+                      ...(handoff.history?.messages ?? [])
+                        .filter((message) => omittedItemIds.has(message.itemId))
+                        .map((message) => message.itemId),
+                    ],
                     itemIds: selected.messages
                       .filter((message) =>
                         handoff.history?.messages.some(
@@ -118,7 +109,7 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
           }),
         { discard: true },
       );
-    if (selected.context !== "" && input.inject !== undefined && nativeThreadId !== undefined) {
+    if (input.inject !== undefined && nativeThreadId !== undefined) {
       if (
         pending.some(
           (handoff) =>
@@ -141,8 +132,7 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
       yield* persist("pending");
     }
     if (input.deferInline) {
-      // Compaction APIs cannot accept an inline transcript. Keep it available
-      // for the next ordinary turn when native injection is unsupported.
+      // Compaction cannot carry inline transcripts; retain for the next turn if native injection is unsupported.
       yield* Effect.forEach(pending, input.persist, { discard: true });
       return { context: "", delivered: Effect.void, unsent: Effect.void };
     }

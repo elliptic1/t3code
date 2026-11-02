@@ -1,7 +1,8 @@
-import type {
-  ChatAttachment,
-  OrchestrationV2ProjectedTurnItem,
-  OrchestrationV2ProviderCapabilities,
+import {
+  type ChatAttachment,
+  isCompactionCommandMessage,
+  type OrchestrationV2ProjectedTurnItem,
+  type OrchestrationV2ProviderCapabilities,
 } from "@t3tools/contracts";
 import { copySorted } from "@t3tools/shared/Array";
 
@@ -26,6 +27,8 @@ export interface QueuedThreadRun {
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly messageId: Message["id"];
   readonly context?: Message["context"];
+  /** Carries the attribution a sent message shows: automation, agent sender, or guest. */
+  readonly message?: Message;
 }
 
 export interface ThreadQueueWorkflowState {
@@ -33,6 +36,8 @@ export interface ThreadQueueWorkflowState {
   readonly queuedRuns: ReadonlyArray<QueuedThreadRun>;
   readonly isHeld: boolean;
   readonly canReorder: boolean;
+  /** The active run is a compaction, so promoting a queued message stops it instead of steering. */
+  readonly promoteSkipsCompaction: boolean;
   readonly canSendNow: boolean;
   readonly canPromoteToSteer: boolean;
 }
@@ -125,6 +130,14 @@ export function getUserQueuedThreadRuns(
 }
 
 /** Steering needs a live provider turn, including adapters that steer by restarting it. */
+function activeRunIsCompaction(projection: Projection): boolean {
+  const activeRun = resolveActiveThreadRun(projection);
+  const activeMessage = projection.messages.find(
+    (message) => message.id === activeRun?.userMessageId,
+  );
+  return activeMessage !== undefined && isCompactionCommandMessage(activeMessage);
+}
+
 export function threadSupportsActiveSteering(projection: Projection | null | undefined): boolean {
   if (projection == null) return false;
   const activeRun = resolveActiveThreadRun(projection);
@@ -155,10 +168,12 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
     const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
     return {
       run,
-      text: message?.text ?? "Queued message",
+      // A queued guest message shows the guest's words; the agent still gets the attributed text.
+      text: message?.context?.guest?.text ?? message?.text ?? "Queued message",
       attachments: message?.attachments ?? [],
       messageId: run.userMessageId,
       ...(message?.context ? { context: message.context } : {}),
+      ...(message ? { message } : {}),
     };
   });
 
@@ -166,12 +181,14 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
     activeRun,
     queuedRuns,
     isHeld: projection.runs.some((run) => run.status === "queued" && run.queueHeld === true),
-    canReorder: capabilities?.supportsQueuedMessages === true,
     canSendNow:
       activeRun === null &&
       projection.thread.archivedAt == null &&
       projection.thread.deletedAt == null,
-    canPromoteToSteer: threadSupportsActiveSteering(projection),
+    canReorder: capabilities?.supportsQueuedMessages === true,
+    canPromoteToSteer:
+      activeRunIsCompaction(projection) || threadSupportsActiveSteering(projection),
+    promoteSkipsCompaction: activeRunIsCompaction(projection),
   };
 }
 

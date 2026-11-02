@@ -130,6 +130,14 @@ layer("064_CanonicalizeThreadPullRequestLinks", (it) => {
         [69, "WebhookDedupe"],
         [70, "ShellStopRequestIndex"],
         [71, "EnsureThreadArtifacts"],
+        [72, "ThreadMessageSearch"],
+        [73, "PeerLinks"],
+        [74, "PeerLinkFence"],
+        [75, "WaitingLinkRequestIndex"],
+        [76, "ActiveTurnItemIndexes"],
+        [77, "ExcludeAttachmentPlaceholdersFromSearch"],
+        [78, "SubagentDeliveryState"],
+        [79, "ProjectionProjectsPinArchive"],
       ]);
       assert.deepEqual(yield* runMigrations(), []);
       const rows = yield* sql<{ readonly thread_id: string; readonly payload_json: string }>`

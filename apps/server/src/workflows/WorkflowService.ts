@@ -501,6 +501,7 @@ const make = Effect.gen(function* () {
         );
       }).pipe(
         Effect.catchTags({
+          // @effect-diagnostics-next-line effectFnOpportunity:off
           WorkflowError: (error) =>
             Effect.gen(function* () {
               // One inaccessible thread must not prevent unrelated workflows from progressing.
@@ -539,6 +540,7 @@ const make = Effect.gen(function* () {
   yield* scheduler.register("workflows", drain());
   return WorkflowService.of({
     list,
+    // @effect-diagnostics-next-line effectFnOpportunity:off
     get: (id, threadId) => load(id, threadId).pipe(Effect.map(({ workflow }) => ({ workflow }))),
     create,
     control,
