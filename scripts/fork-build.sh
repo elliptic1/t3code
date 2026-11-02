@@ -9,6 +9,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+signing_identity_file="$HOME/Library/Application Support/T3 Code Fork/signing-identity"
+if [ -z "${T3CODE_FORK_SIGNING_IDENTITY:-}" ]; then
+  if [ ! -f "$signing_identity_file" ]; then
+    echo "fork-build: set T3CODE_FORK_SIGNING_IDENTITY to your persistent code-signing certificate fingerprint" >&2
+    exit 1
+  fi
+  T3CODE_FORK_SIGNING_IDENTITY="$(cat "$signing_identity_file")"
+fi
+T3CODE_FORK_SIGNING_IDENTITY="$(printf '%s' "$T3CODE_FORK_SIGNING_IDENTITY" | tr '[:lower:]' '[:upper:]')"
+export T3CODE_FORK_SIGNING_IDENTITY
+if [[ ! "$T3CODE_FORK_SIGNING_IDENTITY" =~ ^[[:xdigit:]]{40}$ ]] ||
+  ! security find-identity -v -p codesigning | /usr/bin/grep -Fq " $T3CODE_FORK_SIGNING_IDENTITY "; then
+  echo "fork-build: the pinned signing certificate and private key must be available in your keychain" >&2
+  exit 1
+fi
+
 FILES=(
   apps/desktop/src/app/DesktopStatePaths.ts
   apps/desktop/src/app/DesktopUserData.ts
@@ -43,6 +59,7 @@ swap apps/desktop/src/app/DesktopEnvironment.ts 'displayName: `${APP_BASE_NAME} 
 swap apps/desktop/package.json '"productName": "T3 Code (Alpha)"' '"productName": "T3 Code (Fork)"'
 swap scripts/build-desktop-artifact.ts 'const DESKTOP_APP_ID = "com.t3tools.t3code";' 'const DESKTOP_APP_ID = "com.t3tools.t3code.fork";'
 swap scripts/build-desktop-artifact.ts '? "T3 Code (Nightly)"' '? "T3 Code (Fork Nightly)"'
+swap scripts/build-desktop-artifact.ts '...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),' 'identity: "-", sign: path.join(repoRoot, "scripts/sign-fork-macos.ts"), hardenedRuntime: false, notarize: false,'
 
 # Follow the newest nightly source merged into this fork, with its blue branding.
 # No upstream update feed may replace the custom features in this build.
