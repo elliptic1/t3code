@@ -130,6 +130,7 @@ const serveOrchestrationHttp = (allowed: () => boolean) =>
     });
     const routes = HttpApiBuilder.layer(TranscriptTestApi).pipe(
       Layer.provide(OrchestrationHttp.layer),
+      Layer.provide(ServerSettings.layerTest({})),
       Layer.provide(
         Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
           getEnvironmentId: Effect.succeed(environmentId),

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PreparedVoiceTranscription } from "@t3tools/client-runtime/voice-input";
+import type {
+  PreparedVoiceTranscription,
+  VoiceInputControllerDependencies,
+} from "@t3tools/client-runtime/voice-input";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { resetVoiceInputGlobalsForTests } from "../../../../../packages/client-runtime/src/voice-input/controller";
 import {
@@ -37,12 +40,13 @@ function createTarget(
 }
 
 function createSession(
-  overrides?: Partial<
-    Pick<
-      VoiceInputSessionDependencies,
-      "configureRecording" | "releaseRecording" | "sampleRecording"
-    >
-  >,
+  overrides: Partial<
+    VoiceInputControllerDependencies &
+      Pick<
+        VoiceInputSessionDependencies,
+        "configureRecording" | "releaseRecording" | "sampleRecording"
+      >
+  > = {},
 ) {
   const releaseKeepAwake = vi.fn();
   const keepAwake = vi.fn(() => releaseKeepAwake);
@@ -64,6 +68,7 @@ function createSession(
     configureRecording: async () => {},
     releaseRecording: vi.fn(async () => {}),
     deleteRecording: vi.fn(),
+    onStateChange: vi.fn(),
     sampleRecording: () => null,
     publishAudioLevels,
     keepAwake,
@@ -75,6 +80,26 @@ function createSession(
 describe("global voice input", () => {
   beforeEach(() => resetVoiceInputGlobalsForTests());
 
+  it("keeps system dictation bound to its starting draft across navigation", async () => {
+    let resolve!: (text: string) => void;
+    const result = new Promise<string>((done) => {
+      resolve = done;
+    });
+    const { session, recorder } = createSession({
+      getSystemDictation: () => ({ locale: "en-US", recognize: () => result }),
+    });
+    const original = vi.fn();
+    const other = vi.fn();
+    const pending = session.start(
+      createTarget("first", () => "hello world", original, { start: 6, end: 11 }),
+    );
+    await session.start(createTarget("second", () => "other draft", other, { start: 0, end: 0 }));
+    resolve("spoken text");
+    await pending;
+    expect(original).toHaveBeenCalledWith("hello spoken text", { start: 17, end: 17 });
+    expect(other).not.toHaveBeenCalled();
+    expect(recorder.record).not.toHaveBeenCalled();
+  });
   it.each(["retry", "takeover"])(
     "handles failed deactivation with %s without notifying a released owner",
     async (action) => {

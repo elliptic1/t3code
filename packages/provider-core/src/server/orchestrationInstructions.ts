@@ -27,6 +27,10 @@ Ordinary coding tasks need no T3 tools.
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
 
 ${T3_CODE_ORCHESTRATION_SECTIONS.join("\n\n")}
+
+### Sharing files
+
+Every thread has an Artifacts area hosted by this environment and downloadable from web, desktop, and mobile, even after the thread settles. Whenever you build or produce a file the user should get (an APK, installer, archive, export, report, generated media), publish it there with \`artifact_publish\` without being asked. It is the default way to hand over a file: never start a temporary HTTP server, upload to a third-party host, or ask the user to copy a path off this machine. To ship a newer version of the same file, \`artifact_list\` it and publish with \`replace\` so the thread keeps one current copy; delete artifacts that are obsolete. In your reply, name the artifact rather than a local path.
 `;
 
 export const T3_CODE_BROWSER_TOOL_INSTRUCTIONS = `

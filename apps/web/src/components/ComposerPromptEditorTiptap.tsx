@@ -129,6 +129,7 @@ import type { ComposerDraftContextRecords } from "./composerContextPresentation"
 
 export interface ComposerPromptEditorHandle {
   focus: () => void;
+  focusPreservingSelection: () => void;
   focusAt: (cursor: number) => void;
   focusAtEnd: () => void;
   readSelectionRange: () => { start: number; end: number };
@@ -1664,7 +1665,10 @@ function ComposerPromptEditorTiptapInner(
         // sits, so restoring the caret passes along its exact offset.
         focusAt(snapshotRef.current.cursor, snapshotRef.current.expandedCursor);
       },
-      focusAt: (cursor) => focusAt(cursor),
+      focusPreservingSelection: () => {
+        editor?.view.focus();
+      },
+      focusAt,
       focusAtEnd: () => {
         focusAt(
           literalText

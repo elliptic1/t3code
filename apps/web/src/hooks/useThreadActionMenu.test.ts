@@ -118,6 +118,7 @@ vi.mock("./useSettings", () => ({
       timestampFormat: "12-hour",
     }),
 }));
+vi.mock("./useNavigateBack", () => ({ useNavigateBack: () => () => recordEffect("back") }));
 vi.mock("./useThreadActions", () => ({
   canTurnThreadIntoProject: () => false,
   useThreadActions: () =>

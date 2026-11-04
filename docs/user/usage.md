@@ -198,3 +198,9 @@ Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past
 24 hours, 7 days, 30 days, or 90 days. Period shortcuts do nothing on Limits.
 Press `Escape` to return to the previous page. Customize these shortcuts in
 **Settings → Keybindings**.
+
+## Reset reminders
+
+Enable **Usage reset reminders** in web or desktop **Settings → Providers**, or mobile **Settings → Notifications**, for each environment you want to monitor. T3 sends one phone alert during the final hour of a short Claude or Codex subscription window, showing the percentage used and the allowance remaining, even when the allowance is exhausted. Tap the alert to open Usage.
+
+Your environment must stay running. To receive alerts through ntfy, save your topic URL in the same settings section and subscribe to it in the ntfy app. Use an unguessable topic name on a public ntfy server. Leaving the topic URL empty uses T3 Connect instead; that path needs an environment linked to T3 Connect and **Device Notifications** enabled on your phone. Reminders use the provider's reported allowance and reset time; accounts without that information and weekly or monthly windows do not generate reminders.

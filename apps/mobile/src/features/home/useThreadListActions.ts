@@ -85,6 +85,7 @@ function checkThreadOperationPermission(thread: EnvironmentThreadShell, title: s
 
 function useThreadActionExecutor(
   onCompleted?: (action: ThreadListAction, thread: EnvironmentThreadShell) => void,
+  dismissRows = true,
 ) {
   const archiveMutation = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
   const unarchiveMutation = useAtomCommand(threadEnvironment.unarchive, { reportFailure: false });
@@ -100,13 +101,11 @@ function useThreadActionExecutor(
   ) => {
     if (!checkThreadOperationPermission(thread, actionFailureTitle(action))) return false;
     const key = scopedThreadKey(thread.environmentId, thread.id);
-    if (inFlightThreadKeys.current.has(key)) {
-      return false;
-    }
+    if (inFlightThreadKeys.current.has(key)) return false;
 
     inFlightThreadKeys.current.add(key);
     selectionHaptic();
-    const succeeded = await (async () => {
+    try {
       if (
         (action === "settle" || action === "unsettle") &&
         !environmentConfigLoaded(thread.environmentId)
@@ -129,30 +128,24 @@ function useThreadActionExecutor(
         for (const kind of ["settle", "snooze", "pin"]) ThreadUndo.invalidate(kind, key);
       }
       onStarted?.();
-      const result = await withThreadDismissal(
-        key,
-        async () =>
-          action === "unsettle"
-            ? // reason "user" pins the thread active: auto-settle stays
-              // suppressed until real activity clears the pin server-side.
-              await unsettleMutation({
-                environmentId: thread.environmentId,
-                input: { threadId: thread.id, reason: "user" },
-              })
-            : await (
-                action === "settle"
-                  ? settleMutation
-                  : action === "archive"
-                    ? archiveMutation
-                    : action === "unarchive"
-                      ? unarchiveMutation
-                      : deleteMutation
-              )({
-                environmentId: thread.environmentId,
-                input: { threadId: thread.id },
-              }),
-        (result) => result._tag === "Success",
-      );
+      const run = async () =>
+        action === "unsettle"
+          ? await unsettleMutation({
+              environmentId: thread.environmentId,
+              input: { threadId: thread.id, reason: "user" },
+            })
+          : await (
+              action === "settle"
+                ? settleMutation
+                : action === "archive"
+                  ? archiveMutation
+                  : action === "unarchive"
+                    ? unarchiveMutation
+                    : deleteMutation
+            )({ environmentId: thread.environmentId, input: { threadId: thread.id } });
+      const result = dismissRows
+        ? await withThreadDismissal(key, run, (actionResult) => actionResult._tag === "Success")
+        : await run();
       if (result._tag === "Failure") {
         Dialog.alert(actionFailureTitle(action), actionFailureMessage(action, result.cause));
         return false;
@@ -162,9 +155,9 @@ function useThreadActionExecutor(
       }
       onCompleted?.(action, thread);
       return true;
-    })();
-    inFlightThreadKeys.current.delete(key);
-    return succeeded;
+    } finally {
+      inFlightThreadKeys.current.delete(key);
+    }
   };
 
   return executeAction;
@@ -189,7 +182,7 @@ function confirmThreadDeletion(
   });
 }
 
-export function useThreadListActions(): {
+export function useThreadListActions(options: { readonly dismissRows?: boolean } = {}): {
   readonly archiveThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly confirmDeleteThread: (thread: EnvironmentThreadShell) => void;
   readonly settleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
@@ -209,7 +202,7 @@ export function useThreadListActions(): {
   readonly renameThread: (thread: EnvironmentThreadShell) => void;
   readonly regenerateThreadTitle: (thread: EnvironmentThreadShell) => Promise<boolean>;
 } {
-  const executeAction = useThreadActionExecutor();
+  const executeAction = useThreadActionExecutor(undefined, options.dismissRows);
   const snoozeMutation = useAtomCommand(threadEnvironment.snooze, { reportFailure: false });
   const unsnoozeMutation = useAtomCommand(threadEnvironment.unsnooze, { reportFailure: false });
   const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
@@ -226,7 +219,7 @@ export function useThreadListActions(): {
   const archiveThread = (thread: EnvironmentThreadShell) => executeAction("archive", thread);
   const offerUndo = (
     thread: EnvironmentThreadShell,
-    action: "Settled" | "Snoozed" | "Unpinned",
+    action: "Snoozed" | "Unpinned",
     claim: ReturnType<typeof ThreadUndo.begin>,
     plan: ThreadUndo.ThreadUndoPlan,
   ) =>
@@ -276,19 +269,12 @@ export function useThreadListActions(): {
       },
     });
   const settleThread = async (thread: EnvironmentThreadShell) => {
+    // Settling is quiet on mobile: no undo notice. It still voids pending pin/snooze undos.
     const key = scopedThreadKey(thread.environmentId, thread.id);
-    const plan = ThreadUndo.planThreadUndo("settle", thread);
-    let claim: ReturnType<typeof ThreadUndo.begin> | undefined;
-    const succeeded = await executeAction("settle", thread, () => {
+    return executeAction("settle", thread, () => {
       ThreadUndo.invalidate("pin", key);
       ThreadUndo.invalidate("snooze", key);
-      claim = ThreadUndo.begin("settle", key);
     });
-    if (claim) {
-      if (succeeded) offerUndo(thread, "Settled", claim, plan);
-      else claim.finish();
-    }
-    return succeeded;
   };
   const snoozeThread = async (thread: EnvironmentThreadShell, snoozedUntil: string) => {
     if (!checkThreadOperationPermission(thread, "Could not snooze thread")) return false;

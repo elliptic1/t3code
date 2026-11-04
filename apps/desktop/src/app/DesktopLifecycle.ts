@@ -226,6 +226,18 @@ export const make = DesktopLifecycle.of({
         yield* electronApp.exit(75);
         return;
       }
+      // A KeepAlive LaunchAgent restarts the app itself; relaunching too would run two copies.
+      const launchdJob = process.env.XPC_SERVICE_NAME;
+      if (
+        // oxlint-disable-next-line t3code/no-global-process-runtime -- launchd detection runs once at relaunch, outside provided layers
+        process.platform === "darwin" &&
+        launchdJob &&
+        launchdJob !== "0" &&
+        !launchdJob.startsWith("application.")
+      ) {
+        yield* electronApp.exit(0);
+        return;
+      }
       // Startup already acted on the app link that launched it; passing it on replays it.
       const appLinkPrefix = `${ElectronProtocol.getDesktopScheme(environment.isDevelopment)}:`;
       const args = yield* HostProcess.Arguments;

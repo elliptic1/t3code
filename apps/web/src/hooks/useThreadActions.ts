@@ -742,7 +742,7 @@ export function useThreadActions() {
     return result;
   };
 
-  const settleThread = async (target: ScopedThreadRef) => {
+  const settleThread = async (target: ScopedThreadRef, opts: { onSettled?: () => void } = {}) => {
     if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
       return AsyncResult.failure(
         Cause.fail(
@@ -780,6 +780,10 @@ export function useThreadActions() {
       undo: () => runUndoPlan(target, undoPlan),
       failureTitle: "Failed to undo settle",
     });
+    const current = getCurrentRouteThreadRef();
+    if (current?.environmentId === target.environmentId && current.threadId === target.threadId) {
+      opts.onSettled?.();
+    }
     return result;
   };
 

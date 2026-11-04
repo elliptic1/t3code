@@ -8,6 +8,7 @@ import {
   OrchestrationV2ContextTransfer,
   TrimmedNonEmptyString,
   ModelSelection,
+  OrchestrationV2ModelFallback,
   RuntimeMode,
   ProviderInteractionMode,
   RuntimeRequestId,
@@ -147,17 +148,19 @@ const PendingRequestTool = Tool.make("t3_pending_request", {
 const threadConfiguration = Schema.Struct({
   threadId: ThreadId,
   modelSelection: ModelSelection,
+  modelFallback: Schema.optional(Schema.NullOr(OrchestrationV2ModelFallback)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
 });
 const ThreadConfigureTool = Tool.make("t3_thread_configure", {
   ...commandTool,
   description:
-    "Read a thread's provider, model, and modes, or set its provider, model, and options with `modelSelection`. Omit `threadId` for this thread. Permission modes stay. Values from `orchestrator_capabilities`.",
+    "Read a thread's provider, model, and modes, or set its provider, model, and options with `modelSelection`. Omit `threadId` for this thread. With `modelSelection`, optionally set `modelFallback={preferred,fallback}` for automatic usage-limit switching between provider accounts, or null to disable it. Permission modes stay. Values from `orchestrator_capabilities`.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId),
     modelSelection: Schema.optional(ModelSelection),
+    modelFallback: Schema.optional(Schema.NullOr(OrchestrationV2ModelFallback)),
   }),
   success: Schema.Union([threadConfiguration, OrchestrationV2DispatchCommandResult]),
 }).annotate(Tool.Destructive, true);

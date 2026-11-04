@@ -281,6 +281,8 @@ export function useThreadComposerState() {
       ? EMPTY_QUEUE_WORKFLOW_ATOM
       : environmentThreadDetails.queueWorkflowAtom(selectedThreadDetailRef),
   );
+  const canStartParallelAgent =
+    queueWorkflow?.activeRun?.rootNodeId != null && queueWorkflow.activeRun.status !== "preparing";
   const queuedRunEdit = useQueuedRunEdit(selectedThreadKey);
   const composerDraftKey =
     selectedThreadKey === null
@@ -738,6 +740,7 @@ export function useThreadComposerState() {
   };
 
   return {
+    canStartParallelAgent,
     feedbackSubmissions,
     dismissFeedback,
     selectedThreadFeed,

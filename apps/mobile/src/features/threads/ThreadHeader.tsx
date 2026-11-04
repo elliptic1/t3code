@@ -10,6 +10,14 @@ import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 
 export function ThreadHeader(
   props: Parameters<typeof useThreadHeaderOptions>[0] & {
+    readonly onRename?: () => void;
+    readonly onRegenerateTitle?: () => void;
+    readonly regeneratingTitle?: boolean;
+    /** Absent when the server does not support thread artifacts. */
+    readonly onOpenArtifacts?: () => void;
+    readonly onOpenUsage?: () => void;
+    readonly usageBadge?: string;
+    readonly usageAccessibilityLabel?: string;
     readonly hasThreadCwd: boolean;
     readonly hasWorkspaceRoot: boolean;
     readonly fileInspectorSupported: boolean;
@@ -17,6 +25,9 @@ export function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
+    readonly settled: boolean;
+    /** Absent when the connection cannot operate threads. */
+    readonly onToggleSettled?: () => void;
   },
 ) {
   const goBack = useWorkspaceBackNavigation("threads");
@@ -39,7 +50,34 @@ export function ThreadHeader(
         accessibilityLabel: filesVisible ? "Close files" : "Open files",
         selected: filesVisible,
         icon: "folder",
+        alwaysVisible: true,
         onPress: filesVisible ? toggleAuxiliaryPane : props.onOpenFilesInspector,
+      });
+    }
+    if (props.onOpenUsage) {
+      actions.push({
+        accessibilityLabel: props.usageAccessibilityLabel ?? "Selected provider usage",
+        icon: "chart.bar.xaxis",
+        badge: props.usageBadge,
+        alwaysVisible: true,
+        onPress: props.onOpenUsage,
+      });
+    }
+    if (props.onRegenerateTitle) {
+      actions.push({
+        accessibilityLabel: props.regeneratingTitle ? "Regenerating title…" : "Regenerate title",
+        icon: "arrow.clockwise",
+        disabled: props.regeneratingTitle,
+        overflowOnly: true,
+        onPress: props.onRegenerateTitle,
+      });
+    }
+    if (props.onOpenArtifacts) {
+      actions.push({
+        accessibilityLabel: "Artifacts",
+        icon: "archivebox",
+        overflowOnly: true,
+        onPress: props.onOpenArtifacts,
       });
     }
     if (props.hasWorkspaceRoot && props.gitControls.canOpenTerminal) {
@@ -61,8 +99,23 @@ export function ThreadHeader(
         onPress: onMergeBack,
       });
     }
+    if (props.onToggleSettled) {
+      actions.push({
+        accessibilityLabel: props.settled ? "Move out of settled" : "Settle thread",
+        icon: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
+        onPress: props.onToggleSettled,
+      });
+    }
     return actions;
   }, [
+    props.onOpenArtifacts,
+    props.onRegenerateTitle,
+    props.regeneratingTitle,
+    props.onOpenUsage,
+    props.usageAccessibilityLabel,
+    props.usageBadge,
+    props.settled,
+    props.onToggleSettled,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
@@ -80,6 +133,7 @@ export function ThreadHeader(
     <>
       <AppBar
         title={props.title}
+        onTitlePress={props.onRename}
         subtitle={props.subtitle}
         sidebar={native.sidebar}
         options={native.options}

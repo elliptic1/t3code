@@ -1,3 +1,4 @@
+import { VoiceConnectionSettings, VOICE_CONNECTION_PRESETS } from "./voice.ts";
 import { EasDeviceHostConfigs, SimlockDeviceHostConfigs, SshDeviceHostConfigs } from "./device.ts";
 import {
   AuthOrchestrationOperateScope,
@@ -1179,7 +1180,33 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+const UsageResetReminderNtfyUrl = TrimmedString.check(
+  Schema.makeFilter((value) => {
+    if (value === "") return true;
+    try {
+      const url = new URL(value);
+      return (
+        (["http:", "https:"].includes(url.protocol) &&
+          url.pathname !== "/" &&
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !url.hash) ||
+        "Enter an HTTP or HTTPS ntfy topic URL."
+      );
+    } catch {
+      return "Enter an HTTP or HTTPS ntfy topic URL.";
+    }
+  }),
+);
+
 export const ServerSettings = Schema.Struct({
+  voiceInstructions: Schema.String.check(Schema.isMaxLength(16000)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
+  voiceConnection: VoiceConnectionSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(VOICE_CONNECTION_PRESETS.openai)),
+  ),
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   providerModelPreferences: Schema.NullOr(ProviderModelPreferences).pipe(
@@ -1351,6 +1378,15 @@ export const ServerSettings = Schema.Struct({
   secretProviders: Schema.Record(SecretProviderId, SecretProviderConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** Optional direct ntfy topic; an empty URL uses T3 Connect delivery. */
+  usageResetReminderNtfyUrl: UsageResetReminderNtfyUrl.pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
+  /** Sends phone reminders before short subscription allowances reset. */
+  usageResetRemindersEnabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /** Allows this server to read the Cursor CLI's macOS Keychain login for account usage. */
   cursorKeychainUsageEnabled: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
@@ -1543,6 +1579,8 @@ const ModelSelectionPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  voiceInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16000))),
+  voiceConnection: Schema.optionalKey(VoiceConnectionSettings),
   setModelFavorites: Schema.optionalKey(
     Schema.Array(Schema.Struct({ ...ModelFavorite.fields, favorite: Schema.Boolean })),
   ),
@@ -1690,6 +1728,8 @@ export const ServerSettingsPatch = Schema.Struct({
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
   ),
+  usageResetReminderNtfyUrl: Schema.optionalKey(UsageResetReminderNtfyUrl),
+  usageResetRemindersEnabled: Schema.optionalKey(Schema.Boolean),
   secretProviders: Schema.optionalKey(
     Schema.Record(SecretProviderId, Schema.NullOr(SecretProviderConfigWrite)),
   ),

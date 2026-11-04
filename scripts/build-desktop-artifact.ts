@@ -62,7 +62,7 @@ import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const DESKTOP_APP_ID = "com.t3tools.t3code";
+const DESKTOP_APP_ID = "com.t3tools.t3code.fork";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -1373,6 +1373,8 @@ export function renderMacPasskeyEntitlements(
     <array>
 ${associatedDomains}
     </array>${keychainAccessGroups}${browserPasskeys}
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
@@ -2833,7 +2835,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         NSCameraUsageDescription:
           "T3 Code lets commands run by terminals and coding agents use the camera.",
         NSMicrophoneUsageDescription:
-          "T3 Code lets commands run by terminals and coding agents use the microphone.",
+          "T3 Code uses the microphone for voice conversations and when commands run by terminals and coding agents access audio input.",
         // macOS lists an app under Default web browser only when it opens web
         // pages as documents as well as http and https links (see protocols).
         CFBundleDocumentTypes: [

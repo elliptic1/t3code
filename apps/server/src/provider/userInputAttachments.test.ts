@@ -15,6 +15,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ServerConfig from "../config.ts";
 import * as DocumentText from "./DocumentText.ts";
 import { extractDocumentText } from "./documentTextWorker.ts";
+import * as ThreadArtifactService from "../artifacts/ThreadArtifactService.ts";
 import * as Cleanup from "../orchestration-v2/ResourceCleanupService.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -328,6 +329,7 @@ describe("question answer paths", () => {
                 Layer.mock(TerminalManager.TerminalManager)({}),
                 Layer.mock(PreviewManager.PreviewManager)({}),
                 Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+                Layer.mock(ThreadArtifactService.ThreadArtifactService)({}),
               ),
             ),
           ),

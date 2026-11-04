@@ -1,9 +1,5 @@
 {
-  "platforms": ["apple", "android"],
-  "apple": {
-    "modules": ["T3ReviewDiffModule"],
-    "podspecPath": "T3ReviewDiffNative.podspec"
-  },
+  "platforms": ["android"],
   "android": {
     "modules": ["expo.modules.t3reviewdiff.T3ReviewDiffModule"]
   }

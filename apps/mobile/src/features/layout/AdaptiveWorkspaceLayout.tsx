@@ -544,6 +544,7 @@ function AdaptiveWorkspaceLayoutContent(
     }
     setSupplementaryPanePreferredWidth(nextWidth);
   };
+  const handleOpenUsage = () => openSettings(navigation, "SettingsUsage");
   /**
    * The one way to open a workspace tab: replaces the workspace with the tab's list and, when the
    * window has columns, the page it last showed, keeping any sheet on top. An overlay sidebar
@@ -944,6 +945,7 @@ function AdaptiveWorkspaceLayoutContent(
                     onRequestVisibility={revealPrimarySidebar}
                     selectedThreadKey={selectedThreadKey}
                     onOpenSettings={handleOpenSettings}
+                    onOpenUsage={handleOpenUsage}
                     onOpenEnvironmentSettings={handleOpenEnvironmentSettings}
                     onNewThreadInProject={handleNewThreadInProject}
                     onNewThreadOnBranch={handleNewThreadOnBranch}

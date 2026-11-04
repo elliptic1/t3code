@@ -65,20 +65,29 @@ import Migration0059 from "./Migrations/059_McpAppModelContext.ts";
 import Migration0060 from "./Migrations/060_ThreadSnapshotWindowIndexes.ts";
 import Migration0061 from "./Migrations/061_PullRequestReviewGuides.ts";
 import Migration0062 from "./Migrations/062_ThreadFailureLookupIndex.ts";
-import Migration0063 from "./Migrations/063_DropUnusedV1Projections.ts";
-import Migration0064 from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
-import Migration0065 from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
-import Migration0066 from "./Migrations/066_RepairClientSettlementTimestamps.ts";
-import Migration0067 from "./Migrations/067_WebhookDedupe.ts";
-import Migration0068 from "./Migrations/068_ShellStopRequestIndex.ts";
-import Migration0069 from "./Migrations/069_ThreadMessageSearch.ts";
-import Migration0070 from "./Migrations/070_PeerLinks.ts";
-import Migration0071 from "./Migrations/071_PeerLinkFence.ts";
-import Migration0072 from "./Migrations/072_WaitingLinkRequestIndex.ts";
-import Migration0073 from "./Migrations/073_ActiveTurnItemIndexes.ts";
-import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
-import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
-import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
+import Migration0063DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
+import Migration0064Workflows from "./Migrations/063_Workflows.ts";
+import Migration0065DropUnusedV1Projections from "./Migrations/063_DropUnusedV1Projections.ts";
+import Migration0066CanonicalizeThreadPullRequestLinks from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
+import Migration0067CodexUsageNativeTurnIndex from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
+import Migration0068RepairClientSettlementTimestamps from "./Migrations/066_RepairClientSettlementTimestamps.ts";
+import Migration0069WebhookDedupeSource from "./Migrations/067_WebhookDedupe.ts";
+
+const Migration0069WebhookDedupe: typeof Migration0068RepairClientSettlementTimestamps =
+  Migration0069WebhookDedupeSource;
+import Migration0071EnsureThreadArtifacts from "./Migrations/071_EnsureThreadArtifacts.ts";
+import Migration0070ShellStopRequestIndexSource from "./Migrations/068_ShellStopRequestIndex.ts";
+
+const Migration0070ShellStopRequestIndex: typeof Migration0068RepairClientSettlementTimestamps =
+  Migration0070ShellStopRequestIndexSource;
+import Migration0072ThreadMessageSearch from "./Migrations/069_ThreadMessageSearch.ts";
+import Migration0073PeerLinks from "./Migrations/070_PeerLinks.ts";
+import Migration0074PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
+import Migration0075WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
+import Migration0076ActiveTurnItemIndexes from "./Migrations/073_ActiveTurnItemIndexes.ts";
+import Migration0077ExcludeAttachmentPlaceholdersFromSearch from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
+import Migration0078SubagentDeliveryState from "./Migrations/075_SubagentDeliveryState.ts";
+import Migration0079ProjectionProjectsPinArchive from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -144,20 +153,28 @@ const migrationEntries = [
   [60, "ThreadSnapshotWindowIndexes", Migration0060],
   [61, "PullRequestReviewGuides", Migration0061],
   [62, "ThreadFailureLookupIndex", Migration0062],
-  [63, "DropUnusedV1Projections", Migration0063],
-  [64, "CanonicalizeThreadPullRequestLinks", Migration0064],
-  [65, "CodexUsageNativeTurnIndex", Migration0065],
-  [66, "RepairClientSettlementTimestamps", Migration0066],
-  [67, "WebhookDedupe", Migration0067],
-  [68, "ShellStopRequestIndex", Migration0068],
-  [69, "ThreadMessageSearch", Migration0069],
-  [70, "PeerLinks", Migration0070],
-  [71, "PeerLinkFence", Migration0071],
-  [72, "WaitingLinkRequestIndex", Migration0072],
-  [73, "ActiveTurnItemIndexes", Migration0073],
-  [74, "ExcludeAttachmentPlaceholdersFromSearch", Migration0074],
-  [75, "SubagentDeliveryState", Migration0075],
-  [76, "ProjectionProjectsPinArchive", Migration0076],
+  // Preserve both branches' released migration histories after their shared id 63.
+  [63, "DropUnusedV1Projections", Migration0063DropUnusedV1Projections],
+  [64, "Workflows", Migration0064Workflows],
+  [65, "DropUnusedV1ProjectionsAfterForkWorkflows", Migration0065DropUnusedV1Projections],
+  [66, "CanonicalizeThreadPullRequestLinks", Migration0066CanonicalizeThreadPullRequestLinks],
+  [67, "CodexUsageNativeTurnIndex", Migration0067CodexUsageNativeTurnIndex],
+  [68, "RepairClientSettlementTimestamps", Migration0068RepairClientSettlementTimestamps],
+  [69, "WebhookDedupe", Migration0069WebhookDedupe],
+  [70, "ShellStopRequestIndex", Migration0070ShellStopRequestIndex],
+  [71, "EnsureThreadArtifacts", Migration0071EnsureThreadArtifacts],
+  [72, "ThreadMessageSearch", Migration0072ThreadMessageSearch],
+  [73, "PeerLinks", Migration0073PeerLinks],
+  [74, "PeerLinkFence", Migration0074PeerLinkFence],
+  [75, "WaitingLinkRequestIndex", Migration0075WaitingLinkRequestIndex],
+  [76, "ActiveTurnItemIndexes", Migration0076ActiveTurnItemIndexes],
+  [
+    77,
+    "ExcludeAttachmentPlaceholdersFromSearch",
+    Migration0077ExcludeAttachmentPlaceholdersFromSearch,
+  ],
+  [78, "SubagentDeliveryState", Migration0078SubagentDeliveryState],
+  [79, "ProjectionProjectsPinArchive", Migration0079ProjectionProjectsPinArchive],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -173,7 +190,157 @@ const makeMigrationLoader = (throughId?: number) =>
 
 const FIRST_V2_MIGRATION_ID = 55;
 
-// Migrators skip ids up to the highest recorded; reject collisions that would skip V2 schema.
+const isMigrationNameCompatible = (id: number, expected: string, recorded: string | undefined) =>
+  recorded === expected ||
+  (id === 63 && expected === "DropUnusedV1Projections" && recorded === "Workflows");
+
+// Earlier fork builds assigned workflows ids that upstream later used for other tables.
+// Repair only these known collisions before the general migration-history guard runs.
+const reconcileForkWorkflowMigration = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const tables = yield* sql`SELECT name FROM sqlite_master
+    WHERE type = 'table' AND name IN ('effect_sql_migrations', 'workflows', 'workflow_commands')`;
+  if (tables.length !== 3) return;
+  const collisions = yield* sql<{ migration_id: number }>`SELECT migration_id
+    FROM effect_sql_migrations WHERE name = 'Workflows' AND migration_id IN (61, 62)`;
+  if (collisions.length === 0) return;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      for (const row of collisions) {
+        if (row.migration_id === 61) {
+          yield* Migration0061;
+          yield* sql`UPDATE effect_sql_migrations SET name = 'PullRequestReviewGuides'
+          WHERE migration_id = 61 AND name = 'Workflows'`;
+        } else {
+          const indexes = yield* sql`SELECT name FROM sqlite_master WHERE type = 'index'
+          AND name = 'orchestration_v2_projection_turn_items_failed_error_idx'`;
+          if (indexes.length === 0) yield* Migration0062;
+          yield* sql`UPDATE effect_sql_migrations SET name = 'ThreadFailureLookupIndex'
+          WHERE migration_id = 62 AND name = 'Workflows'`;
+        }
+      }
+    }),
+  );
+});
+
+// Local artifact builds recorded 62 and 64 under ids that belong to other migrations. Dropping
+// the 64 row lets the migrator run 64 onward, which is safe because they are all idempotent
+// against those databases, and migration 71 keeps the existing thread_artifacts table.
+const reconcileForkArtifactMigrations = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledger.length === 0) return;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const collisions = yield* sql`SELECT migration_id FROM effect_sql_migrations
+        WHERE migration_id = 62 AND name = 'ThreadArtifacts'`;
+      if (collisions.length > 0) {
+        const indexes = yield* sql`SELECT name FROM sqlite_master WHERE type = 'index'
+          AND name = 'orchestration_v2_projection_turn_items_failed_error_idx'`;
+        if (indexes.length === 0) yield* Migration0062;
+        yield* sql`UPDATE effect_sql_migrations SET name = 'ThreadFailureLookupIndex'
+          WHERE migration_id = 62 AND name = 'ThreadArtifacts'`;
+      }
+      yield* sql`DELETE FROM effect_sql_migrations
+        WHERE migration_id = 64 AND name = 'EnsureThreadArtifacts'`;
+    }),
+  );
+});
+
+// The migrator skips every id up to the highest recorded one, so an upstream ledger
+// (ids 64-76 after shared 63) applies the fork's own migrations first, then moves its
+// rows to their fork ids in one transaction.
+const reconcileUpstreamMigrationIds = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledger.length === 0) return;
+  const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+    SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id BETWEEN 64 AND 76
+  `;
+  const moves = [
+    [64, 66, "CanonicalizeThreadPullRequestLinks"],
+    [65, 67, "CodexUsageNativeTurnIndex"],
+    [66, 68, "RepairClientSettlementTimestamps"],
+    [67, 69, "WebhookDedupe"],
+    [68, 70, "ShellStopRequestIndex"],
+    [69, 72, "ThreadMessageSearch"],
+    [70, 73, "PeerLinks"],
+    [71, 74, "PeerLinkFence"],
+    [72, 75, "WaitingLinkRequestIndex"],
+    [73, 76, "ActiveTurnItemIndexes"],
+    [74, 77, "ExcludeAttachmentPlaceholdersFromSearch"],
+    [75, 78, "SubagentDeliveryState"],
+    [76, 79, "ProjectionProjectsPinArchive"],
+  ] as const;
+  const pending = moves.flatMap(([from, to, name]) =>
+    rows.some((row) => row.migration_id === from && row.name === name) ? [{ from, to, name }] : [],
+  );
+  if (pending.length === 0) return;
+  const movingSources = new Set<number>(pending.map(({ from }) => from));
+  const invalidTarget = pending.find(({ to, name }) => {
+    const target = rows.find((row) => row.migration_id === to);
+    return (
+      target !== undefined &&
+      target.name !== name &&
+      !(
+        movingSources.has(to) &&
+        pending.some((move) => move.from === to && move.name === target.name)
+      )
+    );
+  });
+  if (invalidTarget) {
+    return yield* new Migrator.MigrationError({
+      kind: "BadState",
+      message: `Cannot remap upstream migration ${invalidTarget.name} from ${invalidTarget.from}; migration ${invalidTarget.to} is already recorded with a different name.`,
+    });
+  }
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* Migration0064Workflows;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* Migration0065DropUnusedV1Projections;
+      }
+      for (const { from, to, name } of pending.toSorted((a, b) => b.from - a.from)) {
+        if (rows.some((row) => row.migration_id === to && row.name === name)) {
+          yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = ${from} AND name = ${name}`;
+        } else {
+          yield* sql`UPDATE effect_sql_migrations SET migration_id = ${to}
+            WHERE migration_id = ${from} AND name = ${name}`;
+        }
+      }
+      if (!rows.some((row) => row.migration_id === 64 && row.name === "Workflows")) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (64, 'Workflows')`;
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.migration_id === 65 && row.name === "DropUnusedV1ProjectionsAfterForkWorkflows",
+        )
+      ) {
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
+          VALUES (65, 'DropUnusedV1ProjectionsAfterForkWorkflows')`;
+      }
+    }),
+  );
+});
+
+/**
+ * Fail before migrating when the migrator would skip one of V2's own
+ * migrations. It skips every id up to the highest recorded one, whatever name
+ * was recorded, so a database that took a V2 id for another migration would
+ * start without V2's schema and fail on first use.
+ */
 const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
   throughId?: number,
 ) {
@@ -196,7 +363,7 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
     )
       return [];
     const recordedName = recordedNames.get(id);
-    if (recordedName === name) return [];
+    if (isMigrationNameCompatible(id, name, recordedName)) return [];
     return [`${id}_${name} (recorded: ${recordedName ?? "nothing"})`];
   });
   if (skipped.length === 0) return;
@@ -219,6 +386,11 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
   if (includesV2) {
+    if (toMigrationInclusive === undefined) {
+      yield* reconcileUpstreamMigrationIds;
+    }
+    yield* reconcileForkWorkflowMigration;
+    yield* reconcileForkArtifactMigrations;
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
   const executedMigrations = [
@@ -241,7 +413,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     if (expected === undefined) {
       return [`${row.migration_id}:${row.name} (unknown to this build)`];
     }
-    return expected === row.name
+    return isMigrationNameCompatible(row.migration_id, expected, row.name)
       ? []
       : [`${row.migration_id}:${row.name} (this build: ${expected})`];
   });

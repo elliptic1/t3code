@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import { NodeId, RunAttemptId, TrimmedNonEmptyString } from "./index.ts";
 import {
   latestProviderTurnForAttempt,
+  OrchestrationV2ModelFallback,
   OrchestrationV2ProviderCapabilities,
   OrchestrationV2ProviderThread,
   OrchestrationV2ProviderThreadJson,
@@ -638,4 +639,20 @@ describe("latestProviderTurnForAttempt", () => {
     expect(latestProviderTurnForAttempt(turns, RunAttemptId.make("goal-attempt"))?.id).toBe("last");
     expect(latestProviderTurnForAttempt(turns, null)).toBeUndefined();
   });
+});
+
+it("requires independent provider accounts for automatic model fallback", () => {
+  const decode = Schema.decodeUnknownSync(OrchestrationV2ModelFallback);
+  expect(
+    decode({
+      preferred: { instanceId: "claude", model: "opus" },
+      fallback: { instanceId: "codex", model: "sol" },
+    }).fallback.instanceId,
+  ).toBe("codex");
+  expect(() =>
+    decode({
+      preferred: { instanceId: "claude", model: "opus" },
+      fallback: { instanceId: "claude", model: "sonnet" },
+    }),
+  ).toThrow("different provider account");
 });

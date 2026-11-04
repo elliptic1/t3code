@@ -134,12 +134,14 @@ it.effect("registers every migration file", () =>
     const path = yield* Path.Path;
     const dir = path.join(import.meta.dirname, "Migrations");
     const files = (yield* fs.readDirectory(dir)).flatMap((name) => {
-      const match = /^(\d+)_(\w+)\.ts$/.exec(name);
-      return match ? [[Number(match[1]), match[2]] as const] : [];
+      const match = /^\d+_(\w+)\.ts$/.exec(name);
+      return match ? [match[1]!] : [];
     });
+    // Fork ids differ from file prefixes: upstream's ids moved after the fork's released ones.
+    const registered = new Set<string>(migrationManifest.map(([, name]) => name));
     assert.deepStrictEqual(
-      files.toSorted(([a], [b]) => a - b),
-      migrationManifest,
+      files.filter((name) => !registered.has(name)),
+      [],
     );
   }).pipe(Effect.provide(NodeServices.layer)),
 );

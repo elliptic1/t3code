@@ -23,6 +23,7 @@ import type {
   ChatFileAttachment,
   EnvironmentId,
   ModelSelection,
+  OrchestrationV2ModelFallback,
   ProjectId,
   PreviewAnnotationPayload,
   ThreadContextRecord,
@@ -260,6 +261,7 @@ import {
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useSoftwareKeyboardOpen } from "../../hooks/useSoftwareKeyboardOpen";
 import { useStableCallback } from "../../hooks/useStableCallback";
+import { useDesktopDictation } from "../../hooks/useDesktopDictation";
 import { usePanelAnimationSettings } from "../../panelAnimations";
 import { readEnvironmentScope, readPreparedConnection } from "../../state/session";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
@@ -371,6 +373,8 @@ export interface ChatComposerProps {
   projectSelectionRequired: boolean;
 
   phase: SessionPhase;
+  canSteerActiveTurn: boolean;
+  canStartParallelAgent: boolean;
   canInterrupt: boolean;
   isSendBusy: boolean;
   canResume: boolean;
@@ -425,6 +429,8 @@ export interface ChatComposerProps {
   providerCatalogKnown: boolean;
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
   activeThreadModelSelection: ModelSelection | null | undefined;
+  modelFallback?: OrchestrationV2ModelFallback | null;
+  onModelFallbackChange?: (policy: OrchestrationV2ModelFallback | null) => void;
   reportedModelSelection?: ModelSelection | null;
   activeProjectId: ProjectId | null;
 
@@ -1052,6 +1058,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     pendingUserInputs.length === 0;
 
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
+  const focusDictationEditor = useStableCallback(() => {
+    const editor = composerEditorRef.current;
+    if (!editor) return false;
+    editor.focusPreservingSelection();
+    return true;
+  });
+  const dictation = useDesktopDictation(focusDictationEditor);
   const pasteAsTextShortcutUntilRef = useRef(0);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerSurfaceRef = useRef<HTMLDivElement>(null);
@@ -1255,6 +1268,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : null;
   const showResumeAction =
     canResume && !composerDraftHasUserContent(composerDraft) && !isEditingQueuedMessage;
+  const compactsBeforeSend = props.resumeCompactionTokens !== null && !props.keepFullHistory;
   const collapsedComposerPrimaryActionDisabled =
     phase === "running" ||
     isSendBusy ||
@@ -1262,10 +1276,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     noProviderAvailable ||
     projectSelectionRequired ||
     environmentUnavailable !== null ||
-    (!composerSendState.hasSendableContent && !showResumeAction);
+    (!composerSendState.hasSendableContent && !showResumeAction && !compactsBeforeSend);
   const collapsedComposerPrimaryActionLabel = showResumeAction
     ? "Resume thread"
-    : props.resumeCompactionTokens !== null && !props.keepFullHistory
+    : compactsBeforeSend
       ? "Open composer to compact and send"
       : "Send message";
   const showMobilePendingAnswerActions =
@@ -2318,6 +2332,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerControls = (
     <ComposerControlsBar
       environmentId={environmentId}
+      modelFallback={props.modelFallback ?? null}
+      onModelFallbackChange={props.onModelFallbackChange}
       routeKind={routeKind}
       routeThreadRef={routeThreadRef}
       draftId={draftId}
@@ -3502,6 +3518,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     {composerControls}
                   </div>
                   <ComposerFooterPrimaryActions
+                    onToggleDictation={
+                      window.desktopBridge?.startDictation
+                        ? () => void dictation.toggle()
+                        : undefined
+                    }
+                    dictationActive={dictation.isActive}
+                    dictationDisabled={
+                      dictation.isPending ||
+                      (!dictation.isActive &&
+                        (isComposerApprovalState ||
+                          projectSelectionRequired ||
+                          isChoiceOnlyPendingQuestion ||
+                          activePendingIsResponding))
+                    }
                     compact={isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
                     activeContextWindow={
@@ -3513,7 +3543,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isRunning={phase === "running"}
                     canInterrupt={canInterrupt}
                     followUpBehavior={followUpBehavior}
-                    canSteer={!isCompacting}
+                    canSteer={props.canSteerActiveTurn && !isCompacting}
+                    canStartParallelAgent={props.canStartParallelAgent}
+                    onSendAction={(action) => submitComposer(undefined, action)}
                     alternateShortcutLabel={shortcutLabelForCommand(
                       keybindings,
                       "composer.sendAlternate",

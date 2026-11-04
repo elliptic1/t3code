@@ -385,6 +385,7 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
           }),
           coverage,
           budget: tokenCap,
+          compressOversized: true,
         });
         return {
           id: handoffId,
@@ -455,6 +456,7 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
           }),
           coverage,
           budget: tokenCap,
+          compressOversized: true,
         });
         return {
           id: handoffId,
@@ -534,6 +536,7 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
         }),
         coverage,
         budget: tokenCap,
+        compressOversized: true,
       });
       return {
         id: handoffId,

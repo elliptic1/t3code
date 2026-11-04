@@ -13,10 +13,7 @@
       },
       "channel": "development",
       "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "image": "macos-tahoe-26.6-xcode-27.1"
-      }
+      "distribution": "internal"
     },
     "development-simulator": {
       "extends": "development",
@@ -33,10 +30,7 @@
       },
       "channel": "preview",
       "environment": "preview",
-      "distribution": "internal",
-      "ios": {
-        "image": "macos-tahoe-26.6-xcode-27.1"
-      }
+      "distribution": "internal"
     },
     "preview:dev": {
       "corepack": true,
@@ -51,9 +45,6 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "ios": {
-        "image": "macos-tahoe-26.6-xcode-27.1"
       }
     },
     "testflight": {
@@ -71,10 +62,7 @@
       },
       "channel": "production",
       "environment": "production",
-      "autoIncrement": true,
-      "ios": {
-        "image": "macos-tahoe-26.6-xcode-27.1"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
@@ -82,9 +70,6 @@
       "extends": "production"
     },
     "production": {
-      "ios": {
-        "ascAppId": "6787819824"
-      },
       "android": {
         "track": "internal"
       }

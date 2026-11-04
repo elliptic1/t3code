@@ -71,6 +71,8 @@ export function ComposerControlsBar(props: {
   onOpenProviderSetup: ChatComposerProps["onOpenProviderSetup"];
   providerCatalogPending: boolean;
   isSendBusy: boolean;
+  modelFallback: ChatComposerProps["modelFallback"];
+  onModelFallbackChange: ChatComposerProps["onModelFallbackChange"];
   multipleModelsEnabled: boolean;
   multipleModelSelections: ChatComposerProps["multipleModelSelections"];
   onMultipleModelSelectionsChange: ChatComposerProps["onMultipleModelSelectionsChange"];
@@ -119,6 +121,8 @@ export function ComposerControlsBar(props: {
     onOpenProviderSetup,
     providerCatalogPending,
     isSendBusy,
+    modelFallback,
+    onModelFallbackChange,
     multipleModelsEnabled,
     multipleModelSelections,
     onMultipleModelSelectionsChange,
@@ -191,6 +195,8 @@ export function ComposerControlsBar(props: {
   const composerModelPicker = (
     <ComposerModelPicker
       environmentId={environmentId}
+      modelFallback={modelFallback ?? null}
+      {...(onModelFallbackChange ? { onModelFallbackChange } : {})}
       compact={false}
       isComposerOwned
       // The trigger grows away from this edge when its model or effort label changes.
@@ -202,14 +208,18 @@ export function ComposerControlsBar(props: {
       selectedModelSelection={selectedModelSelection}
       onProviderModelSelect={onProviderModelSelect}
       activeInstanceId={
-        providerCatalogPending
-          ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
-          : selectedInstanceId
+        modelFallback && activeThreadModelSelection
+          ? activeThreadModelSelection.instanceId
+          : providerCatalogPending
+            ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
+            : selectedInstanceId
       }
       model={
-        providerCatalogPending
-          ? (activeThreadModelSelection?.model ?? selectedModelForPickerWithCustomFallback)
-          : selectedModelForPickerWithCustomFallback
+        modelFallback && activeThreadModelSelection
+          ? activeThreadModelSelection.model
+          : providerCatalogPending
+            ? (activeThreadModelSelection?.model ?? selectedModelForPickerWithCustomFallback)
+            : selectedModelForPickerWithCustomFallback
       }
       lockedProvider={lockedProvider}
       lockedContinuationGroupKey={lockedContinuationGroupKey}

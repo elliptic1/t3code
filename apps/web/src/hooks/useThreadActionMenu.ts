@@ -46,6 +46,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
+import { useNavigateBack } from "./useNavigateBack";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -66,6 +67,7 @@ export function useThreadActionMenu(input: {
 }) {
   const { threadRef, projectCwd, onStartRename, onFind, canShareWithGuest } = input;
   const router = useRouter();
+  const navigateBack = useNavigateBack();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
@@ -222,7 +224,9 @@ export function useThreadActionMenu(input: {
           return;
         }
         case "settle":
-          await reportFailure("Failed to settle thread", () => settleThread(threadRef));
+          await reportFailure("Failed to settle thread", () =>
+            settleThread(threadRef, { onSettled: navigateBack }),
+          );
           return;
         case "unsettle":
           await reportFailure("Failed to un-settle thread", () => unsettleThread(threadRef));

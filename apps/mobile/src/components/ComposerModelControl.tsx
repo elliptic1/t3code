@@ -19,6 +19,8 @@ export function ComposerModelControl(props: {
   readonly disabled?: boolean;
   readonly size?: "regular" | "large";
   readonly iconOnly?: boolean;
+  readonly statusSuffix?: string;
+  readonly usageRemainingPercent?: number | null;
   readonly onPress: () => void;
 }) {
   const descriptors = resolveProviderOptionDescriptors({
@@ -37,7 +39,7 @@ export function ComposerModelControl(props: {
       }).label
     : "";
   const badge = props.modelOption?.providerBadge;
-  const label = props.modelOption?.label ?? props.selection?.model ?? "Choose model";
+  const label = `${props.modelOption?.label ?? props.selection?.model ?? "Choose model"}${props.statusSuffix ?? ""}`;
   return (
     <ComposerInlineControl
       accessibilityLabel={[
@@ -45,6 +47,7 @@ export function ComposerModelControl(props: {
         label,
         badge?.showBadge ? badge.displayName : null,
         summary,
+        props.usageRemainingPercent != null ? `${props.usageRemainingPercent}% left` : null,
       ]
         .filter(Boolean)
         .join(", ")}
@@ -72,6 +75,13 @@ export function ComposerModelControl(props: {
       }
       label={props.modelOption?.shortName ?? label}
       iconOnly={props.iconOnly}
+      persistentSuffix={
+        props.usageRemainingPercent != null ? (
+          <Text className="text-xs font-t3-medium tabular-nums text-foreground-muted">
+            {props.usageRemainingPercent}% left
+          </Text>
+        ) : undefined
+      }
       suffix={
         summary ? (
           <Text

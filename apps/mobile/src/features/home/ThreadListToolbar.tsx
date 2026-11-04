@@ -15,6 +15,7 @@ import { AndroidAnchoredMenu } from "../../components/ui/AndroidAnchoredMenu";
 import { Menu } from "../../components/ui/Menu";
 import { SearchField } from "../../components/ui/SearchField";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
+import { ProviderLimitsStrip } from "../usage/ProviderLimitsStrip";
 import { WorkspaceListToolbarRow } from "../workspace/WorkspaceListToolbarRow";
 import { useWorkspaceConnectionState } from "../../state/workspace";
 import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
@@ -26,6 +27,7 @@ export function ThreadListToolbar(props: {
   readonly filterCustomized: boolean;
   readonly onFilterAction: NonNullable<ComponentProps<typeof Menu>["onPressAction"]>;
   readonly onOpenEnvironments: () => void;
+  readonly onOpenUsage?: () => void;
   readonly sidebar?: boolean;
   readonly onLayout?: (event: LayoutChangeEvent) => void;
   readonly onRequestVisibility?: () => void;
@@ -116,6 +118,7 @@ export function ThreadListToolbar(props: {
         onOpenEnvironments={props.onOpenEnvironments}
         filter={filterButton}
       />
+      {!searching && props.onOpenUsage ? <ProviderLimitsStrip onPress={props.onOpenUsage} /> : null}
     </View>
   );
 }

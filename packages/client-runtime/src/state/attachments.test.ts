@@ -1,15 +1,37 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   type AttachmentCreateUploadUrlInput,
   type AttachmentCreateUploadUrlResult,
   type AttachmentDeleteInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import { FetchHttpClient } from "effect/http";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
-import type { AtomCommand } from "./runtime.ts";
-import { runAttachmentUploadCycle, verifyPersistedAttachmentUpload } from "./attachments.ts";
+import {
+  AVAILABLE_CONNECTION_STATE,
+  PrimaryConnectionTarget,
+  type PreparedConnection,
+} from "../connection/model.ts";
+import * as EnvironmentRegistry from "../connection/registry.ts";
+import * as EnvironmentSupervisor from "../connection/supervisor.ts";
+import type { RpcSession } from "../rpc/session.ts";
+import { runAtomCommand, type AtomCommand } from "./runtime.ts";
+import { createEnvironmentSessionAtoms } from "./session.ts";
+import {
+  clampFileAttachmentUploadBytes,
+  createAttachmentEnvironmentAtoms,
+  fileAttachmentTooLargeMessage,
+  formatAttachmentSize,
+  runAttachmentUploadCycle,
+  verifyPersistedAttachmentUpload,
+} from "./attachments.ts";
 
 const environmentId = EnvironmentId.make("environment-1");
 const registry = {} as AtomRegistry.AtomRegistry;
@@ -55,6 +77,25 @@ const uploadInput: AttachmentCreateUploadUrlInput = {
 };
 
 describe("runAttachmentUploadCycle", () => {
+  it("mints, transfers, and reports the attachment id", async () => {
+    const transferred: string[] = [];
+    const result = await runAttachmentUploadCycle({
+      registry,
+      createUploadUrl: makeCreateUploadUrl("pending-1"),
+      remove,
+      environmentId,
+      upload: uploadInput,
+      resolveUploadUrl: async (relativeUrl) => `https://environment.test${relativeUrl}`,
+      transport: (url) => {
+        transferred.push(url);
+        return { done: Promise.resolve(), abort: () => {} };
+      },
+    });
+
+    expect(result).toEqual({ status: "uploaded", attachmentId: "pending-1" });
+    expect(transferred).toEqual(["https://environment.test/api/attachments/upload/pending-1"]);
+  });
+
   it("deletes the fresh mint when the caller cancels at onMinted", async () => {
     removeCalls.length = 0;
     const result = await runAttachmentUploadCycle({
@@ -72,6 +113,30 @@ describe("runAttachmentUploadCycle", () => {
 
     expect(result).toEqual({ status: "cancelled", attachmentId: "pending-cancelled" });
     expect(removeCalls).toEqual(["pending-cancelled"]);
+  });
+
+  it("keeps the minted id when resolving the connection fails", async () => {
+    const error = new Error("Connection was removed");
+    const result = await runAttachmentUploadCycle({
+      registry,
+      createUploadUrl: makeCreateUploadUrl("pending-unresolved"),
+      remove,
+      environmentId,
+      upload: uploadInput,
+      resolveUploadUrl: async () => {
+        throw error;
+      },
+      transport: () => {
+        throw new Error("transport must not run without a connection");
+      },
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      step: "resolve-url",
+      attachmentId: "pending-unresolved",
+      error,
+    });
   });
 
   it("keeps the minted id on transfer failure so the caller can retry or release", async () => {
@@ -129,3 +194,125 @@ describe("verifyPersistedAttachmentUpload", () => {
     expect(lookups).toBe(2);
   });
 });
+
+describe("file attachment limits", () => {
+  it("clamps the advertised limit to the turn contract cap", () => {
+    expect(clampFileAttachmentUploadBytes(1024)).toBe(1024);
+    expect(clampFileAttachmentUploadBytes(PROVIDER_SEND_TURN_MAX_FILE_BYTES * 2)).toBe(
+      PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+    );
+  });
+
+  it("formats attachment row sizes", () => {
+    expect(formatAttachmentSize(3 * 1024 * 1024)).toBe("3.0 MB");
+    expect(formatAttachmentSize(1)).toBe("1 KB");
+  });
+
+  it("formats small upload limits without rounding them to zero MB", () => {
+    expect(fileAttachmentTooLargeMessage("tiny.txt", 1)).toBe(
+      "'tiny.txt' exceeds the 1 byte attachment limit.",
+    );
+    expect(fileAttachmentTooLargeMessage("small.txt", 1024)).toBe(
+      "'small.txt' exceeds the 1 KB attachment limit.",
+    );
+    expect(fileAttachmentTooLargeMessage("exact.txt", 1025)).toBe(
+      "'exact.txt' exceeds the 1025 bytes attachment limit.",
+    );
+    expect(fileAttachmentTooLargeMessage("medium.zip", 512 * 1024)).toBe(
+      "'medium.zip' exceeds the 512 KB attachment limit.",
+    );
+  });
+
+  it("keeps whole-MB upload limits for standard server caps", () => {
+    expect(fileAttachmentTooLargeMessage("one.bin", 1024 * 1024)).toBe(
+      "'one.bin' exceeds the 1 MB attachment limit.",
+    );
+    expect(fileAttachmentTooLargeMessage("big.zip", 50 * 1024 * 1024)).toBe(
+      "'big.zip' exceeds the 50 MB attachment limit.",
+    );
+  });
+});
+
+it.effect(
+  "reads the live connection without mounting its UI projection, including after reconnect",
+  () =>
+    Effect.gen(function* () {
+      const target = new PrimaryConnectionTarget({
+        environmentId: EnvironmentId.make("upload-environment"),
+        label: "Upload environment",
+        httpBaseUrl: "https://old.example.test",
+        wsBaseUrl: "wss://old.example.test",
+      });
+      const connection: PreparedConnection = {
+        environmentId: target.environmentId,
+        label: target.label,
+        httpBaseUrl: target.httpBaseUrl,
+        socketUrl: target.wsBaseUrl,
+        httpAuthorization: null,
+        target,
+      };
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target,
+        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+        session: yield* SubscriptionRef.make(Option.none<RpcSession>()),
+        prepared: yield* SubscriptionRef.make(Option.some(connection)),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+      });
+      const run: EnvironmentRegistry.EnvironmentRegistry["Service"]["run"] = (_, effect) =>
+        Effect.provideService(effect, EnvironmentSupervisor.EnvironmentSupervisor, supervisor);
+      const followStream: EnvironmentRegistry.EnvironmentRegistry["Service"]["followStream"] = (
+        _,
+        stream,
+      ) =>
+        Stream.unwrap(
+          Effect.promise(async () =>
+            Stream.provideService(stream, EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          ),
+        );
+      const runtime = Atom.runtime(
+        Layer.merge(
+          FetchHttpClient.layer,
+          Layer.succeed(EnvironmentRegistry.EnvironmentRegistry, {
+            run,
+            followStream,
+          } as EnvironmentRegistry.EnvironmentRegistry["Service"]),
+        ),
+      );
+      const session = createEnvironmentSessionAtoms(runtime);
+      const attachments = createAttachmentEnvironmentAtoms(runtime);
+      const registry = AtomRegistry.make();
+      const read = () =>
+        runAtomCommand(registry, attachments.readPreparedConnection, {
+          environmentId: target.environmentId,
+          input: undefined,
+        });
+
+      try {
+        // A cold synchronous read sees the projection's initial None, not the supervisor.
+        expect(registry.get(session.preparedConnectionValueAtom(target.environmentId))).toEqual(
+          Option.none(),
+        );
+        expect(yield* Effect.promise(read)).toMatchObject({
+          _tag: "Success",
+          value: Option.some(connection),
+        });
+
+        const reconnected = { ...connection, httpBaseUrl: "https://new.example.test" };
+        yield* SubscriptionRef.set(supervisor.prepared, Option.some(reconnected));
+        expect(yield* Effect.promise(read)).toMatchObject({
+          _tag: "Success",
+          value: Option.some(reconnected),
+        });
+
+        yield* SubscriptionRef.set(supervisor.prepared, Option.none());
+        expect(yield* Effect.promise(read)).toMatchObject({
+          _tag: "Success",
+          value: Option.none(),
+        });
+      } finally {
+        registry.dispose();
+      }
+    }),
+);

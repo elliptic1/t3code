@@ -6,6 +6,7 @@ import {
   RouteIcon,
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useEffectEvent, useState } from "react";
 import {
   AuthRelayWriteScope,
@@ -17,6 +18,7 @@ import {
 } from "@t3tools/contracts";
 import {
   connectionRoutes,
+  connectionDiagnostics,
   hasSavedBearerRoute,
   connectionStatusText,
   environmentMcpUrl,
@@ -127,6 +129,33 @@ export function SavedBackendListRow({
   const enabled = environment.entry.enabled && !unsupported;
   const isConnected = environment.connection.phase === "connected";
   const isRemoving = removingEnvironmentId === environmentId;
+  const supervisor = useAtomValue(environmentCatalog.stateAtom(environmentId));
+  const { copyToClipboard: copyDiagnostics, isCopied: diagnosticsCopied } = useCopyToClipboard({
+    target: "connection diagnostics",
+    onError: (error) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not copy diagnostics",
+          description: error.message,
+        }),
+      );
+    },
+  });
+  function copyErrorAndContext() {
+    copyDiagnostics(
+      connectionDiagnostics({
+        environment,
+        state: Option.getOrNull(AsyncResult.value(supervisor)),
+        client: {
+          surface: isElectron ? "desktop" : "web",
+          version: APP_VERSION,
+          platform: navigator.userAgent,
+        },
+        capturedAt: new Date().toISOString(),
+      }),
+    );
+  }
   const errorTraceId = environment.connection.traceId;
   const { copyToClipboard: copyTraceIdToClipboard } = useCopyToClipboard<{ traceId: string }>({
     target: "trace ID",
@@ -320,6 +349,13 @@ export function SavedBackendListRow({
               expanded={diagnosisOpen}
               onToggle={() => setDiagnosisOpen((open) => !open)}
             />
+          ) : null}
+          {environment.connection.error !== null ? (
+            <div className="mt-1">
+              <Button variant="outline" size="sm" onClick={copyErrorAndContext}>
+                {diagnosticsCopied ? "Diagnostics copied" : "Copy error and context"}
+              </Button>
+            </div>
           ) : null}
           {serverUpdateState.status !== "idle" ? (
             <div className="mt-1 max-w-md">

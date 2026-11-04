@@ -16,18 +16,21 @@ export interface ComposerSendPresentation {
   readonly action: ActiveTurnComposerAction | null;
   readonly alternate: ActiveTurnComposerAction | null;
   readonly offersFollowUpChoice: boolean;
+  readonly choices: ReadonlyArray<ActiveTurnComposerAction>;
 }
 
 const ACTION_LABEL: Record<ActiveTurnComposerAction, string> = {
   queue: "Queue",
   steer: "Steer",
   restart: "Restart",
+  parallel: "Start parallel agent",
 };
 
 export function resolveComposerSendPresentation(input: {
   readonly editingQueuedMessage: boolean;
   readonly running: boolean;
   readonly canSteer: boolean;
+  readonly canParallel?: boolean;
   readonly followUpBehavior: FollowUpBehavior;
   readonly deliveryDeferred: boolean;
 }): ComposerSendPresentation {
@@ -38,6 +41,7 @@ export function resolveComposerSendPresentation(input: {
       action: null,
       alternate: null,
       offersFollowUpChoice: false,
+      choices: [],
     };
   }
   if (!input.running) {
@@ -47,6 +51,7 @@ export function resolveComposerSendPresentation(input: {
       action: null,
       alternate: null,
       offersFollowUpChoice: false,
+      choices: [],
     };
   }
   const action: ActiveTurnComposerAction = input.canSteer ? input.followUpBehavior : "queue";
@@ -56,6 +61,11 @@ export function resolveComposerSendPresentation(input: {
     icon: action === "steer" ? "arrow.turn.left.up" : "list.number",
     action,
     alternate: input.canSteer ? alternate : null,
-    offersFollowUpChoice: input.canSteer,
+    offersFollowUpChoice: input.canSteer || input.canParallel === true,
+    choices: [
+      "queue",
+      ...(input.canSteer ? ["steer" as const] : []),
+      ...(input.canParallel ? ["parallel" as const] : []),
+    ],
   };
 }

@@ -62,6 +62,7 @@ import {
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useSelectedThreadDetailState } from "../../state/use-thread-detail";
 import { useThreadSelection } from "../../state/use-thread-selection";
+import { useThreadListActions } from "../home/useThreadListActions";
 import { GitActionProgressOverlay } from "./GitActionProgressOverlay";
 import {
   buildTerminalMenuSessions,
@@ -105,6 +106,9 @@ import {
   threadRouteIsHydrating,
   threadRouteOpensDraft,
 } from "./thread-route-hydration";
+import { ThreadProviderUsageSheet } from "./ThreadProviderUsageSheet";
+import { threadModelUsageRemainingPercent } from "./threadModelUsage";
+import { ThreadArtifactsModal } from "./ThreadArtifactsModal";
 import { ThreadHeader } from "./ThreadHeader";
 import { resumeThread } from "./resume-thread";
 import {
@@ -379,6 +383,16 @@ function ThreadRouteContent(
   );
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
+  const [usageThreadKey, setUsageThreadKey] = useState<string | null>(null);
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const { settleThread, unsettleThread, renameThread, regenerateThreadTitle } =
+    useThreadListActions({ dismissRows: false });
+  const threadSettled = selectedThread?.settledOverride === "settled";
+  const settleTargetRef = useRef(selectedThread);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors the open thread for the async settle completion check
+  useEffect(() => {
+    settleTargetRef.current = selectedThread;
+  }, [selectedThread]);
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composer = useThreadComposerState();
   const gitState = useSelectedThreadGitState();
@@ -434,6 +448,24 @@ function ThreadRouteContent(
   const navigation = useNavigation();
   const selectDetail = useSelectWorkspaceDetail();
   const openPullRequest = useOpenPullRequest();
+  const handleToggleSettled = () => {
+    if (!selectedThread) return;
+    if (threadSettled) {
+      void unsettleThread(selectedThread);
+      return;
+    }
+    void settleThread(selectedThread).then((settled) => {
+      const current = settleTargetRef.current;
+      if (
+        !settled ||
+        !navigation.isFocused() ||
+        current?.environmentId !== selectedThread.environmentId ||
+        current.id !== selectedThread.id
+      )
+        return;
+      navigation.dispatch(StackActions.popTo("Home"));
+    });
+  };
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack, "merge thread back");
   const mergeBackTargetThreadId = resolveMergeBackTargetThreadId(selectedThreadDetail);
   const mergeBackRun =
@@ -997,6 +1029,15 @@ function ThreadRouteContent(
           connectionState: routeConnectionState,
         });
   const serverConfig = routeEnvironmentRuntime?.serverConfig ?? null;
+  const headerModelSelection = composer.modelSelection ?? selectedThread?.modelSelection;
+  const headerUsagePercent =
+    selectedThread && headerModelSelection
+      ? threadModelUsageRemainingPercent(
+          selectedThread.environmentId,
+          headerModelSelection,
+          serverConfig,
+        )
+      : null;
   const renderThreadRouteBody = () => (
     <>
       <GitActionProgressOverlay
@@ -1011,6 +1052,27 @@ function ThreadRouteContent(
             props.inspectorPresentation ? null : (
               <ThreadHeader
                 title={selectedThread.title}
+                onRename={canOperateThread ? () => renameThread(selectedThread) : undefined}
+                onRegenerateTitle={
+                  canOperateThread ? () => void regenerateThreadTitle(selectedThread) : undefined
+                }
+                regeneratingTitle={selectedThread.titleRegeneration != null}
+                onOpenArtifacts={
+                  serverConfig?.environment.capabilities.threadArtifacts === true
+                    ? () => setArtifactsOpen(true)
+                    : undefined
+                }
+                onOpenUsage={() =>
+                  setUsageThreadKey(
+                    scopedThreadKey(selectedThread.environmentId, selectedThread.id),
+                  )
+                }
+                usageBadge={headerUsagePercent === null ? undefined : `${headerUsagePercent}%`}
+                usageAccessibilityLabel={
+                  headerUsagePercent === null
+                    ? "Selected provider usage"
+                    : `Selected provider usage: ${headerUsagePercent}% left`
+                }
                 subtitle={headerSubtitle}
                 headerColor={headerColor}
                 usesNativeHeaderGlass={usesNativeHeaderGlass}
@@ -1023,6 +1085,8 @@ function ThreadRouteContent(
                 onOpenGitInspector={handleOpenGitInspector}
                 onOpenFilesInspector={handleOpenFilesInspector}
                 onReturnToThread={props.onReturnToThread}
+                settled={threadSettled}
+                onToggleSettled={canOperateThread ? handleToggleSettled : undefined}
               />
             )
           }
@@ -1085,6 +1149,7 @@ function ThreadRouteContent(
           composerDraftKey={composer.composerDraftKey}
           followUpBehavior={composer.followUpBehavior}
           canSteerActiveTurn={composer.canSteerActiveTurn}
+          canStartParallelAgent={composer.canStartParallelAgent}
           isSavingQueuedEdit={composer.isSavingQueuedEdit}
           onCancelQueuedRunEdit={composer.cancelQueuedRunEdit}
           onRemoveQueuedEditAttachment={composer.onRemoveQueuedEditAttachment}
@@ -1131,6 +1196,23 @@ function ThreadRouteContent(
       {activeInspectorRenderer ? <InspectorPaneRoleActivation /> : null}
 
       {renderThreadRouteBody()}
+      {selectedThread && artifactsOpen ? (
+        <ThreadArtifactsModal
+          environmentId={selectedThread.environmentId}
+          threadId={selectedThread.id}
+          onClose={() => setArtifactsOpen(false)}
+        />
+      ) : null}
+      {selectedThread &&
+      headerModelSelection &&
+      usageThreadKey === scopedThreadKey(selectedThread.environmentId, selectedThread.id) ? (
+        <ThreadProviderUsageSheet
+          environmentId={selectedThread.environmentId}
+          selection={headerModelSelection}
+          config={serverConfig}
+          onClose={() => setUsageThreadKey(null)}
+        />
+      ) : null}
     </>
   );
 }

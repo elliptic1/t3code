@@ -85,6 +85,13 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   sideChats: Schema.optionalKey(Schema.Boolean),
   /** Every protocol-2 server sends this; older mobile builds still read it. */
   inlineMessageContext: Schema.optionalKey(Schema.Boolean),
+  /** Composer prompts can launch delegated tasks with attachments and context. */
+  composerParallelTasks: Schema.optionalKey(Schema.Boolean),
+  /** Durable per-thread files, including large build outputs. */
+  threadArtifacts: Schema.optionalKey(Schema.Boolean),
+  /** Thread preferences can route usage-limited turns to a fallback account. */
+  modelFallback: Schema.optionalKey(Schema.Boolean),
+  /** Server rejects required worktrees instead of falling back to the project checkout. */
   requiredWorktreeBootstrap: Schema.optionalKey(Schema.Boolean),
   threadSettlement: Schema.optionalKey(Schema.Boolean),
   threadAutoSettlement: Schema.optionalKey(Schema.Boolean),

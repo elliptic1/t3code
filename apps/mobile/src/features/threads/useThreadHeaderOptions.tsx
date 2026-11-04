@@ -1,5 +1,6 @@
 import { useWorkspaceSidebarHeaderItem } from "../layout/useWorkspaceSidebarHeaderItem";
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { useMemo } from "react";
 import { threadHeaderAppearance } from "./thread-header-appearance";
 import { isDuoDevice } from "../../lib/device-type";
 import type { AppNativeStackNavigationOptions } from "../../native/StackHeader";
@@ -17,11 +18,17 @@ type NativeHeaderItems = ReadonlyArray<Record<string, unknown>>;
 
 export function useThreadHeaderOptions(props: {
   readonly title: string;
+  readonly onRename?: () => void;
+  readonly onOpenUsage?: () => void;
+  readonly settled?: boolean;
+  readonly onToggleSettled?: () => void;
   readonly subtitle: string;
   readonly headerColor: string;
   readonly usesNativeHeaderGlass: boolean;
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
+  readonly onRegenerateTitle?: () => void;
+  readonly regeneratingTitle?: boolean;
   readonly draft?: boolean;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
@@ -77,6 +84,67 @@ export function useThreadHeaderOptions(props: {
     }),
   ];
 
+  const threadActionItems = useMemo<NativeHeaderItems>(
+    () =>
+      props.onToggleSettled || props.onRegenerateTitle || props.onOpenUsage
+        ? [
+            withNativeGlassHeaderItem({
+              type: "menu" as const,
+              identifier: "thread-right-actions",
+              accessibilityLabel: "Thread actions",
+              icon: { name: "ellipsis", type: "sfSymbol" as const },
+              menu: {
+                title: "Thread actions",
+                items: [
+                  ...(props.onRegenerateTitle
+                    ? [
+                        {
+                          type: "action" as const,
+                          label: props.regeneratingTitle
+                            ? "Regenerating title…"
+                            : "Regenerate title",
+                          icon: { name: "arrow.clockwise", type: "sfSymbol" as const },
+                          disabled: props.regeneratingTitle,
+                          onPress: props.onRegenerateTitle,
+                        },
+                      ]
+                    : []),
+                  ...(props.onOpenUsage
+                    ? [
+                        {
+                          type: "action" as const,
+                          label: "Selected provider usage",
+                          icon: { name: "chart.pie", type: "sfSymbol" as const },
+                          onPress: props.onOpenUsage,
+                        },
+                      ]
+                    : []),
+                  ...(props.onToggleSettled
+                    ? [
+                        {
+                          type: "action" as const,
+                          label: props.settled ? "Move out of settled" : "Settle thread",
+                          icon: {
+                            name: props.settled ? "arrow.uturn.backward" : "checkmark.circle",
+                            type: "sfSymbol" as const,
+                          },
+                          onPress: props.onToggleSettled,
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            }),
+          ]
+        : [],
+    [
+      props.settled,
+      props.onToggleSettled,
+      props.onRegenerateTitle,
+      props.regeneratingTitle,
+      props.onOpenUsage,
+    ],
+  );
   const options: AppNativeStackNavigationOptions = {
     ...threadHeaderAppearance(props.usesNativeHeaderGlass),
     headerTitle: props.title,
@@ -87,9 +155,13 @@ export function useThreadHeaderOptions(props: {
       : canGoBack
         ? undefined
         : () => compactHomeHeaderItems,
-    // The workspace navigator adds compose to the Duo detail column's bar.
-    unstable_headerRightItems: () =>
-      usesDuoHeader || layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems,
+    // The workspace navigator supplies the Duo compose item; retain the fork's thread action.
+    unstable_headerRightItems: () => [
+      ...(usesDuoHeader || layout.usesSplitView
+        ? threadCenterHeaderItems
+        : compactRightHeaderItems),
+      ...threadActionItems,
+    ],
     unstable_headerToolbarItems: () => [],
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
@@ -102,6 +174,7 @@ export function useThreadHeaderOptions(props: {
       splitLeftHeaderItems,
       threadCenterHeaderItems,
       compactRightHeaderItems,
+      threadActionItems,
       usesDuoHeader,
       environmentId,
       threadId,

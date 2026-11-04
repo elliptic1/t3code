@@ -1192,7 +1192,7 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const optimisticAttachments = optimisticMessageAttachments(composerAttachmentsSnapshot);
-    if (!shouldQueueBehindActiveRun) {
+    if (!shouldQueueBehindActiveRun && dispatchMode !== "parallel") {
       anchorNewTurn(
         scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
         messageIdForSend,
@@ -1214,14 +1214,16 @@ export function useComposerSend(input: ComposerSendInput) {
           ? { inputIntent: "steer" as const }
           : {}),
     };
-    // After leaving the thread during an upload, its previews were already released and the
-    // message is never shown, so tracking them would keep them alive past the thread.
-    if (currentRouteThreadKeyRef.current === routeThreadKey) {
-      optimisticBlobPreviews.track(optimisticMessage);
-    } else {
-      optimisticBlobPreviews.release(optimisticMessage);
+    if (dispatchMode !== "parallel") {
+      // After leaving the thread during an upload, its previews were already released and the
+      // message is never shown, so tracking them would keep them alive past the thread.
+      if (currentRouteThreadKeyRef.current === routeThreadKey) {
+        optimisticBlobPreviews.track(optimisticMessage);
+      } else {
+        optimisticBlobPreviews.release(optimisticMessage);
+      }
+      setOptimisticUserMessages((existing) => [...existing, optimisticMessage]);
     }
-    setOptimisticUserMessages((existing) => [...existing, optimisticMessage]);
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
       const toastCopy = buildExpiredTerminalContextToastCopy(
@@ -1258,7 +1260,7 @@ export function useComposerSend(input: ComposerSendInput) {
 
     let failure: AtomCommandResult<unknown, unknown> | null = null;
 
-    if (failure === null && isServerThread) {
+    if (failure === null && isServerThread && dispatchMode !== "parallel") {
       const settingsResult = await persistThreadSettingsForNextTurn({
         threadId: threadIdForSend,
         createdAt: messageCreatedAt,

@@ -10,6 +10,7 @@ import {
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
+import { describeProviderLimits, useProviderLimitSummary } from "../usage/useProviderLimitSummary";
 
 function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
   const label = entry.displayName;
@@ -43,6 +44,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
     props.onSelectInstance(instanceId);
   };
   const showFavorites = props.showFavorites ?? true;
+  const limits = useProviderLimitSummary();
   const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
@@ -134,16 +136,21 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             const isHovered = hoveredInstanceId === entry.instanceId;
             const showInstanceBadge = shouldShowInstanceBadge(entry, props.instanceEntries);
 
-            const tooltip = isUnavailable
+            const limit = limits.get(entry.driverKind);
+            const baseTooltip = isUnavailable
               ? describeUnavailableInstance(entry)
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
                 : entry.displayName;
+            const tooltip = limit
+              ? `${baseTooltip} · ${describeProviderLimits(limit)}`
+              : baseTooltip;
 
             const button = (
               <Toolbar.Button
                 className={cn(
-                  "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
+                  "relative isolate flex w-full cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
+                  limit ? "flex-col gap-0.5 py-1" : "aspect-square",
                   isDisabled && "opacity-50 cursor-not-allowed hover:bg-transparent",
                 )}
                 data-provider-accent-color={entry.accentColor}
@@ -180,6 +187,11 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   }
                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                 />
+                {limit ? (
+                  <span className="text-3xs leading-none text-muted-foreground tabular-nums">
+                    {limit.remainingPercent}%
+                  </span>
+                ) : null}
               </Toolbar.Button>
             );
 

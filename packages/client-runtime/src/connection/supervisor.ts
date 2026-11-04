@@ -138,8 +138,16 @@ export interface EnvironmentSupervisorOptions {
   }) => Effect.Effect<Option.Option<ConnectionCatalogEntry>>;
 }
 
-function retryDelayMs(failureCount: number, random: number): number {
-  const ceiling = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1));
+/**
+ * Delay before the next attempt after `failureCount` consecutive failures. The ceiling doubles
+ * from 2s to 5 minutes; the delay is a random point in its upper half (`random` is in [0, 1)) so
+ * clients that lost the same server do not reconnect together.
+ */
+function retryDelayMs(failureCount: number, random: number, recovering = false): number {
+  const ceiling = Math.min(
+    recovering ? 15_000 : RETRY_MAX_DELAY_MS,
+    RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1),
+  );
   return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
@@ -1034,6 +1042,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
   const run = Effect.fnUntraced(function* () {
     let failureCount = 0;
+    let recoveryUntil = 0;
     let generation = 0;
     let latestFailure: ConnectionAttemptError | null = null;
     let pendingRetry = Option.none<PendingRetryTrace>();
@@ -1076,6 +1085,9 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       replacing = false;
       const failedProbe = yield* Ref.getAndSet(probeUnanswered, false);
       if (outcome.established) {
+        // Recently working environments are commonly restarting for an update. Keep
+        // recovery responsive for five minutes without accelerating long outages.
+        recoveryUntil = (yield* Clock.currentTimeMillis) + 300_000;
         generation = nextGeneration;
         // A session came up, so no earlier failure describes the connection.
         // Losing a live session is not a failed connection either, for example
@@ -1125,7 +1137,11 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }
 
       failureCount += 1;
-      const delayMs = retryDelayMs(failureCount - 1, yield* Random.next);
+      const delayMs = retryDelayMs(
+        failureCount - 1,
+        yield* Random.next,
+        (yield* Clock.currentTimeMillis) < recoveryUntil,
+      );
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
         previousAttempt,
         failureCount,

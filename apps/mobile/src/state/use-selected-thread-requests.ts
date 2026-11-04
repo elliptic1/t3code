@@ -16,7 +16,7 @@ import {
   composerAttachmentsStillUploading,
 } from "./composer-attachment-uploads";
 import { useAtomValue } from "@effect/atom-react";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import {
   type EnvironmentId,
@@ -37,6 +37,7 @@ import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { environmentThreadDetails, threadEnvironment } from "../state/threads";
+import { serverEnvironment } from "./server";
 import {
   buildPendingUserInputAnswers,
   setPendingUserInputCustomAnswer,
@@ -320,88 +321,134 @@ export function useSelectedThreadRequests() {
     return result;
   };
 
-  const onSubmitUserInput = async () => {
-    if (
-      !selectedThreadShell ||
-      !activePendingUserInput ||
-      activePendingUserInput.responseCapability === "not_resumable" ||
-      !activePendingUserInputAnswers ||
-      !readEnvironmentScope(selectedThreadShell.environmentId, AuthOrchestrationOperateScope)
-    ) {
+  const onSubmitUserInput = useCallback(async () => {
+    if (!selectedThreadShell || !activePendingUserInput) return;
+    const environmentId = selectedThreadShell.environmentId;
+    const threadId = selectedThreadShell.id;
+    // Native controls may dispatch a callback retained from an earlier render.
+    // Keep its request identity, but read the current request and drafts at the tap.
+    const request = appAtomRegistry
+      .get(environmentThreadDetails.pendingRequestsAtom({ environmentId, threadId }))
+      ?.userInputs.find((entry) => entry.requestId === activePendingUserInput.requestId);
+    if (!request || request.responseCapability === "not_resumable") {
+      Dialog.alert(
+        "Request is no longer available",
+        "This request has changed or can no longer accept an answer.",
+      );
       return;
     }
-
-    const responseKey = questionAttachmentDraftKey(
-      selectedThreadShell.environmentId,
-      selectedThreadShell.id,
-      activePendingUserInput.requestId,
-      "",
-    );
+    if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
+      Dialog.alert(
+        "Cannot submit answers",
+        "This connection no longer has permission to answer. Reconnect and try again.",
+      );
+      return;
+    }
+    const responseKey = questionAttachmentDraftKey(environmentId, threadId, request.requestId, "");
     if (userInputResponsesInFlight.current.has(responseKey)) return;
+    const drafts =
+      appAtomRegistry.get(userInputDraftsByRequestKeyAtom)[
+        userInputDraftKey(environmentId, threadId, request.requestId)
+      ] ?? {};
+    const answerDrafts: Record<string, PendingUserInputDraftAnswer> = {};
     const attachmentsByQuestionId = new Map<
       string,
       import("@t3tools/contracts").UserInputAttachments[string]
     >();
-    for (const question of activePendingUserInput.questions) {
+    for (const question of request.questions) {
       const key = questionAttachmentDraftKey(
-        selectedThreadShell.environmentId,
-        selectedThreadShell.id,
-        activePendingUserInput.requestId,
+        environmentId,
+        threadId,
+        request.requestId,
         question.id,
       );
-      if ((appAtomRegistry.get(questionAttachmentPreparationAtom)[key] ?? 0) > 0) return;
       const attachments = appAtomRegistry.get(composerDraftsAtom)[key]?.attachments ?? [];
-      if (attachments.length === 0) continue;
-      if (
-        attachments.some(
-          (attachment) =>
-            !attachment.uploadedAttachmentId ||
-            attachment.uploadEnvironmentId !== selectedThreadShell.environmentId,
-        )
-      ) {
+      const preparing = (appAtomRegistry.get(questionAttachmentPreparationAtom)[key] ?? 0) > 0;
+      if (preparing) {
         Dialog.alert(
           "Attachments are not ready",
-          "Wait for uploads to finish, or retry failed uploads.",
+          "Wait for attachment preparation to finish, then try again.",
         );
         return;
       }
-      attachmentsByQuestionId.set(
-        question.id,
-        attachments.map((attachment) => ({
-          type: attachment.type,
-          id: attachment.uploadedAttachmentId!,
-          name: attachment.name,
-          mimeType: attachment.mimeType,
-          sizeBytes: attachment.sizeBytes,
-        })),
-      );
+      if (attachments.length > 0) {
+        const serverConfig = appAtomRegistry.get(serverEnvironment.configValueAtom(environmentId));
+        const uploadInput = {
+          environmentId,
+          attachments,
+          serverConfig,
+          states: appAtomRegistry.get(composerAttachmentUploadsAtom),
+        };
+        if (
+          serverConfig?.environment.capabilities.questionAttachments !== true ||
+          composerAttachmentsStillUploading(uploadInput) ||
+          composerAttachmentUploadBlockReason({ ...uploadInput, connected: true }) !== null ||
+          attachments.some(
+            (attachment) =>
+              !attachment.uploadedAttachmentId || attachment.uploadEnvironmentId !== environmentId,
+          )
+        ) {
+          Dialog.alert(
+            "Attachments are not ready",
+            "Wait for uploads to finish, or retry failed uploads.",
+          );
+          return;
+        }
+        attachmentsByQuestionId.set(
+          question.id,
+          attachments.map((attachment) => ({
+            type: attachment.type,
+            id: attachment.uploadedAttachmentId!,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+          })),
+        );
+      }
+      answerDrafts[question.id] = {
+        ...drafts[question.id],
+        attachmentCount: attachments.length,
+        attachmentsBlocked: false,
+      };
+    }
+    const answers = buildPendingUserInputAnswers(request.questions, answerDrafts);
+    if (answers === null) {
+      Dialog.alert("Answers are not ready", "Complete each required question before submitting.");
+      return;
     }
     userInputResponsesInFlight.current.add(responseKey);
-    setRespondingUserInputId(activePendingUserInput.requestId);
-    const result = await respondToUserInput({
-      environmentId: selectedThreadShell.environmentId,
-      input: {
-        threadId: selectedThreadShell.id,
-        requestId: activePendingUserInput.requestId,
-        answers: activePendingUserInputAnswers,
-        ...(attachmentsByQuestionId.size > 0
-          ? { attachmentsByQuestionId: Object.fromEntries(attachmentsByQuestionId) }
-          : {}),
-      },
-    });
-    userInputResponsesInFlight.current.delete(responseKey);
-    setRespondingUserInputId((current) =>
-      current === activePendingUserInput.requestId ? null : current,
-    );
-    if (result._tag === "Success") {
-      collectAnsweredRequestDrafts(
-        selectedThreadShell.environmentId,
-        selectedThreadShell.id,
-        activePendingUserInput.requestId,
+    setRespondingUserInputId(request.requestId);
+    try {
+      const result = await respondToUserInput({
+        environmentId,
+        input: {
+          threadId,
+          requestId: request.requestId,
+          answers,
+          ...(attachmentsByQuestionId.size > 0
+            ? { attachmentsByQuestionId: Object.fromEntries(attachmentsByQuestionId) }
+            : {}),
+        },
+      });
+      if (result?._tag === "Failure")
+        Dialog.alert(
+          "Couldn't submit answers",
+          "Your answers are still here. Check your connection and try again.",
+        );
+      if (result?._tag === "Success") {
+        collectAnsweredRequestDrafts(environmentId, threadId, request.requestId);
+      }
+      return result;
+    } catch {
+      Dialog.alert(
+        "Couldn't submit answers",
+        "Your answers are still here. Check your connection and try again.",
       );
+    } finally {
+      userInputResponsesInFlight.current.delete(responseKey);
+      setRespondingUserInputId((current) => (current === request.requestId ? null : current));
     }
-    return result;
-  };
+  }, [activePendingUserInput, respondToUserInput, selectedThreadShell]);
 
   const onDismissUserInput = async () => {
     if (

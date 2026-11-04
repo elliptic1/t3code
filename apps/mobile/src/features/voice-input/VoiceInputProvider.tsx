@@ -12,6 +12,7 @@ import { AppState, Platform } from "react-native";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { makeMutable } from "react-native-reanimated";
 
+import { getSystemVoiceDictation } from "../../native/systemVoiceDictation";
 import {
   microphoneOrder,
   preferredMicrophoneInput,
@@ -92,6 +93,7 @@ const voiceInputAtom = Atom.make((get) => {
   const session: VoiceInputSession = new VoiceInputSession({
     recorder,
     getTranscriber: getLocalVoiceTranscriber,
+    getSystemDictation: getSystemVoiceDictation,
     requestPermission: async () => {
       const permission = await requestRecordingPermissionsAsync();
       return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -139,7 +141,12 @@ export function useGlobalVoiceInput() {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return {
     ...snapshot,
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    // Store screenshots show the dictation button even on simulators, whose
+    // on-device transcription is unavailable.
+    isAvailable:
+      getSystemVoiceDictation() !== null ||
+      getLocalVoiceTranscriber() !== null ||
+      getNativeShowcaseScene() !== null,
     audioLevels,
     isBusy: voiceInputBlocksSubmission(snapshot.state),
     session,

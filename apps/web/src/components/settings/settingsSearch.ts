@@ -679,6 +679,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     desktopOnly: true,
   },
   {
+    id: "voice-conversation",
+    title: "Voice conversation",
+    to: "/settings/browser",
+    searchTerms: ["microphone speech realtime openai grok xai local voice model api key"],
+  },
+  {
     id: "text-generation-model",
     title: "Text generation model",
     to: "/settings/threads",
@@ -814,7 +820,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Usage providers",
     to: "/settings/providers",
     searchTerms: [
-      "usage sources CLIProxyAPI CLI proxy hub quota subscription limits management key add remove",
+      "usage sources CLIProxyAPI CLI proxy hub quota subscription limits management key add remove reset reminders notifications allowance",
     ],
     providerSettingsOnly: true,
   },

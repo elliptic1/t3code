@@ -158,7 +158,7 @@ minimumReleaseAgeExclude:
   - expo-build-properties@58.0.11
   - expo-dev-client@58.0.14
   - expo-dev-launcher@58.0.10 || 58.0.14
-  - expo-dev-menu@58.0.10
+  - expo-dev-menu@58.0.11
   - expo-image-manipulator@58.0.14
   - expo-image-picker@58.0.10
   - expo-image@58.0.15
@@ -245,7 +245,6 @@ overrides:
   "@ff-labs/fff-node": 0.11.0
   "@legendapp/list": 3.3.5
   "@pierre/diffs": 1.6.1
-  "@react-native-ai/apple": 0.12.0
   "@react-native-menu/menu": 2.0.0
   "@react-navigation/native-stack": 7.21.0
   dbus-next: 0.10.2
@@ -355,6 +354,7 @@ packageExtensions:
       vite-plus: "catalog:"
 
 patchedDependencies:
+  expo-dev-menu@58.0.11: patches/expo-dev-menu@58.0.11.patch
   react-native-image-viewing@0.2.2: patches/react-native-image-viewing@0.2.2.patch
   mdast-util-math@3.0.0: patches/mdast-util-math@3.0.0.patch
   micromark-extension-llm-math@3.1.0: patches/micromark-extension-llm-math@3.1.0.patch
@@ -375,7 +375,6 @@ patchedDependencies:
   # Exports the dependency-light subpaths mobile and the web diff parser import, and keeps
   # measured wrapped-row heights above an edit (fileEditorVirtualization.test.ts).
   "@pierre/diffs@1.6.1": patches/@pierre%2Fdiffs@1.6.1.patch
-  "@react-native-ai/apple@0.12.0": patches/@react-native-ai__apple@0.12.0.patch
   "@react-native-menu/menu@2.0.0": patches/@react-native-menu__menu@2.0.0.patch
   "@react-navigation/native-stack@7.21.0": patches/@react-navigation%2Fnative-stack@7.21.0.patch
   dbus-next@0.10.2: patches/dbus-next@0.10.2.patch

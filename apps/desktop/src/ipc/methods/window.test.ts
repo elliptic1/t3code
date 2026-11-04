@@ -25,12 +25,15 @@ import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import * as DesktopManagedPolicy from "../../app/DesktopManagedPolicy.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
+import * as ElectronMenu from "../../electron/ElectronMenu.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 import {
   getLocalEnvironmentBootstraps,
   installRelayTelemetryEnabled,
+  startDictation,
+  stopDictation,
   pickProjectFavicon,
   probeRemoteEditors,
 } from "./window.ts";
@@ -336,3 +339,39 @@ it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
       assert.include(editors, "webstorm");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+describe.each([startDictation, stopDictation])("system dictation IPC", (method) => {
+  it.effect("takes native focus for the requesting main renderer", () => {
+    const start = vi.fn(() => true);
+    const isFocused = vi.fn(() => true);
+    const isDestroyed = vi.fn(() => false);
+    const focus = vi.fn();
+    const window = {
+      webContents: { id: 42, focus },
+      isFocused,
+      isDestroyed,
+    } as unknown as Electron.BrowserWindow;
+    return Effect.gen(function* () {
+      // A preview webview that still reports focus must not block dictation in the composer.
+      focusedWebContents.mockReturnValue({ id: 7 });
+      assert.isTrue(yield* method.handler(undefined, { sender: { id: 42 } }));
+      assert.equal(focus.mock.calls.length, 1);
+      assert.isFalse(yield* method.handler(undefined, { sender: { id: 99 } }));
+      assert.isFalse(yield* method.handler(undefined));
+      isFocused.mockReturnValue(false);
+      assert.isFalse(yield* method.handler(undefined, { sender: { id: 42 } }));
+      isFocused.mockReturnValue(true);
+      isDestroyed.mockReturnValue(true);
+      assert.isFalse(yield* method.handler(undefined, { sender: { id: 42 } }));
+      assert.equal(start.mock.calls.length, 1);
+    }).pipe(
+      Effect.provide([
+        Layer.mock(ElectronWindow.ElectronWindow)({ main: Effect.succeedSome(window) }),
+        Layer.mock(ElectronMenu.ElectronMenu)({
+          startDictation: Effect.sync(start),
+          stopDictation: Effect.sync(start),
+        }),
+      ]),
+    );
+  });
+});

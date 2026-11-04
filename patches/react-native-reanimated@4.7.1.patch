@@ -11,5 +11,5 @@ index 675b1b7..dea79ba 100644
 +      !std::strcmp(componentName, "RNSSplitScreen") || !std::strcmp(componentName, "RNSTabsScreenIOS") ||
 +      !std::strcmp(componentName, "RNSTabsScreenAndroid");
  }
- 
+
  static inline bool isRNSScreen(const std::shared_ptr<LightNode> &node) {

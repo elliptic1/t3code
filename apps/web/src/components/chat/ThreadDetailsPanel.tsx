@@ -1,3 +1,5 @@
+import { ThreadArtifactsPanel } from "./ThreadArtifactsPanel";
+import { ThreadWorkflowsPanel } from "./ThreadWorkflowsPanel";
 import type {
   EditorId,
   EnvironmentId,
@@ -259,6 +261,22 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               ) : null}
 
               {visible.usage ? <ThreadDetailsUsage {...props.usage} /> : null}
+
+              {!props.draftId ? (
+                <ThreadArtifactsPanel
+                  key={`${props.environmentId}:${props.threadId}`}
+                  environmentId={props.environmentId}
+                  threadId={props.threadId}
+                />
+              ) : null}
+
+              {density === "full" && !props.draftId ? (
+                <ThreadWorkflowsPanel
+                  key={props.threadId}
+                  environmentId={props.environmentId}
+                  threadId={props.threadId}
+                />
+              ) : null}
 
               {visible.context && props.usage.contextWindow ? (
                 <ThreadDetailsContext usage={props.usage.contextWindow} />

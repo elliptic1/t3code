@@ -1,7 +1,7 @@
 import type { RelayDeviceRegistrationRequest } from "@t3tools/contracts/relay";
 
 import type { Preferences } from "../../persistence/mobile-preferences";
-import { supportsAgentAwarenessPush } from "./capabilities";
+import { supportsAgentAwarenessPush, supportsUsageResetReminders } from "./capabilities";
 
 // Development builds use sandbox APNs; distribution builds use production APNs.
 export function resolveApsEnvironment(appVariant: unknown): "sandbox" | "production" {
@@ -41,6 +41,7 @@ export function makeRelayDeviceRegistrationRequest(
     preferences: {
       liveActivitiesEnabled,
       notificationsEnabled: pushAvailable && input.notificationsEnabled,
+      usageResetRemindersSupported: supportsUsageResetReminders(),
       notifyOnApproval: true,
       notifyOnInput: true,
       notifyOnCompletion: true,

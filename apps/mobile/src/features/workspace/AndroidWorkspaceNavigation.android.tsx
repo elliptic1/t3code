@@ -1,5 +1,8 @@
+import { useAtomValue } from "@effect/atom-react";
+import { collectLimitAccounts, collectLimitPools } from "@t3tools/shared/usageLimits";
 import { selectedNavigationTab, visibleNavigationTabs } from "./navigation-tab-order";
 import { requireNativeView } from "expo";
+import { useEffect, useState } from "react";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import {
   Keyboard,
@@ -14,8 +17,10 @@ import { useKeyboardState } from "react-native-keyboard-controller";
 
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
+import { environmentPresentations } from "../../state/presentation";
 import { rootNavigationRef } from "../../lib/rootNavigation";
 import { useWorkspaceConnectionState } from "../../state/workspace";
+import { usageTabLines } from "../usage/usageTabSummary";
 import { androidWorkspaceNavigationColors } from "./android-workspace-navigation-colors";
 import {
   androidWorkspaceTabNavigationState,
@@ -38,6 +43,7 @@ interface NativeNavigationProps extends ViewProps {
   readonly dark: boolean;
   readonly textScale: number;
   readonly newEnabled: boolean;
+  readonly usageLines: readonly string[];
   readonly safeAreaTop: number;
   readonly safeAreaBottom: number;
   readonly headerHeight: number;
@@ -59,6 +65,18 @@ const NativeNavigation = requireNativeView<NativeNavigationProps>("T3WorkspaceNa
 function nativeColor(value: string) {
   const color = processColor(value);
   return typeof color === "number" ? color : 0;
+}
+
+/** Quota left per subscription, recomputed each minute so passed resets show as refilled. */
+function useUsageTabLines() {
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
+  const [now, setNow] = useState(() => Date.now());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- polls provider usage for the tab label while mounted
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return usageTabLines(collectLimitPools(collectLimitAccounts(presentations), now));
 }
 
 export function AndroidWorkspaceNavigation(props: {
@@ -83,6 +101,7 @@ export function AndroidWorkspaceNavigation(props: {
   const { themeAppearance, themeVariables: colors } = useAppearancePreferences();
   const { scale, fabSize } = useAndroidControlSizing();
   const window = useWindowDimensions();
+  const usageLines = useUsageTabLines();
   const rail = Boolean(props.rail);
   const floating = !rail && Boolean(props.floating);
   const tabs = [...visibleNavigationTabs(order, hidden, rail ? 5 : 4), "settings"];
@@ -122,6 +141,7 @@ export function AndroidWorkspaceNavigation(props: {
         dark={themeAppearance === "dark"}
         textScale={scale}
         newEnabled={connectionState.hasConnections}
+        usageLines={usageLines}
         safeAreaTop={toolbar.paddingTop}
         safeAreaBottom={insets.bottom}
         headerHeight={toolbar.height}

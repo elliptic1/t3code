@@ -298,6 +298,11 @@ const decodeInstalledPlugin = Schema.decodeUnknownOption(
     projectPath: Schema.optional(Schema.NonEmptyString),
   }),
 );
+type InstalledPluginRecord = {
+  readonly scope: "user" | "project" | "local" | "managed";
+  readonly installPath: string;
+  readonly projectPath?: string | undefined;
+};
 const PluginManifest = Schema.fromJsonString(
   Schema.Struct({
     name: Schema.optional(Schema.NonEmptyString),
@@ -338,29 +343,65 @@ const discoverPluginSkillRoots = Effect.fn("discoverPluginSkillRoots")(function*
       : yield* fileSystem.realPath(cwd).pipe(Effect.orElseSucceed(() => path.resolve(cwd)));
   const repositoryRoot =
     workspace === undefined ? undefined : yield* findPluginRepositoryRoot(workspace);
+  const lexicalCwd = cwd === undefined ? undefined : path.resolve(cwd);
+  const lexicalRepositoryRoot =
+    lexicalCwd === undefined ? undefined : yield* findRepositoryRoot(lexicalCwd);
 
   for (const [key, entries] of Object.entries(installed.plugins).sort()) {
     if (enabledPlugins.get(key) !== true) continue;
-    const applicable = yield* Effect.filter(
-      entries.flatMap((entry) => Option.toArray(decodeInstalledPlugin(entry))),
-      (record) =>
-        Effect.gen(function* () {
-          if (record.scope === "user" || record.scope === "managed") return true;
-          if (record.projectPath === undefined || workspace === undefined) return false;
-          if (path.resolve(record.projectPath) === workspace) return true;
-          return (
-            repositoryRoot !== undefined &&
-            (yield* findPluginRepositoryRoot(record.projectPath)) === repositoryRoot
-          );
-        }),
-    );
-    // The native loader keeps registry order, preferring the first install that exists.
-    const existing = yield* Effect.findFirst(applicable, (record) =>
+    const applicable: Array<{ readonly record: InstalledPluginRecord; readonly priority: number }> =
+      [];
+    for (const entry of entries) {
+      const record = Option.getOrUndefined(decodeInstalledPlugin(entry));
+      if (record === undefined) continue;
+      if (record.scope === "user" || record.scope === "managed") {
+        applicable.push({ record, priority: 4 });
+        continue;
+      }
+      if (record.projectPath === undefined || workspace === undefined) continue;
+      const projectPath = path.resolve(record.projectPath);
+      const projectPathIsSymlink = yield* fileSystem.readLink(projectPath).pipe(
+        Effect.as(true),
+        Effect.orElseSucceed(() => false),
+      );
+      if (projectPath === lexicalCwd && !projectPathIsSymlink) {
+        applicable.push({ record, priority: 0 });
+        continue;
+      }
+      if (projectPath === lexicalRepositoryRoot && !projectPathIsSymlink) {
+        applicable.push({ record, priority: 1 });
+        continue;
+      }
+      const canonicalProjectPath = yield* fileSystem
+        .realPath(projectPath)
+        .pipe(Effect.orElseSucceed(() => projectPath));
+      const projectRoot = yield* findPluginRepositoryRoot(canonicalProjectPath);
+      const projectRootReal =
+        projectRoot === undefined
+          ? undefined
+          : yield* fileSystem.realPath(projectRoot).pipe(Effect.orElseSucceed(() => projectRoot));
+      const repositoryRootReal =
+        repositoryRoot === undefined
+          ? undefined
+          : yield* fileSystem
+              .realPath(repositoryRoot)
+              .pipe(Effect.orElseSucceed(() => repositoryRoot));
+      if (
+        repositoryRoot !== undefined &&
+        (projectRoot === repositoryRoot || projectRootReal === repositoryRootReal)
+      ) {
+        applicable.push({ record, priority: projectPathIsSymlink ? 3 : 2 });
+      }
+    }
+    // Exact workspace and repository installs win over global installs and aliases;
+    // within each class, preserve the native registry's install order.
+    applicable.sort((left, right) => left.priority - right.priority);
+    const existing = yield* Effect.findFirst(applicable, ({ record }) =>
       fileSystem
         .exists(path.resolve(cwd ?? ".", record.installPath))
         .pipe(Effect.orElseSucceed(() => false)),
     );
-    const install = Option.getOrElse(existing, () => applicable[0]);
+    const install = Option.getOrElse(existing, () => applicable[0])?.record;
     if (!install) continue;
     const scope = install.scope === "user" || install.scope === "managed" ? "user" : "project";
     const installPath = path.resolve(cwd ?? ".", install.installPath);

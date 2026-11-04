@@ -1,3 +1,4 @@
+import { clientRpcRequiredScopes } from "@t3tools/contracts";
 import {
   AuthEnvironmentMaintainScope,
   AuthDiagnosticsReadScope,
@@ -5,6 +6,7 @@ import {
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
   DEFAULT_SERVER_SETTINGS,
+  ORCHESTRATION_V2_WS_METHODS,
   ProviderDriverKind,
   ProviderInstanceId,
   SecretProviderId,
@@ -31,8 +33,42 @@ import {
 import * as RpcAuthorization from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
+  it("authorizes artifact metadata, mutations and bytes separately", () => {
+    for (const method of [WS_METHODS.artifactsList, WS_METHODS.artifactsSubscribe])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    for (const method of [
+      WS_METHODS.artifactsRename,
+      WS_METHODS.artifactsDelete,
+      WS_METHODS.artifactsCreateUploadUrl,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.artifactsCreateDownloadUrl)).toBe(
+      AuthFilesystemReadScope,
+    );
+  });
   it("declares exactly one scope for every RPC in the server group", () => {
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
+  });
+
+  it("protects shared voice transcripts with operate access on client and server", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.serverSyncVoiceHistory)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(clientRpcRequiredScopes(WS_METHODS.serverSyncVoiceHistory, { lines: [] })).toEqual([
+      AuthOrchestrationOperateScope,
+    ]);
+  });
+
+  it("requires operate access to stop a workflow", () => {
+    expect(requiredScopeForRpcMethod(ORCHESTRATION_V2_WS_METHODS.stopWorkflow)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+  });
+
+  it("authorizes background policy reporting and observation deliberately", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.serverReportClientActivity)).toBe(
+      AuthOrchestrationReadScope,
+    );
   });
 
   it("keeps webhook delivery logs, which hold request bodies, behind operate scope", () => {

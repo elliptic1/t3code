@@ -62,6 +62,7 @@ import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
+import { SOURCE_UPDATE_TOOLTIP, useSourceUpdate } from "../useSourceUpdate";
 import { managedTelemetryOffMessage, usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import {
   getCustomModelOptionsByInstance,
@@ -149,6 +150,7 @@ function AboutVersionSection() {
   const updateState = useDesktopUpdateState();
   const [switchChannel, setSwitchChannel] = useState<DesktopUpdateChannel | null>(null);
   const [isUpdateActionPending, setIsUpdateActionPending] = useState(false);
+  const sourceUpdate = useSourceUpdate(updateState);
   const { environments } = useEnvironments();
   const sessionStates = useAtomValue(
     environmentSessionStatesAtom(
@@ -192,6 +194,13 @@ function AboutVersionSection() {
     if (!bridge) return;
 
     const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
+
+    if (sourceUpdate.available) {
+      if (isUpdateActionPending) return;
+      setIsUpdateActionPending(true);
+      void sourceUpdate.start().finally(() => setIsUpdateActionPending(false));
+      return;
+    }
 
     if (action === "download") {
       void bridge.downloadUpdate().catch((error: unknown) => {
@@ -275,10 +284,11 @@ function AboutVersionSection() {
   };
 
   const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
-  const buttonTooltip = updateState ? getDesktopUpdateButtonTooltip(updateState) : null;
+  const buttonTooltip =
+    updateState && !sourceUpdate.available ? getDesktopUpdateButtonTooltip(updateState) : null;
   const buttonDisabled =
     action === "none"
-      ? !canCheckForUpdate(updateState)
+      ? !canCheckForUpdate(updateState) && !sourceUpdate.available
       : isDesktopUpdateButtonDisabled(updateState);
 
   const actionLabel: Record<string, string> = { download: "Download", install: "Install" };
@@ -288,10 +298,12 @@ function AboutVersionSection() {
     // Off its track, "up to date" only means no switch is pending; Review moves it.
     ...(appOffTrack ? {} : { "up-to-date": "Up to Date" }),
   };
-  const buttonLabel =
-    actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? "Check for Updates";
-  const description =
-    action === "download" || action === "install"
+  const buttonLabel = sourceUpdate.available
+    ? "Update from Source"
+    : (actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? "Check for Updates");
+  const description = sourceUpdate.available
+    ? SOURCE_UPDATE_TOOLTIP.detail
+    : action === "download" || action === "install"
       ? "Update available."
       : (getDesktopUpdateDisabledReason(updateState, updatesDenial) ??
         "Current version of the application.");

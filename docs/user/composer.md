@@ -30,6 +30,20 @@ at the end, leave the block. **Backspace** at the start of a code block turns it
 back into plain lines. Choose the language in a code block's corner to change
 it. Very large code blocks are shown without syntax highlighting.
 
+## Dictate a draft
+
+Use the microphone beside Send on macOS desktop, supported iPhones and iPads,
+or Android devices with a speech-recognition app installed. Dictation inserts
+text at the cursor or replaces your selection; review the draft and press Send
+when ready. You can dictate into a message that already contains text.
+
+On macOS, enable Dictation in System Settings → Keyboard. Stop using the system
+Dictation controls. On iOS, finish with the checkmark or cancel the recording;
+on-device transcription requires a supported device with iOS 26 or later.
+Android opens the installed speech-recognition app's dialog; finish or cancel
+there. Language support, offline availability, and audio processing on Android
+depend on that app.
+
 ## Attach files
 
 Attach up to 100 files per message. Each image can be up to 10 MiB, with at most
@@ -45,8 +59,9 @@ before an upload finishes requires you to attach that file again.
 
 You can drag or paste images into the web or desktop composer. HEIC and HEIF
 photos are converted to JPEG there and when selected from the mobile photo
-library; photos over the image limit are also resized to fit. On mobile, you can
-also send files to T3 Code through another app's system share sheet.
+library; photos over the image limit are also resized to fit. On mobile, choose
+**Take Photo** from the composer's **+** menu to capture and attach a photo. You
+can also send files to T3 Code through another app's system share sheet.
 On Android, you can also drag images from another app into the message input
 in split screen.
 
@@ -76,9 +91,17 @@ start of the composer to edit the most recently queued message. Change
 `thread.editQueuedMessage` to use another shortcut.
 
 Mobile has the same choice under **Settings → Chat**. While a turn is
-running the send button shows which action it will take. Long-press it to use the
-other action for a single message, or hold `Cmd` while sending from a hardware
-keyboard. The button only offers Steer when the running agent supports it.
+running the send button shows which action it will take. Hold `Cmd` while sending
+from a hardware keyboard to use the other action.
+
+On web, desktop, and mobile, press and hold the send button while an agent is
+working to choose **Queue**, **Steer now**, or **Start parallel agent**. On web and
+desktop, right-click the button or focus it and press the Down arrow to open the
+same menu. Steering requires an active turn that supports it. A parallel agent
+works in the same workspace while the foreground agent continues, and reports
+its result back to this thread. If the turn ends before the parallel task can
+start, the message returns to your draft. Update the connected T3 Code server
+if the parallel action is unavailable.
 
 ## Queue messages offline on mobile
 
@@ -175,6 +198,73 @@ stash menu when there are several.
 Stashes containing uploaded files must be restored in their original environment.
 Those files are retained for 24 hours. After an upload expires, restore the prompt
 and use **Attach again** or remove the missing file before sending.
+
+## Voice conversation
+
+In **Settings → Integrations → Voice conversation**, select an OpenAI, Grok, or
+local/custom provider, configure its model and credentials, and enable **Talk to T3**.
+Each provider saves its own API key, model, voice, and connection settings. Select
+a provider to restore its setup; on mobile, tapping a provider also saves your
+current edits. OpenAI defaults to WebRTC, while Grok uses WebSocket. Changing
+OpenAI’s connection method also updates its endpoint automatically.
+Use the app's microphone button to start a conversation. You can create projects,
+open or message threads, settle or unsettle them, archive or restore them, ask for
+progress, and interrupt an agent. New errors and requests for attention are announced
+while connected. Existing agent permissions still apply; approvals stay in the UI.
+
+Ask the voice assistant to remember a role or preference, such as “Act as the COO of my company.” She saves it for future sessions in the connected environment. You can ask her to change or forget it, or review and edit **Saved instructions** in Voice conversation settings. These instructions are shared across devices connected to that environment.
+
+A conversation controls the environment shown in its panel. On web and desktop,
+switching environments ends it; on mobile, end the conversation before switching.
+Mute pauses microphone input; **End** closes the connection and releases the microphone.
+Audio and requested project/thread context are sent to your configured provider.
+Provider API usage is billed separately from coding-agent subscriptions. The
+recent voice transcript is saved on the connected server. New conversations on
+web, desktop, and mobile use that history, so you can end on one device and continue
+on another connected to the same environment. Wait for **Ended** before switching
+devices; a save error means the latest words have not reached the server. **Start
+fresh** clears this shared voice history for the environment.
+
+To talk without a voice provider or API key, set **Conversation engine** to
+**Coding agent**. Your browser transcribes what you say and reads replies aloud, and
+a coding agent on your existing subscription answers from a thread named
+**Talk to T3**, using that project's default model. Pick a fast model there; each
+reply takes a full agent turn, and the microphone pauses while the agent thinks and
+speaks. This engine needs a browser with built-in speech recognition (Chrome, Edge,
+or Safari), which may send audio to the browser vendor. It is not available in the
+desktop or mobile apps yet.
+
+Custom servers must implement the selected OpenAI- or xAI-compatible realtime
+protocol, including function calls. WebRTC uses an SDP endpoint; WebSocket uses
+24 kHz mono PCM16 audio. Model, voice, optional transcription model, connection URL,
+and client-secret URL are configurable. A different native protocol needs an adapter.
+The API key stays in T3's server secret store. Authenticated providers must expose
+a client-secret endpoint returning a short-lived `value`; unauthenticated local
+servers can leave the API key and client-secret URL blank.
+
+The connection endpoint is reached from the device running the UI, while the
+client-secret endpoint is reached from the T3 server. `localhost` therefore refers
+to different machines when using T3 remotely. Remote browser microphone access
+requires a secure page; use HTTPS/WSS endpoints and allow the app's origin in your
+voice server's CORS configuration.
+On iOS and Android, use **Talk to T3** to start the same conversation. Configure the
+connection under **Settings → Voice conversation** for the connected environment.
+Voice ends if another app interrupts audio, or if you put the iOS app in the
+background. Finish dictation before starting a conversation. On Android, an active
+conversation continues when you lock the screen or switch apps. Tap the voice
+notification to return to T3 Code and end the conversation. For a local voice server,
+use an address reachable from the phone; `localhost` refers to the phone itself.
+
+On Wear OS, open T3 Code on your paired watch and tap **Talk**. The watch uses its
+microphone and speaker; your phone carries the live connection and uses its saved
+server pairing. You do not need to pair the watch with the server separately.
+Recent conversation history and saved instructions come from the same environment
+used on your Mac and phone. End the conversation and let it finish saving before
+switching devices. If the phone disconnects, completed utterances stay on the watch
+and sync when you retry. Keep T3 Code and Tailscale available on the phone for remote
+access to your Mac. When voice is enabled, Android keeps the connection runtime
+available in the background and shows a connection notification on the phone.
+Disable voice to stop that background connection.
 
 ## Voice input on iPhone
 

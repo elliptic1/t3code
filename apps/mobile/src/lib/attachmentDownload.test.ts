@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   shareFromSource: vi.fn(),
   available: vi.fn(),
   open: vi.fn(),
+  install: vi.fn(),
   uuid: vi.fn(),
 }));
 
@@ -61,7 +62,9 @@ vi.mock("expo-file-system", () => {
   return { Directory, File, Paths: { cache: "file:///cache" } };
 });
 
-vi.mock("expo", () => ({ requireNativeModule: () => ({ openFile: mocks.open }) }));
+vi.mock("expo", () => ({
+  requireNativeModule: () => ({ openFile: mocks.open, installAndOpenApk: mocks.install }),
+}));
 
 vi.mock("expo-sharing", () => ({
   isAvailableAsync: mocks.available,
@@ -74,6 +77,8 @@ vi.mock("./shareFileFromSource", () => ({ shareFileFromSource: mocks.shareFromSo
 import {
   downloadAndShareAttachment,
   downloadAttachmentForPreview,
+  installAndOpenApk,
+  isApkFile,
   shareLocalAttachment,
 } from "./attachmentDownload";
 import { isForegroundHandoffActive } from "./foreground-handoff";
@@ -342,5 +347,36 @@ describe("attachment preview files", () => {
     await task;
     expect(mocks.share).not.toHaveBeenCalled();
     expect(mocks.deleted).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("APK artifacts", () => {
+  const apk = { name: "App.APK", mimeType: "application/octet-stream" };
+  const apkInput = { url: "https://example.test/app.apk", attachment: apk };
+
+  it("recognizes APKs by name or MIME type", () => {
+    expect(isApkFile(apk)).toBe(true);
+    expect(
+      isApkFile({ name: "app", mimeType: "application/vnd.android.package-archive; x=1" }),
+    ).toBe(true);
+    expect(isApkFile(input.attachment)).toBe(false);
+  });
+
+  it("surfaces an install failure and cleans up", async () => {
+    mocks.install.mockResolvedValue("Signature mismatch");
+    await expect(
+      installAndOpenApk({ ...apkInput, signal: new AbortController().signal }),
+    ).rejects.toThrow("Signature mismatch");
+    expect(mocks.deleted).toHaveBeenCalledOnce();
+  });
+
+  it("stops waiting when cancelled during a confirmation that never reports back", async () => {
+    mocks.install.mockReturnValue(new Promise(() => {}));
+    const controller = new AbortController();
+    const pending = installAndOpenApk({ ...apkInput, signal: controller.signal });
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    controller.abort();
+    await expect(pending).resolves.toBeUndefined();
+    expect(isForegroundHandoffActive()).toBe(false);
   });
 });

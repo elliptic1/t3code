@@ -77,6 +77,10 @@ The most common defect in this repo is a change that works on the path you teste
 
 ## Dev servers
 
+- After every requested mobile app change, finish the implementation, run focused checks, make a fresh build, and install that build onto Todd's physical phone before calling the task complete. Building and installing onto the phone are part of the authorized workflow; do not ask for confirmation again. Preserve the installed app's identity, signing, connections, and user data; update it in place rather than uninstalling it. Confirm installation succeeded and report any build or device-access blocker explicitly. A simulator build or a Metro refresh alone does not satisfy this requirement.
+
+- After desktop changes, always make a fresh macOS arm64 fork build with `bash scripts/fork-build.sh`. Todd uses `/Applications/T3 Code (Fork).app`, branded **T3 Code (Fork Nightly)**, with bundle ID `com.t3tools.t3code.fork`, Electron profile `t3code-fork`, and T3 home `~/.t3-fork`. Preserve that identity when installing updates; an Alpha build updates a different app.
+
 - `vp i` installs. Worktrees get this from the t3.json setup script; if module resolution looks broken, it probably did not run.
 - Setup runs in the background. While `.t3/setup-running` names a live PID, wait for it and do not run `vp i`. It ends with `.t3/setup-done` or `.t3/setup-failed` (with the error tail). With no marker at all, setup never ran here, so run `vp i` yourself.
 - `vp run dev` starts server and web. In a worktree, state defaults to that worktree's gitignored `.t3`, which deliberately outranks an ambient `T3CODE_HOME` so you cannot land on shared state by accident. An explicit `--home-dir` still wins.
@@ -139,7 +143,7 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 
 - Real agent turns cost money. To watch a turn stream through the pipeline and UI, use the free `Replay (dev)` provider that `vp run dev` registers; [test-t3-app](.agents/skills/test-t3-app/SKILL.md) shows how to start one. Use a real provider only when the change depends on that provider's behavior, and then pick its cheapest model, such as Haiku for Claude or Luna for Codex.
 
-For mobile verification, a missing or outdated native client is an install step, not a blocker. Run `vp run mobile:install <ios|android> [device-id]` on the device host before starting Metro; it targets the only booted simulator or connected Android device when the id is omitted. It installs the dev client for this checkout's native fingerprint from the shared cache in seconds and builds only when no machine has built it yet, so prefer it over `expo run:*`, `xcodebuild`, or `gradlew`, which rebuild from scratch. Its stdout is one JSON line; build output goes to the log it names. See `test-t3-mobile` for the full workflow.
+For mobile verification, a missing or outdated native client is an install step, not a blocker. Run `vp run mobile:install android [device-id]` on the device host before starting Metro; it targets the only booted simulator or connected Android device when the id is omitted. It installs the dev client for this checkout's native fingerprint from the shared cache in seconds and builds only when no machine has built it yet, so prefer it over `expo run:*`, `xcodebuild`, or `gradlew`, which rebuild from scratch. Its stdout is one JSON line; build output goes to the log it names. See `test-t3-mobile` for the full workflow.
 
 ## Evals
 

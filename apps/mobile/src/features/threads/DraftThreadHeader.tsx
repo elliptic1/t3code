@@ -49,6 +49,7 @@ export function DraftThreadHeader(props: {
   return (
     <ThreadHeader
       draft
+      settled={false}
       title="New thread"
       subtitle=""
       headerColor={themeVariables["--color-header"]}

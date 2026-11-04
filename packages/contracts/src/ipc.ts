@@ -1103,6 +1103,10 @@ export interface DesktopBridge {
   checkSystemPermission: (pane: SystemSettingsPane) => Promise<boolean>;
   probeRemoteEditors: () => Promise<readonly EditorId[]>;
   pasteAsText: () => Promise<void>;
+  /** Present only on macOS desktop; invokes system Dictation in the focused editor. */
+  startDictation?: () => Promise<boolean>;
+  /** Present on macOS desktop shells that can stop system Dictation. */
+  stopDictation?: () => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   onSnapShotEvent: (listener: (event: DesktopSnapShotEvent) => void) => () => void;
   onQuitShortcut: (listener: (event: QuitShortcutHintEvent) => void) => () => void;

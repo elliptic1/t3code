@@ -1,3 +1,7 @@
+import * as ArtifactRpc from "./artifacts/rpc.ts";
+import * as Workflows from "./workflows/WorkflowService.ts";
+import * as VoiceHistory from "./voice/history.ts";
+import { createVoiceSession } from "./voice/session.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -599,12 +603,21 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
+const CoreWsRpcGroup = ServerWsRpcGroup.omit(
+  WS_METHODS.artifactsList,
+  WS_METHODS.artifactsSubscribe,
+  WS_METHODS.artifactsPublish,
+  WS_METHODS.artifactsRename,
+  WS_METHODS.artifactsDelete,
+  WS_METHODS.artifactsCreateUploadUrl,
+  WS_METHODS.artifactsCreateDownloadUrl,
+);
 
 // RpcGroup.toLayer derives each handler's requirements by scanning every RPC in
 // the group, so its type cost grows with handlers × RPCs. Near 200 methods that
 // crosses TypeScript's instantiation limit and the layer's requirements degrade to
 // `any`, so the handlers are registered as two disjoint, smaller groups.
-type ServerWsRpc = RpcGroup.Rpcs<typeof ServerWsRpcGroup>;
+type ServerWsRpc = RpcGroup.Rpcs<typeof CoreWsRpcGroup>;
 const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
 type SplitWsRpc = Extract<
   ServerWsRpc,
@@ -614,7 +627,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
   SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
 const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
   !isSplitWsRpc(rpc);
-const serverWsRpcs = Array.from(ServerWsRpcGroup.requests.values());
+const serverWsRpcs = Array.from(CoreWsRpcGroup.requests.values());
 const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
 const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
 // Replaying each intervening event costs a shell refetch; past this gap a
@@ -1311,6 +1324,7 @@ export const layerWsRpc = (
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const workflows = yield* Workflows.WorkflowService;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
@@ -1377,6 +1391,7 @@ export const layerWsRpc = (
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
+      const voiceHistory = yield* VoiceHistory.VoiceHistory;
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const secretResolver = yield* SecretResolver.SecretResolver;
@@ -1909,7 +1924,7 @@ export const layerWsRpc = (
         return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const handlers = CoreWsRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -2179,6 +2194,11 @@ export const layerWsRpc = (
               Effect.andThen(subscribeOrchestrationV2Thread(input)),
             ),
           ),
+        [WS_METHODS.workflowsGet]: (input) => workflows.get(input.id, input.threadId),
+        [WS_METHODS.workflowsList]: (input) => workflows.list(input.threadId),
+        [WS_METHODS.workflowsSubscribe]: (input) => workflows.subscribe(input.threadId),
+        [WS_METHODS.workflowsCreate]: (input) => workflows.create(input),
+        [WS_METHODS.workflowsControl]: (input) => workflows.control(input),
         [ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput]: (input) =>
           Stream.unwrap(
             Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
@@ -2545,6 +2565,13 @@ export const layerWsRpc = (
           Effect.fnUntraced(function* (rule) {
             return yield* keybindings.removeKeybindingRule(rule);
           }),
+        [WS_METHODS.serverSyncVoiceHistory]: ({ lines, reset }) => voiceHistory.sync(lines, reset),
+        [WS_METHODS.serverCreateVoiceSession]: () =>
+          serverSettings.getSettings.pipe(
+            Effect.flatMap((settings) =>
+              createVoiceSession(settings.voiceConnection, fetch, settings.voiceInstructions),
+            ),
+          ),
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,
         [WS_METHODS.serverGetDatabaseStorage]: () => databaseStorage.status,
@@ -3402,7 +3429,10 @@ export const layer = Layer.unwrap(
           return httpEffect;
         }).pipe(
           Effect.provide(
-            layerWsRpc(session, clientAnalyticsProps, serverBrowser, reportProfiles).pipe(
+            Layer.merge(
+              ArtifactRpc.layer,
+              layerWsRpc(session, clientAnalyticsProps, serverBrowser, reportProfiles),
+            ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),

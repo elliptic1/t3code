@@ -1,4 +1,11 @@
-import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEventHandler,
+  type PointerEventHandler,
+} from "react";
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, Minimize2Icon, PlayIcon } from "lucide-react";
 import { CornerUpRight, ListPlus } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -15,6 +22,7 @@ import { composerFloatingLayerProps } from "./composerEventScope";
 import {
   alternateComposerDispatchAction,
   resolveComposerDispatchMode,
+  type ActiveTurnComposerAction,
 } from "@t3tools/client-runtime/state/composer-dispatch";
 
 interface PendingActionState {
@@ -33,6 +41,8 @@ interface ComposerPrimaryActionsProps {
   canInterrupt: boolean;
   followUpBehavior?: "queue" | "steer";
   canSteer?: boolean;
+  canStartParallelAgent?: boolean;
+  onSendAction?: (action: ActiveTurnComposerAction) => void;
   alternateShortcutLabel?: string | null;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
@@ -86,7 +96,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isRunning,
   canInterrupt,
   followUpBehavior = "steer",
-  canSteer = true,
+  canSteer = false,
+  canStartParallelAgent = false,
+  onSendAction,
   alternateShortcutLabel = null,
   showPlanFollowUpPrompt,
   promptHasText,
@@ -122,6 +134,38 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     }) === "queue";
   const alternateAction = alternateComposerDispatchAction(followUpBehavior);
   const isSendDisabled = !canOperateThread || sendDisabledReason !== null;
+  const sendAnchor = useRef<HTMLButtonElement>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdOrigin = useRef<{ x: number; y: number } | null>(null);
+  const suppressHoldClick = useRef(false);
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const offersSendMenu =
+    isRunning &&
+    !isEditingQueuedMessage &&
+    !pendingAction &&
+    !showPlanFollowUpPrompt &&
+    !isSendBusy &&
+    !isSendDisabled &&
+    !isEnvironmentUnavailable &&
+    hasSendableContent &&
+    onSendAction !== undefined;
+  const cancelHold = () => {
+    if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    holdOrigin.current = null;
+  };
+  if (!offersSendMenu && sendMenuOpen) setSendMenuOpen(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the press-and-hold timer when the send menu stops being offered
+  useEffect(() => {
+    if (!offersSendMenu && holdTimer.current !== null) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    return () => {
+      if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    };
+  }, [offersSendMenu]);
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
 
   const renderStopGenerationButton = (insidePendingAction: boolean) => (
@@ -270,13 +314,16 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       ? formatContextWindowTokens(compactBeforeSendTokens)
       : null;
   const compactsBeforeSend = compactTokens !== null && !keepFullHistory;
+  const compactsWithoutMessage = compactsBeforeSend && !hasSendableContent;
 
   const submitLabel = showResume
     ? "Resume thread"
     : isEditingQueuedMessage
       ? "Update queued message"
       : compactsBeforeSend
-        ? "Compact and send"
+        ? compactsWithoutMessage
+          ? "Compact context"
+          : "Compact and send"
         : isQueuing
           ? "Queue message"
           : isRunning
@@ -302,6 +349,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   const sendButton = (
     <button
+      ref={sendAnchor}
       type={showResume ? "button" : "submit"}
       className={cn(
         "relative isolate flex h-9 w-9 items-center justify-center overflow-hidden rounded-full shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:inset-shadow-control-highlight hover:scale-105 active:inset-shadow-control-pressed active:shadow-none disabled:pointer-events-none disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8 [&_svg]:pointer-events-none",
@@ -310,12 +358,65 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           : "bg-message-action text-message-action-foreground enabled:shadow-message-action/24 hover:bg-message-action-hover disabled:bg-foreground/12 disabled:text-muted-foreground",
       )}
       {...pointerFocusProps}
-      onClick={showResume ? onResume : onSubmitMessage}
+      onPointerDown={(event) => {
+        if (preserveComposerFocusOnPointerDown) event.preventDefault();
+        suppressHoldClick.current = false;
+        cancelHold();
+        if (!offersSendMenu || event.button !== 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        holdOrigin.current = { x: event.clientX, y: event.clientY };
+        holdTimer.current = setTimeout(() => {
+          holdTimer.current = null;
+          suppressHoldClick.current = true;
+          setSendMenuOpen(true);
+        }, 500);
+      }}
+      onPointerMove={(event) => {
+        const origin = holdOrigin.current;
+        if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 8) {
+          suppressHoldClick.current = true;
+          cancelHold();
+        }
+      }}
+      onPointerUp={cancelHold}
+      onPointerCancel={() => {
+        suppressHoldClick.current = true;
+        cancelHold();
+      }}
+      onLostPointerCapture={cancelHold}
+      onContextMenu={(event) => {
+        if (!offersSendMenu) return;
+        event.preventDefault();
+        cancelHold();
+        suppressHoldClick.current = true;
+        setSendMenuOpen(true);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") suppressHoldClick.current = false;
+        if (
+          offersSendMenu &&
+          (event.key === "ArrowDown" || (event.shiftKey && event.key === "F10"))
+        ) {
+          event.preventDefault();
+          setSendMenuOpen(true);
+        }
+      }}
+      aria-haspopup={offersSendMenu ? "menu" : undefined}
+      aria-expanded={offersSendMenu ? sendMenuOpen : undefined}
+      onClick={(event) => {
+        if (suppressHoldClick.current) {
+          suppressHoldClick.current = false;
+          event.preventDefault();
+          return;
+        }
+        if (showResume) onResume?.();
+        else onSubmitMessage?.(event);
+      }}
       disabled={
         isSendBusy ||
         isSendDisabled ||
         isEnvironmentUnavailable ||
-        (!hasSendableContent && !showResume)
+        (!hasSendableContent && !showResume && !compactsBeforeSend)
       }
       aria-label={submitStatus ?? submitLabel}
     >
@@ -347,10 +448,33 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   );
 
   const submit = (
-    <Tooltip key="submit">
-      <TooltipTrigger render={<span className="inline-flex" />}>{sendButton}</TooltipTrigger>
-      <TooltipPopup>{submitTooltip}</TooltipPopup>
-    </Tooltip>
+    <Menu open={offersSendMenu && sendMenuOpen} onOpenChange={setSendMenuOpen}>
+      <Tooltip key="submit">
+        <TooltipTrigger render={<span className="inline-flex" />}>{sendButton}</TooltipTrigger>
+        <TooltipPopup>
+          {offersSendMenu ? `${submitTooltip}. Hold for more send options` : submitTooltip}
+        </TooltipPopup>
+      </Tooltip>
+      <MenuPopup anchor={sendAnchor} side="top" align="end" {...composerFloatingLayerProps}>
+        <MenuItem disabled={!offersSendMenu} onClick={() => onSendAction?.("queue")}>
+          Queue message
+        </MenuItem>
+        <MenuItem disabled={!offersSendMenu || !canSteer} onClick={() => onSendAction?.("steer")}>
+          Steer now
+        </MenuItem>
+        <MenuItem
+          disabled={!offersSendMenu || !canStartParallelAgent}
+          onClick={() => onSendAction?.("parallel")}
+        >
+          <div>
+            <div>Start parallel agent</div>
+            <div className="text-xs text-muted-foreground">
+              Same workspace; foreground continues
+            </div>
+          </div>
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
   );
   if (compactTokens === null) return submit;
 

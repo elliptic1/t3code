@@ -34,6 +34,8 @@ const providerSecretFields = new Map([
   ),
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
+/** Store key the realtime voice API key has always used; kept so saved keys survive. */
+const VOICE_CONNECTION_SECRET_NAME = "voice-connection-api-key";
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
@@ -150,6 +152,17 @@ export function mapSettingsSecrets(
     ]),
   ) as ServerSettings["usageLimitSources"];
 
+  const voiceKey = map({
+    secretName: VOICE_CONNECTION_SECRET_NAME,
+    kind: "field",
+    value: settings.voiceConnection.apiKey,
+    redacted: settings.voiceConnection.apiKey === SECRET_REDACTED,
+    sensitive: true,
+  });
+  const voiceConnection = {
+    ...settings.voiceConnection,
+    apiKey: voiceKey.redacted ? SECRET_REDACTED : voiceKey.value,
+  };
   const easDeviceHosts = settings.easDeviceHosts.map(
     (host) =>
       mapFields(
@@ -178,6 +191,7 @@ export function mapSettingsSecrets(
     providerInstances,
     sourceControlHosts,
     usageLimitSources,
+    voiceConnection,
     easDeviceHosts,
     simlockDeviceHosts,
   };

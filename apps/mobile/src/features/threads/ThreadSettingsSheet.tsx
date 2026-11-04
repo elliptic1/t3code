@@ -4,6 +4,12 @@ import {
 } from "@t3tools/client-runtime/model-traits";
 import { SheetHeader } from "../../components/ui/SheetHeader";
 import { Toolbar } from "../../components/ui/Toolbar";
+import type { OrchestrationV2ModelFallback } from "@t3tools/contracts";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import { Button } from "../../components/ui/Button";
+import { useEnvironmentScope } from "../../state/session";
+import { threadEnvironment } from "../../state/threads";
 import * as Dialog from "../../components/ui/Dialog";
 import { createV5StackNavigator as createNativeStackNavigator } from "../../native/createV5StackNavigator";
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
@@ -113,6 +119,11 @@ import {
 import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 import { useNativeMailSearchToolbar } from "../../native/use-native-mail-search-toolbar";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
+import {
+  configuredDefaultModelSelection,
+  defaultModelSettingsPatch,
+  modelSelectionMatchesDefault,
+} from "./model-default";
 import {
   compatibleRuntimeModeForChoices,
   runtimeModeChoicesForSupportedModes,
@@ -276,6 +287,8 @@ type ThreadSettingsSessionProps = {
   readonly lockedProviderInstanceId?: ProviderInstanceId;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
   readonly selectedModel: ModelSelection | null;
+  readonly modelFallback?: OrchestrationV2ModelFallback | null;
+  readonly onModelFallbackChange?: (policy: OrchestrationV2ModelFallback | null) => void;
   readonly prompt: string;
   readonly onPromptChange: (prompt: string) => void;
   readonly reportedModelSelection?: ModelSelection | null;
@@ -315,6 +328,12 @@ type ThreadSettingsSessionValue = {
   readonly providerExpansionOverrides: ReadonlySet<string>;
   readonly hasLegacyModels: boolean;
   readonly pendingModel: ModelOption | null;
+  readonly modelFallback: OrchestrationV2ModelFallback | null;
+  readonly onModelFallbackChange?: (policy: OrchestrationV2ModelFallback | null) => void;
+  readonly choosingFallback: boolean;
+  readonly toggleFallbackPicker: () => void;
+  readonly defaultModelSelection: ModelSelection | null;
+  readonly setDefaultModel: (option: ModelOption) => void;
   readonly providerFilter: string | null;
   readonly searchQuery: string;
   readonly showLegacy: boolean;
@@ -494,9 +513,39 @@ function ThreadSettingsSessionProvider(
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const displayedPrompt = pendingModel ? (pendingPrompt ?? props.prompt) : props.prompt;
 
+  const [choosingFallback, setChoosingFallback] = useState(false);
+  const toggleFallbackPicker = () => {
+    setChoosingFallback((value) => !value);
+    setPendingModel(null);
+  };
+  const appliedSelection = choosingFallback ? props.modelFallback?.fallback : props.selectedModel;
   const isApplied = (option: ModelOption) =>
-    option.selection.instanceId === props.selectedModel?.instanceId &&
-    option.selection.model === props.selectedModel.model;
+    option.selection.instanceId === appliedSelection?.instanceId &&
+    option.selection.model === appliedSelection.model;
+  const defaultModelSelection = configuredDefaultModelSelection(
+    settings ?? DEFAULT_SERVER_SETTINGS,
+    props.projectId,
+  );
+  const setDefaultModel = async (option: ModelOption) => {
+    if (!props.environmentId) return;
+    const currentSettings = registry
+      .get(environmentServerConfigsAtom)
+      .get(props.environmentId)?.settings;
+    if (!currentSettings) return;
+    const result = await saveSettings({
+      environmentId: props.environmentId,
+      input: {
+        patch: defaultModelSettingsPatch(currentSettings, props.projectId, option.selection),
+      },
+    });
+    if (AsyncResult.isFailure(result)) {
+      const cause = squashAtomCommandFailure(result);
+      Dialog.alert(
+        "Could not set the default model",
+        cause instanceof Error ? cause.message : "Try again when the server is connected.",
+      );
+    }
+  };
   const isDisplayed = (option: ModelOption) =>
     pendingModel ? option.key === pendingModel.key : isApplied(option);
 
@@ -535,7 +584,19 @@ function ThreadSettingsSessionProvider(
         return false;
       }
       void Haptics.selectionAsync();
-      props.onSelectModel(pendingModel);
+      if (choosingFallback && props.onModelFallbackChange) {
+        const preferred = props.modelFallback?.preferred ?? props.selectedModel;
+        if (!preferred || preferred.instanceId === pendingModel.selection.instanceId) {
+          Dialog.alert(
+            "Choose another provider account",
+            "The fallback needs a separate usage allowance.",
+          );
+          return false;
+        }
+        props.onModelFallbackChange({ preferred, fallback: pendingModel.selection });
+      } else {
+        props.onSelectModel(pendingModel);
+      }
       if (pendingPrompt !== null && pendingPrompt !== props.prompt) {
         props.onPromptChange(pendingPrompt);
       }
@@ -626,6 +687,12 @@ function ThreadSettingsSessionProvider(
     providerExpansionOverrides,
     hasLegacyModels,
     pendingModel,
+    modelFallback: props.modelFallback ?? null,
+    ...(props.onModelFallbackChange ? { onModelFallbackChange: props.onModelFallbackChange } : {}),
+    choosingFallback,
+    toggleFallbackPicker,
+    defaultModelSelection,
+    setDefaultModel,
     providerFilter,
     searchQuery,
     showLegacy: showLegacyToggle,
@@ -707,6 +774,11 @@ function ThreadSettingsModelListRow(props: {
       isFirst={props.isFirst}
       isLast={props.isLast}
       onPress={onPress}
+      onLongPressDefault={() => session.setDefaultModel(props.option)}
+      isPreferredDefault={modelSelectionMatchesDefault(
+        props.option.selection,
+        session.defaultModelSelection,
+      )}
       isFavorite={session.favoriteKeys.has(props.option.key)}
       favoritesLoaded={session.favoritesLoaded}
       onToggleFavorite={() => session.toggleFavorite(props.option)}
@@ -955,7 +1027,7 @@ function ThreadSettingsMainContent(props: {
     session.providerFilter !== null || session.searchQuery.trim().length > 0;
   const listItems = [
     ...(catalogItems.length === 0 ? ([{ kind: "empty", key: "empty" }] as const) : catalogItems),
-    { kind: "options", key: "options" },
+    ...(!session.choosingFallback ? ([{ kind: "options", key: "options" }] as const) : []),
   ] satisfies ReadonlyArray<ThreadSettingsCatalogItem>;
   const renderCatalogItem = (itemProps: LegendListRenderItemProps<ThreadSettingsCatalogItem>) => {
     const item = itemProps.item;
@@ -1030,6 +1102,39 @@ function ThreadSettingsMainContent(props: {
       maintainVisibleContentPosition={THREAD_SETTINGS_MAINTAIN_VISIBLE_CONTENT_POSITION}
       ListHeaderComponent={
         <>
+          <Text className="mx-8 mb-2 mt-3 text-xs text-foreground-muted">
+            Tap a model to select it. Long press to set the default for new threads.
+          </Text>
+          {session.onModelFallbackChange ? (
+            <View className="mx-4 my-2 gap-2">
+              <Text className="text-sm text-muted-foreground">
+                {session.choosingFallback
+                  ? "Choose the model to use when your preferred provider hits its usage limit."
+                  : session.modelFallback
+                    ? `Preferred: ${session.modelFallback.preferred.model} · Fallback: ${session.modelFallback.fallback.model}`
+                    : "Automatically continue with another model when usage runs out."}
+              </Text>
+              <Button
+                label={
+                  session.choosingFallback
+                    ? "Cancel fallback selection"
+                    : session.modelFallback
+                      ? "Change fallback"
+                      : "Set fallback model"
+                }
+                onPress={session.toggleFallbackPicker}
+              />
+              {session.modelFallback ? (
+                <Button
+                  label="Disable auto switching"
+                  onPress={() => {
+                    session.onModelFallbackChange?.(null);
+                    if (session.choosingFallback) session.toggleFallbackPicker();
+                  }}
+                />
+              ) : null}
+            </View>
+          ) : null}
           {Platform.OS === "android" ? (
             <View className="px-4 pb-2 pt-3">
               <View
@@ -1521,6 +1626,11 @@ export function ExistingThreadSettingsRouteScreen({
   // A queued edit can end while the sheet is open; the prompt then belongs to the thread's draft.
   const draftKey = activeComposerDraftKey(threadKey, route.params.draftKey, queuedRunEdit);
   const prompt = useComposerDraft(draftKey).text;
+  const updateMetadata = useAtomCommand(threadEnvironment.updateMetadata);
+  const canConfigureFallback = useEnvironmentScope(
+    route.params.environmentId,
+    AuthOrchestrationOperateScope,
+  );
 
   if (!selectedThread) {
     return <View className="flex-1 bg-sheet" />;
@@ -1548,6 +1658,10 @@ export function ExistingThreadSettingsRouteScreen({
     ) ?? null;
   const updateModelSelection = (selection: ModelSelection) =>
     updateThreadDraftModelSelection(threadKey, selection, serverConfig?.providers ?? []);
+  const fallbackConfigurable =
+    canConfigureFallback &&
+    lockedProviderInstanceId === undefined &&
+    serverConfig?.environment.capabilities.modelFallback === true;
 
   return (
     <ThreadSettingsPickerScreen
@@ -1557,6 +1671,17 @@ export function ExistingThreadSettingsRouteScreen({
       {...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {})}
       providerGroups={groupByProvider(modelOptions)}
       selectedModel={modelSelection}
+      modelFallback={selectedThread.modelFallback ?? null}
+      {...(fallbackConfigurable
+        ? {
+            onModelFallbackChange: (modelFallback: OrchestrationV2ModelFallback | null) => {
+              void updateMetadata({
+                environmentId: selectedThread.environmentId,
+                input: { threadId: selectedThread.id, modelFallback },
+              });
+            },
+          }
+        : {})}
       prompt={prompt}
       onPromptChange={(text) => setComposerDraftText(draftKey, text)}
       reportedModelSelection={reportedModelSelection}

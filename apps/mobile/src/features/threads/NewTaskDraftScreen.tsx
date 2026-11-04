@@ -44,7 +44,6 @@ import { composerContextImportsAtom } from "../../state/use-composer-drafts";
 import { abortComposerDraftOperations } from "../../state/composerDraftOperations";
 import { composerContextSendBlockReason } from "../../lib/composerContext";
 import { ComposerInlineControl } from "../../components/ComposerToolbar";
-
 import {
   composerAttachmentUploadBlockReason,
   composerAttachmentsStillUploading,
@@ -964,6 +963,7 @@ export function NewTaskDraftScreen(props: {
         composerDraftKey={flow.draftKey}
         followUpBehavior="queue"
         canSteerActiveTurn={false}
+        canStartParallelAgent={false}
         isSavingQueuedEdit={false}
         onCancelQueuedRunEdit={() => {}}
         onRemoveQueuedEditAttachment={() => {}}

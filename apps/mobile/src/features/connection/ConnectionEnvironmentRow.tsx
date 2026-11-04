@@ -1,12 +1,18 @@
 import * as Dialog from "../../components/ui/Dialog";
 import { ConnectionTraceId } from "./ConnectionTraceId";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { hasSavedBearerRoute, hostFreezeNotice } from "@t3tools/client-runtime/connection";
+import {
+  connectionDiagnostics,
+  hasSavedBearerRoute,
+  hostFreezeNotice,
+} from "@t3tools/client-runtime/connection";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import { type EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
+import * as Option from "effect/Option";
+import Constants from "expo-constants";
 import { useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
@@ -17,9 +23,11 @@ import { Button } from "../../components/ui/Button";
 import { IconButton } from "../../components/ui/IconButton";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
+import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+import { environmentCatalog } from "../../connection/catalog";
+import { useEnvironmentPresentation } from "../../state/presentation";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
 import { serverEnvironment } from "../../state/server";
-import { environmentPresentations } from "../../state/presentation";
 import { ConnectionDiagnosisDetails, useConnectionDiagnosis } from "./ConnectionDiagnosisDetails";
 import { ConnectionFormField } from "./ConnectionFormField";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
@@ -54,10 +62,28 @@ export function ConnectionEnvironmentRow(props: {
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(props.environment.environmentId),
   );
+  const { presentation } = useEnvironmentPresentation(props.environment.environmentId);
+  const supervisor = useAtomValue(environmentCatalog.stateAtom(props.environment.environmentId));
+  const [copiedError, setCopiedError] = useState<string | null>(null);
+  async function copyDiagnostics() {
+    if (presentation === null) return;
+    const didCopy = await tryCopyTextWithHaptic(
+      connectionDiagnostics({
+        environment: presentation,
+        state: Option.getOrNull(AsyncResult.value(supervisor)),
+        client: {
+          surface: "mobile",
+          version: Constants.expoConfig?.version ?? "unknown",
+          platform: `${Platform.OS} ${Platform.Version}`,
+        },
+        capturedAt: new Date().toISOString(),
+      }),
+      { target: "connection diagnostics" },
+    );
+    if (didCopy) setCopiedError(props.environment.connectionError);
+    else Dialog.alert("Could not copy diagnostics", "Please try again.");
+  }
   const unsupported = props.environment.connectionState === "unsupported";
-  const presentation = useAtomValue(
-    environmentPresentations.presentationAtom(props.environment.environmentId),
-  );
   const canRetry = presentation !== null && hasSavedBearerRoute(presentation.entry);
   const { diagnosis, state: connectionState } = useConnectionDiagnosis(
     props.environment.environmentId,
@@ -195,6 +221,40 @@ export function ConnectionEnvironmentRow(props: {
           />
         </Pressable>
       </View>
+
+      {props.environment.connectionError !== null ? (
+        <View className="px-4 pb-3">
+          <Button
+            label={
+              copiedError === props.environment.connectionError
+                ? "Diagnostics copied"
+                : "Copy error and context"
+            }
+            tone="secondary"
+            disabled={presentation === null}
+            onPress={() => {
+              void copyDiagnostics();
+            }}
+          />
+        </View>
+      ) : null}
+
+      {props.environment.connectionError !== null ? (
+        <View className="px-4 pb-3">
+          <Button
+            label={
+              copiedError === props.environment.connectionError
+                ? "Diagnostics copied"
+                : "Copy error and context"
+            }
+            tone="secondary"
+            disabled={presentation === null}
+            onPress={() => {
+              void copyDiagnostics();
+            }}
+          />
+        </View>
+      ) : null}
 
       {props.expanded ? (
         <Animated.View

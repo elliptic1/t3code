@@ -35,6 +35,53 @@ describe("resolvePreviewMiniPlayerSourceSize", () => {
 });
 
 describe("resolvePreviewMiniPlayerFrame", () => {
+  it("reserves a header without changing the page aspect ratio", () => {
+    expect(
+      resolvePreviewMiniPlayerFrame({
+        width: 480,
+        position: { x: 100, y: 80 },
+        source,
+        container,
+        headerHeight: 36,
+      }),
+    ).toEqual({ x: 100, y: 80, width: 480, height: 336 });
+  });
+
+  it("includes the header when fitting above the composer", () => {
+    const frame = resolvePreviewMiniPlayerFrame({
+      width: 800,
+      position: { x: 100, y: 80 },
+      source,
+      container,
+      obstacles: tallComposer,
+      headerHeight: 36,
+    });
+    expect(frame).toEqual({ x: 100, y: gap, width: 544, height: 376 });
+  });
+
+  it("opens at the source aspect ratio in the top-right corner", () => {
+    expect(
+      resolvePreviewMiniPlayerFrame({ width: null, position: null, source, container }),
+    ).toEqual({ x: 668, y: PREVIEW_MINI_PLAYER_EDGE_GAP, width: 320, height: 200 });
+  });
+
+  it("keeps a tall source at the minimum width instead of the default box", () => {
+    expect(
+      resolvePreviewMiniPlayerFrame({
+        width: null,
+        position: null,
+        source: { width: 390, height: 844 },
+        container,
+      }),
+    ).toEqual({ x: 748, y: PREVIEW_MINI_PLAYER_EDGE_GAP, width: 240, height: 519 });
+  });
+
+  it("derives height from the stored width", () => {
+    expect(
+      resolvePreviewMiniPlayerFrame({ width: 480, position: { x: 100, y: 80 }, source, container }),
+    ).toEqual({ x: 100, y: 80, width: 480, height: 300 });
+  });
+
   it("shrinks to the space above the composer without losing the stored width", () => {
     const frame = resolvePreviewMiniPlayerFrame({
       width: 800,
@@ -71,6 +118,72 @@ describe("resolvePreviewMiniPlayerFrame", () => {
 
 describe("resizePreviewMiniPlayer", () => {
   const start = { x: 300, y: 200, width: 320, height: 200 };
+
+  it.each(["north", "east", "southeast"] as const)(
+    "does not jump on a zero-distance %s resize with a header",
+    (direction) => {
+      const browser = { ...start, height: 236 };
+      expect(
+        resizePreviewMiniPlayer({
+          start: browser,
+          direction,
+          delta: { x: 0, y: 0 },
+          source,
+          container,
+          headerHeight: 36,
+        }),
+      ).toEqual(browser);
+    },
+  );
+
+  it("keeps the header fixed and the bottom anchored when resizing upward", () => {
+    expect(
+      resizePreviewMiniPlayer({
+        start: { ...start, height: 236 },
+        direction: "north",
+        delta: { x: 0, y: -100 },
+        source,
+        container,
+        headerHeight: 36,
+      }),
+    ).toEqual({ x: 300, y: 100, width: 480, height: 336 });
+  });
+
+  it("keeps the aspect ratio when dragging the right edge", () => {
+    expect(
+      resizePreviewMiniPlayer({
+        start,
+        direction: "east",
+        delta: { x: 160, y: 0 },
+        source,
+        container,
+      }),
+    ).toEqual({ x: 300, y: 200, width: 480, height: 300 });
+  });
+
+  it("anchors the right edge when dragging from the left", () => {
+    expect(
+      resizePreviewMiniPlayer({
+        start,
+        direction: "west",
+        delta: { x: -160, y: 0 },
+        source,
+        container,
+      }),
+    ).toEqual({ x: 140, y: 200, width: 480, height: 300 });
+  });
+
+  it("anchors the bottom edge when dragging the top up", () => {
+    expect(
+      resizePreviewMiniPlayer({
+        start,
+        direction: "north",
+        delta: { x: 0, y: -100 },
+        source,
+        container,
+      }),
+    ).toEqual({ x: 300, y: 100, width: 480, height: 300 });
+  });
 
   it("does not jump when corner motion crosses opposing dominant axes", () => {
     const frames = [-99, -100, -101].map((y) =>

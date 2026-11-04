@@ -71,6 +71,7 @@ import {
   RelayEnvironmentMintResponse,
   RelayLinkProofRequest,
 } from "./relay.ts";
+import { VoiceSessionConnection } from "./voice.ts";
 
 const OptionalBearerHeaders = Schema.Struct({
   authorization: Schema.optionalKey(Schema.String),
@@ -721,6 +722,17 @@ class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestration")
       query: EnvironmentOrchestrationThreadHistoryQuery,
       success: OrchestrationV2ThreadHistoryPage,
       error: EnvironmentOrchestrationThreadHistoryErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("createVoiceSession", "/api/orchestration/voice-session", {
+      headers: OrchestrationProtocolHeaders,
+      success: VoiceSessionConnection,
+      error: [
+        EnvironmentScopeRequiredError,
+        EnvironmentHttpBadRequestError,
+        EnvironmentInternalError,
+      ],
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 

@@ -1,3 +1,4 @@
+import { modelFallbackContinuation, resolveModelFallback } from "./ModelFallback.ts";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -1588,7 +1589,30 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       },
     ) {
       if (!(yield* projectionStore.canStartQueuedRun(threadId))) return;
-      const projection = yield* readCommandProjection(threadId);
+      let projection = yield* readCommandProjection(threadId);
+      const requestedQueuedRun =
+        options?.queuedRunId === undefined
+          ? undefined
+          : projection.runs.find(
+              (run) => run.id === options.queuedRunId && run.status === "queued",
+            );
+      if (options?.queuedRunId !== undefined && requestedQueuedRun === undefined) return;
+      const heldQueuedRuns = projection.runs.filter(
+        (run) => run.status === "queued" && run.queueHeld === true,
+      );
+      if (heldQueuedRuns.length > 0 && options?.queuedRunId !== undefined) {
+        const now = yield* DateTime.now;
+        yield* writeSystemEvents(
+          heldQueuedRuns.map((run) => ({
+            type: "run.updated" as const,
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, queueHeld: false },
+          })),
+        );
+        projection = yield* readCommandProjection(threadId);
+      }
       if (
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
@@ -1610,15 +1634,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         (candidate) => candidate.id === storedQueuedRun.userMessageId,
       );
       const modelSelection = queuedRunModelSelection(projection, storedQueuedRun);
-      const queuedRun = {
+      const originalQueuedRun = {
         ...storedQueuedRun,
         modelSelection,
         providerInstanceId: modelSelection.instanceId,
       };
-      // A limited provider would fail and consume every waiting message.
-      if (usageLimitHoldsQueue(projection, queuedRun.providerInstanceId)) {
-        return;
-      }
       // Waits without a hold: lowering the thread's mode starts the queue again.
       if (isRuntimeModeAbove(projection.thread.runtimeMode, runtimeModeCeiling?.maxRuntimeMode)) {
         return;
@@ -1633,16 +1653,37 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         failedRun?.id === options?.endedRunId &&
         failedRun?.workspacePreparation?.type === "worktree" &&
         projection.thread.worktreePath === null;
+      const fallbackPolicy = projection.thread.modelFallback;
+      const automaticSelection =
+        fallbackPolicy &&
+        [fallbackPolicy.preferred, fallbackPolicy.fallback].some(
+          (selection) =>
+            selection.instanceId === originalQueuedRun.modelSelection.instanceId &&
+            selection.model === originalQueuedRun.modelSelection.model,
+        )
+          ? resolveModelFallback(projection, DateTime.toEpochMillis(yield* DateTime.now))
+          : null;
+      const canRerouteQueuedRun =
+        automaticSelection !== null &&
+        !modelSelectionsEqual(automaticSelection, originalQueuedRun.modelSelection);
+      // Keep a limited provider's queued work untouched unless the fork's
+      // automatic fallback can move this run to a provider without that limit.
+      if (
+        usageLimitHoldsQueue(projection, originalQueuedRun.providerInstanceId) &&
+        !canRerouteQueuedRun
+      ) {
+        return;
+      }
       const settings = yield* serverSettings.getSettings.pipe(Effect.orDie);
       const projectOverride =
         settings.projectSettingsOverrides[projection.thread.projectId]?.providerInstances?.[
-          queuedRun.providerInstanceId
+          originalQueuedRun.providerInstanceId
         ]?.enabled;
       const machineInstance = Object.hasOwn(
         settings.providerInstances,
-        queuedRun.providerInstanceId,
+        originalQueuedRun.providerInstanceId,
       )
-        ? settings.providerInstances[queuedRun.providerInstanceId]
+        ? settings.providerInstances[originalQueuedRun.providerInstanceId]
         : undefined;
       const instanceDisabledForProject =
         projectOverride !== undefined
@@ -1653,7 +1694,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         instanceDisabledForProject ||
         (failureClass !== undefined &&
           failureClass !== "validation_error" &&
-          failedRun?.providerInstanceId === queuedRun.providerInstanceId)
+          failedRun?.providerInstanceId === originalQueuedRun.providerInstanceId &&
+          !canRerouteQueuedRun)
       ) {
         const now = yield* DateTime.now;
         yield* writeSystemEvents(
@@ -1668,6 +1710,83 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               payload: { ...run, queueHeld: true },
             })),
         );
+        return;
+      }
+      if (canRerouteQueuedRun && automaticSelection) {
+        const target = rootProviderThreadsForProvider(projection, automaticSelection.instanceId)[0];
+        const queuedNode = projection.nodes.find(
+          (node) => node.id === originalQueuedRun.rootNodeId,
+        );
+        const queuedAttempt = projection.attempts.find(
+          (attempt) => attempt.id === originalQueuedRun.activeAttemptId,
+        );
+        if (target && queuedNode && queuedAttempt) {
+          const queuedScope = projection.checkpointScopes.find(
+            (scope) => scope.id === queuedNode.checkpointScopeId,
+          );
+          const now = yield* DateTime.now;
+          yield* writeSystemEvents([
+            ...(queuedScope
+              ? [
+                  {
+                    type: "checkpoint-scope.created" as const,
+                    threadId,
+                    runId: originalQueuedRun.id,
+                    occurredAt: now,
+                    payload: { ...queuedScope, providerThreadId: target.id },
+                  },
+                ]
+              : []),
+            {
+              type: "run.updated",
+              threadId,
+              runId: originalQueuedRun.id,
+              occurredAt: now,
+              payload: {
+                ...originalQueuedRun,
+                modelSelection: automaticSelection,
+                providerInstanceId: automaticSelection.instanceId,
+                providerThreadId: target.id,
+              },
+            },
+            {
+              type: "node.updated",
+              threadId,
+              runId: originalQueuedRun.id,
+              occurredAt: now,
+              payload: { ...queuedNode, providerThreadId: target.id },
+            },
+            {
+              type: "run-attempt.updated",
+              threadId,
+              runId: originalQueuedRun.id,
+              occurredAt: now,
+              payload: {
+                ...queuedAttempt,
+                providerInstanceId: automaticSelection.instanceId,
+                providerThreadId: target.id,
+              },
+            },
+          ]);
+          projection = yield* readCommandProjection(threadId);
+        }
+      }
+      const storedRunToStart =
+        options?.queuedRunId === undefined
+          ? nextQueuedRun(projection)
+          : projection.runs.find(
+              (run) => run.id === options.queuedRunId && run.status === "queued",
+            );
+      if (storedRunToStart === undefined) return;
+      const modelSelectionToStart = queuedRunModelSelection(projection, storedRunToStart);
+      const queuedRun = {
+        ...storedRunToStart,
+        modelSelection: modelSelectionToStart,
+        providerInstanceId: modelSelectionToStart.instanceId,
+      };
+      // Apply the provider limit after fork model fallback has had a chance to
+      // reroute this queued run to an available provider.
+      if (usageLimitHoldsQueue(projection, queuedRun.providerInstanceId)) {
         return;
       }
       // Move queued ordinals after runs that started while they waited to preserve transcript and checkpoint order.
@@ -3307,6 +3426,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
     }
 
+    if (
+      (command.type === "thread.metadata.update" ||
+        command.type === "thread.model-selection.set" ||
+        command.type === "provider.switch") &&
+      command.modelFallback
+    ) {
+      for (const selection of [command.modelFallback.preferred, command.modelFallback.fallback]) {
+        yield* providerAdapters.get(selection.instanceId).pipe(mapDispatchError(command));
+      }
+    }
+
     const needsProviderState =
       command.type === "thread.runtime-mode.set" ||
       command.type === "thread.model-selection.set" ||
@@ -3597,6 +3727,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...thread,
             ...(command.title === undefined ? {} : { title: command.title }),
             ...(command.limitRecovery === undefined ? {} : { limitRecovery }),
+            ...(command.modelFallback === undefined
+              ? {}
+              : { modelFallback: command.modelFallback }),
             ...(command.limitRecovery !== undefined &&
             limitRecovery?.snooze === true &&
             Date.parse(limitRecovery.resetAt) > DateTime.toEpochMillis(now)
@@ -3884,6 +4017,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...thread,
             providerInstanceId: command.modelSelection.instanceId,
             modelSelection: command.modelSelection,
+            modelFallback: command.modelFallback ?? null,
             updatedAt: now,
           };
       }
@@ -5347,6 +5481,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
   ) {
     let projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+    if (command.modelFallbackContinuationOfRunId !== undefined) {
+      const continuation = modelFallbackContinuation(
+        projection,
+        DateTime.toEpochMillis(yield* DateTime.now),
+      );
+      if (
+        continuation?.modelFallbackContinuationOfRunId !==
+          command.modelFallbackContinuationOfRunId ||
+        continuation.modelSelection?.instanceId !== command.modelSelection?.instanceId ||
+        continuation.modelSelection?.model !== command.modelSelection?.model ||
+        command.dispatchMode.type !== "start_immediately" ||
+        (yield* stopReachedRun(command, command.threadId, command.modelFallbackContinuationOfRunId))
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The usage-limit fallback is no longer applicable to this thread.",
+        });
+      }
+    }
     if (command.manualContinuationOfRunId !== undefined) {
       const source = projection.runs.find((run) => run.id === command.manualContinuationOfRunId);
       const limited = latestRootProviderFailure(source ?? null, projection.turnItems);
@@ -5495,8 +5649,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
       projection = applyToProjection(projection, event);
     }
-    // Background wakes and delegated completions continue work the user already snoozed, so
-    // only a message someone actually sent ends the snooze.
+    // Automated notifications continue work the user already snoozed.
     const automaticWake =
       command.notification !== undefined || command.delegatedCompletion !== undefined;
     if (projection.thread.snoozedUntil != null && !automaticWake) {
@@ -5556,7 +5709,37 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ]);
       projection = applyToProjection(projection, event);
     }
-    const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
+    const requestedSelection = command.modelSelection ?? projection.thread.modelSelection;
+    const policy = projection.thread.modelFallback;
+    const usesPolicy =
+      policy &&
+      [policy.preferred, policy.fallback].some(
+        (selection) =>
+          selection.instanceId === requestedSelection.instanceId &&
+          selection.model === requestedSelection.model,
+      );
+    let modelSelection = usesPolicy
+      ? (resolveModelFallback(projection, DateTime.toEpochMillis(yield* DateTime.now)) ??
+        requestedSelection)
+      : requestedSelection;
+    if (
+      modelSelection.instanceId === requestedSelection.instanceId &&
+      modelSelection.model === requestedSelection.model
+    ) {
+      modelSelection = requestedSelection;
+    }
+    if (policy && !usesPolicy) {
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "thread.metadata-updated",
+        threadId: command.threadId,
+        occurredAt: yield* DateTime.now,
+        payload: { ...projection.thread, modelFallback: null },
+      });
+      projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+    }
     let dispatchMode = resolveMessageDispatchIntent(
       projection,
       command.dispatchMode,
@@ -5777,6 +5960,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           });
 
     if (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active") {
+      if (usesPolicy) {
+        modelSelection =
+          projection.runs.find((run) => run.id === dispatchMode.targetRunId)?.modelSelection ??
+          modelSelection;
+      }
       yield* dispatchSteerIntoRun({
         command,
         events,
@@ -7577,25 +7765,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               }),
           ),
         );
-      const parentRun = parentProjection.runs.find(
-        (candidate) => candidate.id === command.parentRunId,
-      );
+      const parentRun =
+        command.parentRunId === undefined
+          ? parentProjection.runs.findLast(isActiveRun)
+          : parentProjection.runs.find((candidate) => candidate.id === command.parentRunId);
       if (parentRun === undefined || !isActiveRun(parentRun)) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause: `Parent run ${command.parentRunId} is not active.`,
+          cause: "Parallel work needs an active parent turn.",
         });
       }
       if (yield* stopReachedRun(command, command.parentThreadId, parentRun.id)) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause: `Parent run ${command.parentRunId} is stopping.`,
+          cause: `Parent run ${parentRun.id} is stopping.`,
         });
       }
       const parentNode = parentProjection.nodes.find(
-        (candidate) => candidate.id === command.parentNodeId,
+        (candidate) => candidate.id === (command.parentNodeId ?? parentRun.rootNodeId),
       );
       if (
         parentNode === undefined ||
@@ -7660,7 +7849,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         id: taskNodeId,
         threadId: command.parentThreadId,
         runId: parentRun.id,
-        parentNodeId: command.parentNodeId,
+        parentNodeId: parentNode.id,
         origin: "app_owned",
         createdBy: command.createdBy,
         driver: targetAdapter.driver,
@@ -7682,7 +7871,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         id: taskNodeId,
         threadId: command.parentThreadId,
         runId: parentRun.id,
-        parentNodeId: command.parentNodeId,
+        parentNodeId: parentNode.id,
         rootNodeId: parentRun.rootNodeId,
         kind: "subagent",
         status: "running",
@@ -7770,7 +7959,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         senderThreadId: command.parentThreadId,
         messageId: childMessageId,
         text: command.task,
-        attachments: [],
+        attachments: command.attachments ?? [],
+        ...(command.context ? { context: command.context } : {}),
         modelSelection: command.modelSelection,
         dispatchMode:
           command.workspaceStrategy === undefined

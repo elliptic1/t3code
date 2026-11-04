@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
+  AuthFilesystemReadScope,
   AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -15,6 +16,7 @@ import { WS_METHODS } from "./rpc.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
+  [WS_METHODS.serverSyncVoiceHistory]: AuthOrchestrationOperateScope,
   [WS_METHODS.previewClose]: AuthPreviewOperateScope,
   // Stopping a server signals its processes, as closing a terminal does.
   [WS_METHODS.previewStopLocalServer]: AuthTerminalOperateScope,
@@ -52,6 +54,13 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
 
+  [WS_METHODS.artifactsPublish]: AuthFilesystemReadScope,
+  [WS_METHODS.artifactsRename]: AuthOrchestrationOperateScope,
+  [WS_METHODS.artifactsDelete]: AuthOrchestrationOperateScope,
+  [WS_METHODS.artifactsCreateUploadUrl]: AuthOrchestrationOperateScope,
+  [WS_METHODS.artifactsCreateDownloadUrl]: AuthFilesystemReadScope,
+  [WS_METHODS.workflowsCreate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.workflowsControl]: AuthOrchestrationOperateScope,
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
@@ -78,6 +87,8 @@ export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
+  if (method === WS_METHODS.artifactsPublish)
+    return [AuthFilesystemReadScope, AuthOrchestrationOperateScope];
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);
     if (payload.mode === "worktree" && payload.threadId !== undefined)

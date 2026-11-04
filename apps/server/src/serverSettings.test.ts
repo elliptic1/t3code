@@ -101,7 +101,56 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
     `;
   });
 
+it("private notification defaults enable ntfy for existing installs without a saved choice", () => {
+  const settings = ServerSettingsModule.applyUsageReminderBuildDefaults(
+    DEFAULT_SERVER_SETTINGS,
+    {},
+    "https://ntfy.mininews.app/T3Code",
+  );
+  assert.equal(settings.usageResetRemindersEnabled, true);
+  assert.equal(settings.usageResetReminderNtfyUrl, "https://ntfy.mininews.app/T3Code");
+});
+
+it("private notification defaults preserve an explicit opt-out and cleared topic", () => {
+  const settings = ServerSettingsModule.applyUsageReminderBuildDefaults(
+    DEFAULT_SERVER_SETTINGS,
+    {
+      usageResetRemindersEnabled: false,
+      usageResetReminderNtfyUrl: "",
+    },
+    "https://ntfy.mininews.app/T3Code",
+  );
+  assert.equal(settings.usageResetRemindersEnabled, false);
+  assert.equal(settings.usageResetReminderNtfyUrl, "");
+});
+
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it.effect(
+    "persists, reloads, and clears saved voice instructions without changing the connection",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const service = yield* ServerSettingsModule.ServerSettingsService;
+        const before = yield* service.getSettings;
+        assert.equal(before.voiceInstructions, "");
+        yield* service.updateSettings({ voiceInstructions: "Act as my company's COO." });
+        const persisted = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.equal(persisted.voiceInstructions, "Act as my company's COO.");
+        assert.deepEqual(persisted.voiceConnection, before.voiceConnection);
+        const reloaded = yield* service.getSettings;
+        assert.equal(reloaded.voiceInstructions, persisted.voiceInstructions);
+        yield* service.updateSettings({ voiceInstructions: "" });
+        const cleared = yield* decodeServerSettingsJson(
+          yield* fs.readFileString(config.settingsPath),
+        );
+        assert.equal(cleared.voiceInstructions, "");
+        assert.deepEqual(cleared.voiceConnection, before.voiceConnection);
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("serializes concurrent model preference edits without cancelling duplicate adds", () =>
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;
@@ -1996,6 +2045,38 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 });
+
+it.effect(
+  "stores voice credentials securely, preserves redacted edits, and removes cleared keys",
+  () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const secrets = yield* ServerSecretStore.ServerSecretStore;
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const voiceConnection = {
+        ...DEFAULT_SERVER_SETTINGS.voiceConnection,
+        enabled: true,
+        apiKey: "voice-secret",
+      };
+      const saved = yield* service.updateSettings({ voiceConnection });
+      assert.equal(saved.voiceConnection.apiKey, "voice-secret");
+      assert.isTrue(Option.isSome(yield* secrets.get("voice-connection-api-key")));
+      const redacted = ServerSettingsModule.redactServerSettingsForClient(saved).voiceConnection;
+      assert.notEqual(redacted.apiKey, "voice-secret");
+      const updated = yield* service.updateSettings({
+        voiceConnection: { ...redacted, voice: "custom" },
+      });
+      assert.equal(updated.voiceConnection.apiKey, "voice-secret");
+      const contents = yield* fs.readFileString(config.settingsPath);
+      assert.notInclude(contents, "voice-secret");
+      yield* service.updateSettings({ voiceConnection: { ...redacted, apiKey: "" } });
+      assert.isTrue(Option.isNone(yield* secrets.get("voice-connection-api-key")));
+      assert.equal((yield* service.getSettings).voiceConnection.apiKey, "");
+    }).pipe(
+      Effect.provide(layerServerSettingsWithSecrets().pipe(Layer.provideMerge(NodeServices.layer))),
+    ),
+);
 
 it.layer(NodeServices.layer)("server settings under a managed policy", (it) => {
   const policy: ManagedPolicyDocument = {

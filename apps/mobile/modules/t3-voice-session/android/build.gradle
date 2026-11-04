@@ -1,0 +1,29 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.t3tools.voicesession'
+version = '0.0.0'
+
+android {
+  namespace 'expo.modules.t3voicesession'
+  defaultConfig {
+    versionCode 1
+    versionName '0.0.0'
+  }
+  testOptions {
+    unitTests.includeAndroidResources = true
+  }
+}
+
+dependencies {
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.robolectric:robolectric:4.16.1'
+}
+
+tasks.withType(Test).configureEach {
+  javaLauncher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(21)
+  }
+}

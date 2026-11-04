@@ -65,9 +65,14 @@ export * from "./usage.ts";
 export * from "./scheduledTask.ts";
 export * from "./worktreeMcp.ts";
 export * from "./resourceTelemetry.ts";
+export * from "./voice.ts";
 export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";
 export * from "./secretRequest.ts";
 export * from "./secretReference.ts";
 export * from "./settingsSecretValue.ts";
 export * from "./clientRpcPermissions.ts";
+
+export * from "./watchCompanion.ts";
+export * from "./workflow.ts";
+export * from "./threadArtifact.ts";

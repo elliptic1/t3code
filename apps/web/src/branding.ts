@@ -25,4 +25,17 @@ export const APP_DISPLAY_NAME =
   injectedDesktopAppBranding?.displayName ??
   formatAppDisplayName({ baseName: APP_BASE_NAME, stageLabel: APP_STAGE_LABEL });
 export const APP_VERSION = import.meta.env.APP_VERSION || "0.0.0";
+export const APP_BUILD_TIMESTAMP = import.meta.env.APP_BUILD_TIMESTAMP;
+const appBuildDate = new Date(APP_BUILD_TIMESTAMP);
+export const APP_BUILD_DATE_LABEL = Number.isNaN(appBuildDate.getTime())
+  ? null
+  : appBuildDate.toLocaleString(undefined, {
+      year: "2-digit",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+export const APP_BUILD_DATE_TITLE =
+  APP_BUILD_DATE_LABEL === null ? undefined : appBuildDate.toString();
 export const DESKTOP_DOWNLOAD_URL = "https://t3.codes/download";

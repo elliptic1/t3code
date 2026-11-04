@@ -22,6 +22,11 @@ class AgentMessagingService : ExpoFirebaseMessagingService() {
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
     if (remoteMessage.data["t3_kind"] == "agent_activity") {
       AgentNotifications.receive(this, remoteMessage.data)
+      if (remoteMessage.priority == RemoteMessage.PRIORITY_HIGH) {
+        AgentNotifications.runningUsageWakeScheme(this, remoteMessage.data)?.let {
+          RunningUsageNotifications.wake(this, it)
+        }
+      }
     } else {
       super.onMessageReceived(remoteMessage)
     }
@@ -52,6 +57,16 @@ object AgentNotifications {
   private const val RUNNING_LIFETIME_MS = 2 * 60 * 60 * 1000L
   private const val MAX_LIFETIME_MS = 24 * 60 * 60 * 1000L
 
+  internal fun runningUsageWakeScheme(context: Context, data: Map<String, String>): String? {
+    if (data["active"] != "true") return null
+    val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+    val updatedAt = data["updated_at"]?.toLongOrNull() ?: return null
+    if (!prefs.getBoolean("enabled", false) || data["device_id"] != prefs.getString("deviceId", null) ||
+      data["user_id"] != prefs.getString("userId", null) ||
+      System.currentTimeMillis() - updatedAt !in -MAX_MESSAGE_AGE_MS..MAX_MESSAGE_AGE_MS) return null
+    return prefs.getString("scheme", "t3code")
+  }
+
   @Synchronized
   fun configure(
     context: Context,
@@ -81,6 +96,7 @@ object AgentNotifications {
 
   @Synchronized
   fun clear(context: Context) {
+    ThreadInputNotifications.clear(context)
     cancelActivity(context)
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().clear().apply()
     val manager = manager(context)
@@ -128,7 +144,7 @@ object AgentNotifications {
       channels(context)
       val scheme = prefs.getString("scheme", "t3code") ?: "t3code"
       showAlert(context, prefs, scheme, data)
-      updateActivity(context, prefs, scheme, data, updatedAt)
+      if (data["type"] != "usage-reset") updateActivity(context, prefs, scheme, data, updatedAt)
     }
   }
 
@@ -140,6 +156,8 @@ object AgentNotifications {
   ) {
     // Queue retries carry the same alert id. Keep a bounded history even when
     // notification A is retried after notification B has already arrived.
+    val alertExpiresAt = data["alert_expires_at"]?.toLongOrNull()
+    if (alertExpiresAt != null && alertExpiresAt <= System.currentTimeMillis()) return
     val alertId = data["alert_id"]
     val seen = prefs.getString("seenAlertsOrdered", null)?.split('\n')
       ?: prefs.getStringSet("seenAlerts", emptySet()).orEmpty().toList()

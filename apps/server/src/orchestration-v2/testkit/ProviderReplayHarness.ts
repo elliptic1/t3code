@@ -286,6 +286,7 @@ export function layerWithRegistry<Error>(
   | EffectWorker.OrchestrationEffectWorkerV2
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2
+  | ProjectionStore.ProjectionStoreV2
   | CommandOutputRecorder.CommandOutputRecorder,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
@@ -533,6 +534,7 @@ export function layerWithRegistry<Error>(
     Layer.provide(Layer.merge(layerStores, layerEffectExecutorProvided)),
   );
   const layerReplayRuntime = Layer.mergeAll(
+    layerStores,
     layerOrchestratorProvided,
     layerProviderSessionManagerProvided,
     layerEffectWorkerProvided,

@@ -31,7 +31,7 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
-import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type RefObject } from "react";
 import { I18nManager, Keyboard, Platform, View, type ViewStyle } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
@@ -82,9 +82,11 @@ import { ComposerEditor, type ComposerEditorHandle } from "../../components/Comp
 import { fileRoutePathSegments } from "../files/filePath";
 import { ComposerActionButton, ComposerToolbarRow } from "../../components/ComposerToolbar";
 import { ComposerModelControl } from "../../components/ComposerModelControl";
+import { threadModelUsageRemainingPercent } from "./threadModelUsage";
 import {
   composerStripAttachments,
   type DraftComposerFileAttachment,
+  type ComposerMediaSource,
 } from "../../lib/composerImages";
 import { buildModelOptions, isModelSelectionUnavailable } from "../../lib/modelOptions";
 import { useScaledTextRole, type ScaledTextRole } from "../settings/appearance/useScaledTextRole";
@@ -230,10 +232,11 @@ export interface ThreadComposerProps {
   } | null;
   readonly followUpBehavior: FollowUpBehavior;
   readonly canSteerActiveTurn: boolean;
+  readonly canStartParallelAgent: boolean;
   readonly hidden: boolean;
   readonly editorRef?: RefObject<ComposerEditorHandle | null>;
   readonly onChangeDraftMessage: (value: string) => void;
-  readonly onPickDraftMedia: () => Promise<void>;
+  readonly onPickDraftMedia: (source?: ComposerMediaSource) => Promise<void>;
   readonly onPickDraftFiles: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
@@ -293,12 +296,14 @@ const FOLLOW_UP_ACTION_LABEL = {
   queue: "Queue",
   steer: "Steer now",
   restart: "Restart turn",
+  parallel: "Start parallel agent",
 } as const;
 
 const FOLLOW_UP_ACTION_SUBTITLE = {
   queue: "Run after the current turn",
-  steer: "Interrupt what the agent is doing",
+  steer: "Send immediately to the active agent",
   restart: "Start the turn over with this message",
+  parallel: "Separate agent in this workspace; foreground continues",
 } as const;
 
 function SendActionButton(props: {
@@ -322,9 +327,7 @@ function SendActionButton(props: {
   if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
     return button;
   }
-  const actions = [presentation.action, presentation.alternate].filter(
-    (action): action is ActiveTurnComposerAction => action !== null,
-  );
+  const actions = presentation.choices;
   return (
     <Menu
       accessibilityLabel="Choose how to send this message"
@@ -335,9 +338,10 @@ function SendActionButton(props: {
         subtitle: FOLLOW_UP_ACTION_SUBTITLE[action],
         state: action === presentation.action ? ("on" as const) : ("off" as const),
       }))}
-      onPressAction={({ nativeEvent }) =>
-        props.onSend(nativeEvent.event as ActiveTurnComposerAction)
-      }
+      onPressAction={({ nativeEvent }) => {
+        const action = actions.find((choice) => choice === nativeEvent.event);
+        if (action) props.onSend(action);
+      }}
     >
       {button}
     </Menu>
@@ -479,12 +483,25 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     editingQueuedMessage: queuedEdit !== null,
     running: props.activeThreadBusy,
     canSteer: props.canSteerActiveTurn,
+    canParallel:
+      props.canStartParallelAgent &&
+      props.connectionState === "connected" &&
+      props.serverConfig?.environment.capabilities.composerParallelTasks === true,
     followUpBehavior: props.followUpBehavior,
     deliveryDeferred:
       props.connectionState !== "connected" || props.queueCount > 0 || attachmentsUploading,
   });
   const sendLabel = sendPresentation.label;
   const currentModelSelection = props.selectedThread.modelSelection;
+  const usageRemainingPercent = useMemo(
+    () =>
+      threadModelUsageRemainingPercent(
+        props.environmentId,
+        currentModelSelection,
+        props.serverConfig,
+      ),
+    [props.environmentId, currentModelSelection, props.serverConfig],
+  );
   const modelUnavailable =
     props.connectionState === "connected" &&
     isModelSelectionUnavailable(
@@ -799,6 +816,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         prompt={draftMessage}
         surfaceColor={composerPanel}
         iconOnly={!compactEditor.isExpanded}
+        statusSuffix={props.selectedThread.modelFallback ? " · Auto" : undefined}
+        usageRemainingPercent={usageRemainingPercent}
         onPress={openSettings}
       />
     </View>

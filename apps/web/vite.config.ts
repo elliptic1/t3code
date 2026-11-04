@@ -1,5 +1,6 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Vite config runs before any Effect runtime.
 import * as NodeFSP from "node:fs/promises";
+import * as NodeURL from "node:url";
 import * as NodeZlib from "node:zlib";
 
 import react from "@vitejs/plugin-react";
@@ -45,10 +46,14 @@ const configuredHostedAppChannel = process.env.VITE_HOSTED_APP_CHANNEL?.trim() |
 const configuredReleaseChannel =
   process.env.T3CODE_BUILT_DEV === "1" ? "dev" : process.env.VITE_RELEASE_CHANNEL?.trim() || "";
 const configuredAppVersion = process.env.APP_VERSION?.trim() || pkg.version;
+// Fixed for this bundle (or dev-server session), rather than the client's load time.
+const appBuildTimestamp = new Date().toISOString();
 const configuredDesktopUpdateRepository =
   process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
   process.env.GITHUB_REPOSITORY?.trim() ||
   "";
+// The checkout scripts/fork-build.sh built this app from, so the update button can pull and rebuild.
+const configuredSourceDir = process.env.T3CODE_SOURCE_DIR?.trim() || "";
 const configuredFeatureSecrets = process.env.T3CODE_FEATURE_SECRETS?.trim() || "";
 const configuredHostedAppUrl = (() => {
   const explicitHostedAppUrl = process.env.VITE_HOSTED_APP_URL?.trim();
@@ -317,17 +322,18 @@ export default defineConfig(() => {
       "import.meta.env.T3CODE_DESKTOP_UPDATE_REPOSITORY": JSON.stringify(
         configuredDesktopUpdateRepository,
       ),
+      "import.meta.env.T3CODE_SOURCE_DIR": JSON.stringify(configuredSourceDir),
       "import.meta.env.T3CODE_FEATURE_SECRETS": JSON.stringify(configuredFeatureSecrets),
       "import.meta.env.VITE_RELEASE_CHANNEL": JSON.stringify(configuredReleaseChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      "import.meta.env.APP_BUILD_TIMESTAMP": JSON.stringify(appBuildTimestamp),
     },
     resolve: {
       tsconfigPaths: true,
       alias: {
-        "@betteroffice/fonts-cjk": new URL(
-          "./src/components/files/office/fonts-cjk.ts",
-          import.meta.url,
-        ).pathname,
+        "@betteroffice/fonts-cjk": NodeURL.fileURLToPath(
+          new URL("./src/components/files/office/fonts-cjk.ts", import.meta.url),
+        ),
       },
       dedupe: ["react", "react-dom"],
     },

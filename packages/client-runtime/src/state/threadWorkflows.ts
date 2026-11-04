@@ -35,10 +35,11 @@ export interface ThreadQueueWorkflowState {
   readonly activeRun: Run | null;
   readonly queuedRuns: ReadonlyArray<QueuedThreadRun>;
   readonly isHeld: boolean;
-  readonly canPromoteToSteer: boolean;
+  readonly canReorder: boolean;
   /** The active run is a compaction, so promoting a queued message stops it instead of steering. */
   readonly promoteSkipsCompaction: boolean;
   readonly canSendNow: boolean;
+  readonly canPromoteToSteer: boolean;
 }
 
 export function resolveActiveThreadRun(projection: Pick<Projection, "runs">): Run | null {
@@ -128,21 +129,36 @@ export function getUserQueuedThreadRuns(
   );
 }
 
-export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQueueWorkflowState {
+/** Steering needs a live provider turn, including adapters that steer by restarting it. */
+function activeRunIsCompaction(projection: Projection): boolean {
   const activeRun = resolveActiveThreadRun(projection);
-  const session = resolveThreadProviderSession(projection);
-  const capabilities = session?.capabilities.turns;
   const activeMessage = projection.messages.find(
     (message) => message.id === activeRun?.userMessageId,
   );
-  const promoteSkipsCompaction =
-    activeMessage !== undefined && isCompactionCommandMessage(activeMessage);
+  return activeMessage !== undefined && isCompactionCommandMessage(activeMessage);
+}
+
+export function threadSupportsActiveSteering(projection: Projection | null | undefined): boolean {
+  if (projection == null) return false;
+  const activeRun = resolveActiveThreadRun(projection);
+  const capabilities = resolveThreadProviderSession(projection)?.capabilities.turns;
   const hasSteerableProviderTurn =
     activeRun?.status === "running" &&
     activeRun.activeAttemptId !== null &&
     projection.providerTurns.some(
       (turn) => turn.runAttemptId === activeRun.activeAttemptId && turn.status === "running",
     );
+  return (
+    hasSteerableProviderTurn &&
+    (capabilities?.supportsActiveSteering === true ||
+      capabilities?.supportsSteeringByInterruptRestart === true)
+  );
+}
+
+export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQueueWorkflowState {
+  const activeRun = resolveActiveThreadRun(projection);
+  const session = resolveThreadProviderSession(projection);
+  const capabilities = session?.capabilities.turns;
   const queuedRuns = copySorted(
     getUserQueuedThreadRuns(projection),
     (left, right) =>
@@ -169,12 +185,10 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
       activeRun === null &&
       projection.thread.archivedAt == null &&
       projection.thread.deletedAt == null,
+    canReorder: capabilities?.supportsQueuedMessages === true,
     canPromoteToSteer:
-      promoteSkipsCompaction ||
-      (hasSteerableProviderTurn &&
-        (capabilities?.supportsActiveSteering === true ||
-          capabilities?.supportsSteeringByInterruptRestart === true)),
-    promoteSkipsCompaction,
+      activeRunIsCompaction(projection) || threadSupportsActiveSteering(projection),
+    promoteSkipsCompaction: activeRunIsCompaction(projection),
   };
 }
 

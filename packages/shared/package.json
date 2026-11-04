@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./voiceSettings": {
+      "types": "./src/voiceSettings.ts",
+      "import": "./src/voiceSettings.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"
@@ -326,6 +330,10 @@
     "./chatList": {
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"
+    },
+    "./yesNoQuestion": {
+      "types": "./src/yesNoQuestion.ts",
+      "import": "./src/yesNoQuestion.ts"
     },
     "./nodeRuntime": {
       "types": "./src/nodeRuntime.ts",

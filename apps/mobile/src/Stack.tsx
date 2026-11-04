@@ -1,3 +1,5 @@
+import { VoiceConversation } from "./features/voice-conversation/VoiceConversation";
+import { SettingsVoiceRouteScreen } from "./features/settings/SettingsVoiceRouteScreen";
 import { isDraftThreadRoute } from "./features/threads/thread-route-state";
 import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
 import { PullRequestGuideStopScreen } from "./features/pull-requests/guide/PullRequestGuideScreen";
@@ -453,6 +455,11 @@ const SETTINGS_SCREENS = {
       title: "License notice",
     },
   }),
+  SettingsVoice: createNativeStackScreen({
+    screen: SettingsVoiceRouteScreen,
+    linking: "voice",
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "Voice conversation" },
+  }),
   SettingsUsage: createNativeStackScreen({
     screen: UsageRouteScreen,
     linking: "settings/usage",
@@ -541,6 +548,7 @@ function RootStackLayout(props: {
               >
                 {props.children}
                 <HardwareKeyboardCommandOverlay />
+                <VoiceConversation state={props.state} />
               </AdaptiveWorkspaceLayout>
             </AndroidWorkspaceTabsProvider>
           </WorkspaceConnectionStatusProvider>

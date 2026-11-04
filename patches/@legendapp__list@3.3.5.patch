@@ -675,6 +675,40 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..d7f59b63cd4982dfc9c347732caa77e0
    }
    return nextSize;
  }
+@@ -5468,6 +5648,8 @@
+ function useContainerMeasurement({
+   containerId,
+   ctx,
++  data,
++  extraData,
+   horizontal,
+   itemKey,
+   ref
+@@ -5502,11 +5684,14 @@
+       }
+     };
+   }, [containerId, ctx, triggerLayout]);
++  // Coordinator commits can re-render a row without changing its content.
++  // Scheduling from every commit feeds the layout epoch back into itself.
++  // Native onLayout and triggerLayout still handle independent row resizes.
+   React2.useLayoutEffect(() => {
+     if (IsNewArchitecture) {
+       scheduleContainerLayout(ctx, containerId);
+     }
+-  });
++  }, [containerId, ctx, data, extraData, horizontal, itemKey]);
+   const { onLayout } = useOnLayoutSync(
+     {
+       measureInLayoutEffect: !IsNewArchitecture,
+@@ -5610,6 +5795,8 @@
+   const { onLayout, triggerLayout } = useContainerMeasurement({
+     containerId: id,
+     ctx,
++    data,
++    extraData,
+     horizontal,
+     itemKey,
+     ref
 @@ -5715,8 +5928,11 @@ var ContainersLayer = typedMemo(function ContainersLayer2({
    horizontal
  }) {
@@ -1315,6 +1349,40 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..c2ca39bab6ea1ebaaed25190a01e8cf2
    }
    return nextSize;
  }
+@@ -5447,6 +5627,8 @@
+ function useContainerMeasurement({
+   containerId,
+   ctx,
++  data,
++  extraData,
+   horizontal,
+   itemKey,
+   ref
+@@ -5481,11 +5663,14 @@
+       }
+     };
+   }, [containerId, ctx, triggerLayout]);
++  // Coordinator commits can re-render a row without changing its content.
++  // Scheduling from every commit feeds the layout epoch back into itself.
++  // Native onLayout and triggerLayout still handle independent row resizes.
+   useLayoutEffect(() => {
+     if (IsNewArchitecture) {
+       scheduleContainerLayout(ctx, containerId);
+     }
+-  });
++  }, [containerId, ctx, data, extraData, horizontal, itemKey]);
+   const { onLayout } = useOnLayoutSync(
+     {
+       measureInLayoutEffect: !IsNewArchitecture,
+@@ -5589,6 +5774,8 @@
+   const { onLayout, triggerLayout } = useContainerMeasurement({
+     containerId: id,
+     ctx,
++    data,
++    extraData,
+     horizontal,
+     itemKey,
+     ref
 @@ -5694,8 +5907,11 @@ var ContainersLayer = typedMemo(function ContainersLayer2({
    horizontal
  }) {

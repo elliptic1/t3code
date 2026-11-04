@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Builds the fork as its own macOS app, "T3 Code (Fork)", with a
+# separate bundle id, Electron profile and T3 home (~/.t3-fork) so it never
+# shares state with an upstream install.
+#
+# ponytail: the identity is patched in for the build and reverted afterwards, so
+# the tree stays mergeable with upstream and its tests keep their expectations.
+# If upstream moves one of these strings the script stops; update the pattern.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+signing_identity_file="$HOME/Library/Application Support/T3 Code Fork/signing-identity"
+if [ -z "${T3CODE_FORK_SIGNING_IDENTITY:-}" ]; then
+  if [ ! -f "$signing_identity_file" ]; then
+    echo "fork-build: set T3CODE_FORK_SIGNING_IDENTITY to your persistent code-signing certificate fingerprint" >&2
+    exit 1
+  fi
+  T3CODE_FORK_SIGNING_IDENTITY="$(cat "$signing_identity_file")"
+fi
+T3CODE_FORK_SIGNING_IDENTITY="$(printf '%s' "$T3CODE_FORK_SIGNING_IDENTITY" | tr '[:lower:]' '[:upper:]')"
+export T3CODE_FORK_SIGNING_IDENTITY
+if [[ ! "$T3CODE_FORK_SIGNING_IDENTITY" =~ ^[[:xdigit:]]{40}$ ]] ||
+  ! security find-identity -v -p codesigning | /usr/bin/grep -Fq " $T3CODE_FORK_SIGNING_IDENTITY "; then
+  echo "fork-build: the pinned signing certificate and private key must be available in your keychain" >&2
+  exit 1
+fi
+
+FILES=(
+  apps/desktop/src/app/DesktopStatePaths.ts
+  apps/desktop/src/app/DesktopUserData.ts
+  apps/desktop/src/app/DesktopEnvironment.ts
+  apps/desktop/package.json
+  scripts/build-desktop-artifact.ts
+)
+if ! git diff --quiet -- "${FILES[@]}"; then
+  echo "fork-build: commit or discard changes to the identity files first" >&2
+  exit 1
+fi
+trap 'git checkout -- "${FILES[@]}"' EXIT
+
+swap() { # file, exact text, replacement
+  FILE="$1" FROM="$2" TO="$3" node -e '
+    const fs = require("node:fs");
+    const { FILE, FROM, TO } = process.env;
+    const source = fs.readFileSync(FILE, "utf8");
+    if (!source.includes(FROM) && source.split(TO).length === 2) {
+      process.exit(0);
+    }
+    if (source.split(FROM).length !== 2) {
+      console.error(`fork-build: expected exactly one "${FROM}" in ${FILE}`);
+      process.exit(1);
+    }
+    fs.writeFileSync(FILE, source.replace(FROM, TO));
+  '
+}
+swap apps/desktop/src/app/DesktopStatePaths.ts 'input.joinPath(input.homeDirectory, ".t3")' 'input.joinPath(input.homeDirectory, ".t3-fork")'
+swap apps/desktop/src/app/DesktopUserData.ts '{ current: "t3code-v2",' '{ current: "t3code-fork",'
+swap apps/desktop/src/app/DesktopEnvironment.ts 'displayName: `${APP_BASE_NAME} (${stageLabel})`' 'displayName: `${APP_BASE_NAME} (${stageLabel === "Alpha" ? "Fork" : "Fork Nightly"})`'
+swap apps/desktop/package.json '"productName": "T3 Code (Alpha)"' '"productName": "T3 Code (Fork)"'
+swap scripts/build-desktop-artifact.ts 'const DESKTOP_APP_ID = "com.t3tools.t3code";' 'const DESKTOP_APP_ID = "com.t3tools.t3code.fork";'
+swap scripts/build-desktop-artifact.ts '? "T3 Code (Nightly)"' '? "T3 Code (Fork Nightly)"'
+swap scripts/build-desktop-artifact.ts '...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),' 'identity: "-", sign: path.join(repoRoot, "scripts/sign-fork-macos.ts"), hardenedRuntime: false, notarize: false,'
+
+# Follow the newest nightly source merged into this fork, with its blue branding.
+# No upstream update feed may replace the custom features in this build.
+NIGHTLY_TAG="$(git describe --tags --match 'v*-nightly.*' --abbrev=0)"
+BASE_VERSION="${NIGHTLY_TAG#v}"
+BASE_VERSION="${BASE_VERSION%%-nightly.*}"
+VERSION="${BASE_VERSION}-nightly.$(date -u +%Y%m%d).$(date -u +%Y%m%d%H%M)"
+export T3CODE_DESKTOP_UPDATE_REPOSITORY=""
+export GITHUB_REPOSITORY=""
+# The main checkout, even when building from a worktree. The app's update button pulls into it.
+T3CODE_SOURCE_DIR=${T3CODE_SOURCE_DIR:-$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")}
+export T3CODE_SOURCE_DIR
+node scripts/build-desktop-artifact.ts --platform mac --target dmg --arch arm64 \
+  --build-version "$VERSION" --output-dir release "$@"
+echo "fork-build: built $VERSION in release/"

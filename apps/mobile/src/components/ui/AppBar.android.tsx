@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Keyboard, Pressable, TextInput, type TextInputInstance, View } from "react-native";
 import { useHardwareBack } from "../../lib/backHandler";
+import { AppText } from "./AppText";
 import { useToolbarLayout } from "./useToolbarLayout";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { AndroidWorkspaceSidebarButton } from "../../features/layout/workspace-sidebar-toolbar";
@@ -144,6 +145,26 @@ export function AppBar(props: AppBarProps) {
   const header = (
     <AndroidScreenHeader
       title={props.title}
+      titleContent={
+        props.onTitlePress ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Rename thread: ${props.title}`}
+            accessibilityHint="Edit the thread title"
+            onPress={props.onTitlePress}
+            hitSlop={6}
+          >
+            <AppText numberOfLines={1} textRole="title" className="text-header-foreground">
+              {props.title}
+            </AppText>
+            {!props.compact && props.subtitle ? (
+              <AppText numberOfLines={1} textRole="label" className="text-foreground-muted">
+                {props.subtitle}
+              </AppText>
+            ) : null}
+          </Pressable>
+        ) : undefined
+      }
       subtitle={props.subtitle}
       onBack={props.onBack}
       leading={props.sidebar !== false ? <AndroidWorkspaceSidebarButton /> : undefined}

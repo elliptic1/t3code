@@ -1113,6 +1113,16 @@ describe("planComposerTurn", () => {
     }
   });
 
+  it("keeps parallel work independent of compaction and queue dispatch", () => {
+    expect(
+      planComposerTurn({ ...base, resumeCompactionTokens: 120_000, dispatchMode: "parallel" }),
+    ).toMatchObject({
+      compactBeforeSend: false,
+      turnDispatchMode: "parallel",
+      shouldQueueBehindActiveRun: false,
+    });
+  });
+
   it("queues behind a running turn only when asked to", () => {
     const running = {
       ...base,

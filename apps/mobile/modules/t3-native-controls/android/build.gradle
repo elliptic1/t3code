@@ -20,11 +20,16 @@ android {
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
   }
+  testOptions {
+    unitTests.includeAndroidResources = true
+  }
   buildFeatures { compose true }
 }
 
 dependencies {
   implementation project(':expo-modules-core')
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.robolectric:robolectric:4.16.1'
   implementation 'androidx.compose.ui:ui-android:1.10.6'
   implementation 'androidx.activity:activity:1.8.2'
   implementation 'androidx.compose.material3:material3-android:1.5.0-alpha17'

@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useAtomValue } from "@effect/atom-react";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { APP_BUILD_TIMESTAMP, APP_BUILD_DATE_LABEL, APP_BUILD_DATE_TITLE } from "../../branding";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
   navigateHistory,
@@ -39,12 +40,16 @@ import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
+import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+import { providerClients } from "../settings/providerDriverMeta";
+import { describeProviderLimits, useProviderLimitSummary } from "../usage/useProviderLimitSummary";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
 }: {
   isElectron: boolean;
 }) {
+  const { isMobile } = useSidebar();
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const backdropVariant = resolveSidebarStageBackdropVariant(
@@ -64,23 +69,32 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       )}
     >
       {backdropVariant ? <SidebarStageBackdrop variant={backdropVariant} /> : null}
-      <div className="relative top-[calc(var(--workspace-controls-top)-env(safe-area-inset-top))] z-10 ml-[calc(var(--workspace-controls-left)+1px-env(safe-area-inset-left))] flex shrink-0 items-center md:hidden">
-        <SidebarTrigger
-          variant={backdropVariant ? "media-navigation" : "ghost"}
-          className="relative top-auto translate-y-0"
-          aria-label="Toggle main sidebar"
-        />
-      </div>
-      <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
-        <div className="flex shrink-0 items-center gap-1">
-          <SidebarBrand onBackdrop={backdropVariant !== null} />
-          {isElectron ? (
-            <div className="hidden items-center md:flex">
-              <HistoryNavigationButton direction="back" onBackdrop={backdropVariant !== null} />
-              <HistoryNavigationButton direction="forward" onBackdrop={backdropVariant !== null} />
-            </div>
-          ) : null}
+      {isMobile ? (
+        <div className="relative top-[calc(var(--workspace-controls-top)-env(safe-area-inset-top))] z-10 ml-[calc(var(--workspace-controls-left)+1px-env(safe-area-inset-left))] flex shrink-0 items-center">
+          <SidebarTrigger
+            variant={backdropVariant ? "media-navigation" : "ghost"}
+            className="relative top-auto translate-y-0"
+            aria-label="Toggle main sidebar"
+          />
         </div>
+      ) : null}
+      {/* The brand and build date occupy two lines; excess stage pills stay clipped.
+          The padding keeps the brand's focus ring inside the clip. */}
+      <div className="relative z-10 flex h-10 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
+        {!isMobile ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <SidebarBrand onBackdrop={backdropVariant !== null} />
+            {isElectron ? (
+              <div className="hidden items-center md:flex">
+                <HistoryNavigationButton direction="back" onBackdrop={backdropVariant !== null} />
+                <HistoryNavigationButton
+                  direction="forward"
+                  onBackdrop={backdropVariant !== null}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {pillLabel ? (
           <div className="ml-1 flex h-7 items-center">
             <Badge data-environment-identification="pill" size="sm" variant="secondary">
@@ -167,7 +181,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
     <Link
       aria-label="T3 Code home"
       className={cn(
-        "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
+        "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-9 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",
       )}
       to="/"
@@ -179,16 +193,39 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 
 function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   return (
-    <span className="inline-flex min-w-0 items-baseline gap-1 text-sm font-medium tracking-tight">
-      <T3Wordmark aria-label="T3" className="h-[1cap] w-auto shrink-0" />
-      <span
-        className={cn(
-          "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
-          onBackdrop ? "text-white/70" : "text-muted-foreground",
-        )}
-      >
-        Code
+    <span className="flex flex-col items-start">
+      {/* Center the visible capitals, without the font's ascender/descender space.
+          Padding keeps ascenders and round-letter overshoot inside the truncation clip. */}
+      <span className="inline-flex min-w-0 items-baseline gap-1 text-sm leading-4 font-medium tracking-tight">
+        <T3Wordmark aria-label="T3" className="h-[1cap] w-auto shrink-0" />
+        <span
+          className={cn(
+            "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
+            onBackdrop ? "text-white/70" : "text-muted-foreground",
+          )}
+        >
+          Code
+        </span>
       </span>
+      {APP_BUILD_DATE_LABEL ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <time
+                dateTime={APP_BUILD_TIMESTAMP}
+                aria-label={`Built ${APP_BUILD_DATE_TITLE}`}
+                className={cn(
+                  "text-3xs leading-3 whitespace-nowrap",
+                  onBackdrop ? "text-white/70" : "text-muted-foreground",
+                )}
+              />
+            }
+          >
+            Built {APP_BUILD_DATE_LABEL}
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">Built {APP_BUILD_DATE_TITLE}</TooltipPopup>
+        </Tooltip>
+      ) : null}
     </span>
   );
 }
@@ -217,6 +254,51 @@ function SidebarUtilityItem({
     </SidebarMenuItem>
   );
 }
+
+/** Quota left per provider, next to the Usage button; clicking opens the Usage page. */
+const SidebarProviderLimits = memo(function SidebarProviderLimits({
+  onClick,
+}: {
+  onClick: () => void;
+}) {
+  const summaries = useProviderLimitSummary();
+  if (summaries.size === 0) return null;
+  return (
+    <>
+      {[...summaries].map(([driver, summary]) => {
+        const label = providerClients.get(driver)?.label ?? String(driver);
+        return (
+          <SidebarMenuItem key={driver} className="min-w-0 shrink">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`${label}: ${describeProviderLimits(summary)}`}
+                    onClick={onClick}
+                    className="flex h-8 cursor-pointer items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground tabular-nums hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <ProviderInstanceIcon
+                      driverKind={driver}
+                      displayName={label}
+                      showBadge={false}
+                      className="size-4"
+                      iconClassName="size-4"
+                    />
+                    {summary.remainingPercent}%
+                  </button>
+                }
+              />
+              <TooltipPopup side="top">
+                {label}: {describeProviderLimits(summary)}
+              </TooltipPopup>
+            </Tooltip>
+          </SidebarMenuItem>
+        );
+      })}
+    </>
+  );
+});
 
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
@@ -283,6 +365,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Usage"
             onClick={handleUsageClick}
           />
+          <SidebarProviderLimits onClick={handleUsageClick} />
         </>
       )}
       <SidebarThreadUndoNotice />

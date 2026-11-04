@@ -12,6 +12,23 @@ type DraftProjectSelectionResolution =
   | { readonly kind: "pick" }
   | { readonly kind: "dismiss" };
 
+export function resolveSelectedDraftProject(
+  projects: ReadonlyArray<EnvironmentProject>,
+  selectedProjectKey: string | null,
+  editingPendingProject: EnvironmentProject | null,
+): EnvironmentProject | null {
+  return (
+    projects.find(
+      (project) => scopedProjectKey(project.environmentId, project.id) === selectedProjectKey,
+    ) ??
+    (editingPendingProject !== null &&
+    scopedProjectKey(editingPendingProject.environmentId, editingPendingProject.id) ===
+      selectedProjectKey
+      ? editingPendingProject
+      : null)
+  );
+}
+
 /**
  * The copy of a project a new thread starts in: the preferred environment's, then the
  * representative. A connected copy wins over a disconnected one.

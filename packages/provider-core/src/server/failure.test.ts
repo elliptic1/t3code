@@ -108,6 +108,20 @@ it("preserves actionable T3 errors wrapped by turn startup", () => {
   }
 });
 
+it("preserves the delivery-uncertain handoff error wrapped by turn startup", () => {
+  const cause = new ProviderAdapter.ProviderAdapterTurnStartError({
+    driver: ProviderDriverKind.make("codex"),
+    threadId: ThreadId.make("thread:handoff-error"),
+    providerThreadId: ProviderThreadId.make("provider-thread:handoff-error"),
+    runId: RunId.make("run:handoff-error"),
+    cause: { _tag: "ContextHandoffDeliveryUncertainError" },
+  });
+  assert.equal(
+    makeProviderFailure({ cause: Cause.fail(cause) }).message,
+    "T3 could not confirm whether conversation history reached the provider. Retry the turn to recover the session.",
+  );
+});
+
 it("names how the provider process exited and the stage it failed in, without its output", () => {
   for (const [exit, status] of [
     [{ signal: "SIGILL" }, " after signal SIGILL"],

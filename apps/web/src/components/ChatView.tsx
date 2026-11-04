@@ -38,12 +38,15 @@ import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
 import { useStableCallback } from "../hooks/useStableCallback";
+import { endsWithYesNoQuestion } from "@t3tools/shared/yesNoQuestion";
+import { Button } from "./ui/button";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
 import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
+import type { OrchestrationV2ModelFallback } from "@t3tools/contracts";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { useUsageLimitsPanel } from "./chat/useUsageLimitsPanel";
 import { useWorktreeSetup } from "./chat/useWorktreeSetup";
@@ -86,6 +89,8 @@ import {
   workflowOpeningParentThreadId,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
+  resolveActiveThreadRun,
+  threadSupportsActiveSteering,
   getUserQueuedThreadRuns,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
@@ -112,6 +117,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useNavigateBack } from "../hooks/useNavigateBack";
 import { assistantCitationFromLocation } from "../lib/assistantCitationNavigation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { useStore } from "zustand";
@@ -482,6 +488,8 @@ export default function ChatView(props: ChatViewProps) {
   });
   const serverThreadProjection = useQuietThreadProjection(routeThreadDetailRef);
   const serverProjection = serverThreadProjection?.projection ?? null;
+  const composerActiveRun =
+    serverProjection === null ? null : resolveActiveThreadRun(serverProjection);
   // Only the shell-less fallback needs these; with a shell, the shell carries them.
   const fallbackDetailRef = serverThreadShell === null ? routeThreadDetailRef : null;
   const fallbackUpdatedAt = useThreadUpdatedAt(fallbackDetailRef);
@@ -561,6 +569,7 @@ export default function ChatView(props: ChatViewProps) {
   const clientSettingsHydrated = useClientSettingsHydrated();
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
+  const navigateBack = useNavigateBack();
   // Selects primitives: an object here is new on every router store update, which
   // re-renders ChatView on unrelated navigation state changes.
   const citationHref = useLocation({ select: (location) => location.href });
@@ -611,6 +620,9 @@ export default function ChatView(props: ChatViewProps) {
     const draft = store.getComposerDraft(composerDraftTarget);
     return draft ? composerDraftHasUserContent({ ...draft, prompt: "" }) : false;
   });
+  const composerPromptIsEmpty = useComposerDraftStore(
+    (store) => (store.getComposerDraft(composerDraftTarget)?.prompt ?? "").trim().length === 0,
+  );
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
@@ -2425,6 +2437,7 @@ export default function ChatView(props: ChatViewProps) {
     localCheckoutBranchMismatch,
     gitStatusQuery,
     nowMinute,
+    onSettled: navigateBack,
     composerRef,
     composerDraftTarget,
     sendInFlightRef,
@@ -2436,6 +2449,16 @@ export default function ChatView(props: ChatViewProps) {
     scrollToEnd,
     persistThreadSettingsForNextTurn,
   });
+  const onModelFallbackChange = async (modelFallback: OrchestrationV2ModelFallback | null) => {
+    if (!activeThread || !isServerThread || !canOperateThread) return;
+    const result = await updateThreadMetadata({
+      environmentId: activeThread.environmentId,
+      input: { threadId: activeThread.id, modelFallback },
+    });
+    if (result._tag === "Failure")
+      toastManager.add({ type: "error", title: "Could not update automatic model switching" });
+  };
+  const onModelFallbackChangeStable = useStableCallback(onModelFallbackChange);
   const activeThreadHasCompactableConversation = serverVisibleTurnItems.some(
     ({ item }) =>
       item.type === "user_message" &&
@@ -2959,6 +2982,23 @@ export default function ChatView(props: ChatViewProps) {
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
   });
+  const lastTimelineMessage = timelineMessages.at(-1);
+  const offerYesNoReplies =
+    canOperateThread &&
+    isServerThread &&
+    !isWorking &&
+    activePendingApproval === null &&
+    activePendingUserInput === null &&
+    composerPromptIsEmpty &&
+    !composerHasNonPromptContent &&
+    lastTimelineMessage?.role === "assistant" &&
+    !lastTimelineMessage.streaming &&
+    endsWithYesNoQuestion(lastTimelineMessage.text);
+  const sendYesNoReply = (text: "Yes" | "No") => {
+    promptRef.current = text;
+    setComposerDraftPrompt(composerDraftTarget, text);
+    void onSend();
+  };
   const onImplementPlanInNewThreadStable = useStableCallback(onImplementPlanInNewThread);
 
   const onWorktreeSetupWorkLocally = () => {
@@ -3562,6 +3602,20 @@ export default function ChatView(props: ChatViewProps) {
                               onOpenParent={parentThreadLink?.open ?? null}
                             />
                           ) : null}
+                          {offerYesNoReplies ? (
+                            <div className="flex justify-end gap-2 px-1 pb-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => sendYesNoReply("No")}
+                              >
+                                No
+                              </Button>
+                              <Button size="sm" onClick={() => sendYesNoReply("Yes")}>
+                                Yes
+                              </Button>
+                            </div>
+                          ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer
                               canOperateThread={canOperateThread}
@@ -3593,6 +3647,13 @@ export default function ChatView(props: ChatViewProps) {
                                 isLocalDraftThread && activeProject === null
                               }
                               phase={phase}
+                              canSteerActiveTurn={threadSupportsActiveSteering(serverProjection)}
+                              canStartParallelAgent={
+                                serverConfig?.environment.capabilities.composerParallelTasks ===
+                                  true &&
+                                composerActiveRun?.rootNodeId != null &&
+                                composerActiveRun.status !== "preparing"
+                              }
                               isCompacting={isCompacting}
                               canInterrupt={canInterruptRunningThread}
                               isSendBusy={
@@ -3662,6 +3723,13 @@ export default function ChatView(props: ChatViewProps) {
                               activeProjectDefaultModelSelection={
                                 activeProjectDefaultModelSelection
                               }
+                              modelFallback={activeThread?.modelFallback ?? null}
+                              {...(isServerThread &&
+                              canOperateThread &&
+                              supportsProviderSwitchingViaHandoff &&
+                              serverConfig?.environment.capabilities.modelFallback === true
+                                ? { onModelFallbackChange: onModelFallbackChangeStable }
+                                : {})}
                               activeThreadModelSelection={activeThread?.modelSelection}
                               activeProjectId={activeProject?.id ?? null}
                               contextWindowEntries={serverVisibleTurnItems}

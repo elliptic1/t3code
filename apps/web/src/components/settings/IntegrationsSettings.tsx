@@ -1,3 +1,4 @@
+import { VoiceSettings } from "./VoiceSettings";
 import { DeviceHostUpdates } from "../device/DeviceHostUpdates";
 import { DeviceToolVersions } from "../device/DeviceToolVersions";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
@@ -1601,6 +1602,7 @@ export function BrowserSettingsPanel() {
           </SettingsUnavailableGroup>
         </AdvancedSettings>
       </SettingsSection>
+      <VoiceSettings />
       <SettingsSection id="browser-recordings" title="Recordings">
         <SettingsUnavailableGroup message={desktopOnlyMessage}>
           <BrowserRecordingFrameRateSetting disabled={desktopOnly} />

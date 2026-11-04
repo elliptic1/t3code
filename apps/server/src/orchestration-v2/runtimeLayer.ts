@@ -1,3 +1,5 @@
+import * as ThreadArtifactService from "../artifacts/ThreadArtifactService.ts";
+import * as WorkflowService from "../workflows/WorkflowService.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -372,6 +374,8 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
+  ThreadArtifactService.layer,
+  WorkflowService.layer.pipe(Layer.provide(layerThreadManagementProvided)),
   layerScheduledTaskProvided,
   layerScratchThreadPromotionProvided,
   layerSecretRequestsProvided,
@@ -391,7 +395,11 @@ export const layerProduction = Layer.mergeAll(
   layerAgentSessionImporterProvided,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),
 ).pipe(
-  Layer.provide(ResourceCleanupService.layer.pipe(Layer.provide(layerScheduledTaskProvided))),
+  Layer.provide(
+    ResourceCleanupService.layer.pipe(
+      Layer.provide(Layer.merge(layerScheduledTaskProvided, ThreadArtifactService.layer)),
+    ),
+  ),
   Layer.provide(Scheduler.layer),
   Layer.provideMerge(layerEventInfrastructure),
 );

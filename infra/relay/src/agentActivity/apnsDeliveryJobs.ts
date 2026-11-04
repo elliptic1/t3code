@@ -36,6 +36,7 @@ export const ApnsNotificationPayload = Schema.Struct({
   deepLink: Schema.String,
   phase: Schema.optional(RelayAgentAwarenessPhase),
   updatedAt: Schema.optional(Schema.String),
+  expiresAt: Schema.optional(Schema.String),
 });
 export type ApnsNotificationPayload = typeof ApnsNotificationPayload.Type;
 

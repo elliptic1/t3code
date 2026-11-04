@@ -1,3 +1,4 @@
+import * as ThreadArtifactService from "../artifacts/ThreadArtifactService.ts";
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -323,6 +324,11 @@ const layerScheduledTasksTest = ScheduledTaskService.layer.pipe(
   ),
 );
 const layerResourceCleanupTest = ResourceCleanupService.layer.pipe(
+  Layer.provide(
+    Layer.mock(ThreadArtifactService.ThreadArtifactService)({
+      cleanupDeletedThread: () => Effect.void,
+    }),
+  ),
   Layer.provideMerge(layerScheduledTasksTest),
   Layer.provide(
     Layer.mergeAll(

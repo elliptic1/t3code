@@ -36,4 +36,5 @@ const commands = createAttachmentEnvironmentAtoms(connectionAtomRuntime);
 export const attachmentEnvironment = {
   createUploadUrl: requireAttachmentWriteAccess(commands.createUploadUrl),
   remove: requireAttachmentWriteAccess(commands.remove),
+  readPreparedConnection: commands.readPreparedConnection,
 };

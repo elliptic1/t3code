@@ -113,6 +113,7 @@ interface ThreadLifecycleInput {
   } | null;
   readonly gitStatusQuery: { readonly refresh: () => void };
   readonly nowMinute: string;
+  readonly onSettled?: () => void;
   readonly composerRef: ComposerHandleRef;
   readonly composerDraftTarget: ComposerThreadTarget;
   readonly sendInFlightRef: { current: boolean };
@@ -161,6 +162,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     localCheckoutBranchMismatch,
     gitStatusQuery,
     nowMinute,
+    onSettled,
     composerRef,
     composerDraftTarget,
     sendInFlightRef,
@@ -656,7 +658,9 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
         return;
       }
       if (settleAndAdvance(activeThreadRef)) return;
-      void settleThread(activeThreadRef).then(toastThreadActionFailure("Failed to settle thread"));
+      void settleThread(activeThreadRef, onSettled ? { onSettled } : {}).then(
+        toastThreadActionFailure("Failed to settle thread"),
+      );
     },
     "thread.pin": ({ event }) => {
       // An open project list pins its highlighted project with this key instead.

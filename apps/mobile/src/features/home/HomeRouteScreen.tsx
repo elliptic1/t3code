@@ -59,6 +59,7 @@ export function HomeRouteScreen() {
   const { savedConnectionsById } = useSavedRemoteConnections();
   const navigation = useNavigation();
   const selectTab = useSelectWorkspaceTab();
+  const openUsage = () => openSettings(navigation, "SettingsUsage");
   const workspace = useWorkspaceTabs();
   const [localSearchQuery, setLocalSearchQuery] = useState("");
   const searchQuery =
@@ -230,6 +231,7 @@ export function HomeRouteScreen() {
           onProjectChange={setSelectedProjectKey}
           onOpenEnvironments={() => openSettings(navigation, "SettingsEnvironments")}
           onOpenSettings={() => selectTab("settings")}
+          onOpenUsage={openUsage}
           onSearchQueryChange={setSearchQuery}
           onStartNewTask={startNewTask}
         />

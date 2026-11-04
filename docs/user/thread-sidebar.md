@@ -55,6 +55,27 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Run a workflow
+
+A workflow runs a sequence of stages in one thread. Ask your agent to create one
+with instructions, success criteria, and an attempt limit for each stage. On web
+and desktop, open the thread details to see **Workflows**; on mobile, open
+**Workflows** above the conversation. The APK example saves a draft that syncs a
+fork, checks, builds, verifies and publishes an APK, then waits for manual
+installation confirmation. Saving a draft runs nothing; choose **Start** to run it.
+
+Each stage records its outcome and evidence. The next stage starts only after the
+agent reports success. **Retry** keeps successful stages and retries the failed
+stage within its attempt limit. An interrupted stage requires inspection before
+retrying, because it may already have changed files or published an artifact.
+**Resume when ready** continues a stage waiting for input or confirmation.
+
+Workflow state survives a server restart. Pause and cancel prevent later stages
+from starting; they allow current work to finish. Stages use the thread's selected
+provider and permissions. The provider needs access to T3's workflow tools to
+report results. For the APK example, publication and installation are separate
+outcomes: publishing a download does not confirm what is installed on your phone.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
@@ -324,3 +345,9 @@ several selected threads together. Choose **Wake thread** to bring a thread back
 A snoozed thread keeps working and stays hidden until its wake time, even while
 its agent wakes itself for background work. It comes back early only when it needs
 an approval or answer from you, when a run fails, or when you send it a message.
+
+## Keep files with a thread
+
+Open **Artifacts** in the thread details on web or desktop, or in the thread’s **More actions** menu on mobile. Add files from your device, or ask the agent to publish a file it created, such as an APK, report, or archive. Artifacts are copied onto the thread’s server and can be downloaded from any client connected to that environment. The server must be online.
+
+You or the agent can rename, replace, or delete an artifact. On mobile, use **Open** to hand a file to another app, or **Save or share** to keep a copy. On Android, APK artifacts show **Install and open** instead of **Open**; the first time, Android asks you to allow installs from T3 Code. Each file can be up to 2 GB. Settling a thread keeps its artifacts; deleting the thread removes them.

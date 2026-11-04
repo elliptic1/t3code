@@ -418,6 +418,18 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
 );
 export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitRecoveryUpdate.Type;
 
+export const OrchestrationV2ModelFallback = Schema.Struct({
+  preferred: ModelSelection,
+  fallback: ModelSelection,
+}).check(
+  Schema.makeFilter(
+    (value) =>
+      value.preferred.instanceId !== value.fallback.instanceId ||
+      "Choose a fallback from a different provider account, so it has a separate usage allowance.",
+  ),
+);
+export type OrchestrationV2ModelFallback = typeof OrchestrationV2ModelFallback.Type;
+
 /**
  * `score` is an open count that halves every two weeks, as of `openedAt`.
  * `picks` stores lowercase palette queries, newest first.
@@ -445,6 +457,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   title: TrimmedNonEmptyString,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
+  modelFallback: Schema.optional(Schema.NullOr(OrchestrationV2ModelFallback)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
@@ -2062,6 +2075,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   title: Schema.String,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
+  modelFallback: Schema.optional(Schema.NullOr(OrchestrationV2ModelFallback)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
@@ -3030,6 +3044,7 @@ export const OrchestrationV2Command = Schema.Union([
     /** Reject unless no message or run has landed on this thread. */
     expectedEmpty: Schema.optional(Schema.Boolean),
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
+    modelFallback: Schema.optional(Schema.NullOr(OrchestrationV2ModelFallback)),
     /** Link (object) or unlink (null) a pull request; absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   }),
@@ -3110,6 +3125,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     modelSelection: ModelSelection,
+    modelFallback: Schema.optional(Schema.NullOr(OrchestrationV2ModelFallback)),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-session.detach"),
@@ -3138,6 +3154,7 @@ export const OrchestrationV2Command = Schema.Union([
     sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
     restartContinuationOfRunId: Schema.optional(RunId),
     usageLimitContinuationOfRunId: Schema.optional(RunId),
+    modelFallbackContinuationOfRunId: Schema.optional(RunId),
     manualContinuationOfRunId: Schema.optional(RunId),
     usageLimitRecoveryRequestId: Schema.optional(CommandId),
     deliveryIntent: Schema.optional(Schema.Literals(["auto", "steer", "restart"])),
@@ -3296,9 +3313,12 @@ export const OrchestrationV2Command = Schema.Union([
     ...OrchestrationV2CreationFields,
     commandId: CommandId,
     parentThreadId: ThreadId,
-    parentRunId: RunId,
-    parentNodeId: NodeId,
+    // Composer sends let the server bind the active root at commit time.
+    parentRunId: Schema.optional(RunId),
+    parentNodeId: Schema.optional(NodeId),
     task: TrimmedNonEmptyString,
+    attachments: Schema.optional(Schema.Array(ChatAttachment)),
+    context: Schema.optional(OrchestrationMessageContext),
     title: Schema.optional(TrimmedNonEmptyString),
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
@@ -3343,6 +3363,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     modelSelection: ModelSelection,
+    modelFallback: Schema.optional(Schema.NullOr(OrchestrationV2ModelFallback)),
   }),
 ]);
 export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;

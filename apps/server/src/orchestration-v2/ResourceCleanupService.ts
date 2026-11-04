@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 
 import { resolveAttachmentRelativePath } from "../attachmentPaths.ts";
 import { parseAttachmentFileExtension, resolveAttachmentPathById } from "../attachmentStore.ts";
+import * as Artifacts from "../artifacts/ThreadArtifactService.ts";
 import * as ServerConfig from "../config.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
@@ -46,6 +47,7 @@ export const layer = Layer.effect(
     const fileSystem = yield* FileSystem.FileSystem;
     const config = yield* ServerConfig.ServerConfig;
     const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
+    const artifacts = yield* Artifacts.ThreadArtifactService;
     return {
       cleanupScheduledTasks: Effect.fn("ResourceCleanupService.cleanupScheduledTasks")(function (
         threadId: ThreadId,
@@ -73,13 +75,12 @@ export const layer = Layer.effect(
       cleanupPreviews: Effect.fn("ResourceCleanupService.cleanupPreviews")(function (
         threadId: string,
       ) {
-        return previews
-          .close({ threadId: ThreadId.make(threadId) })
-          .pipe(
-            Effect.mapError(
-              (cause) => new ResourceCleanupError({ operation: "preview", threadId, cause }),
-            ),
-          );
+        return previews.close({ threadId: ThreadId.make(threadId) }).pipe(
+          Effect.andThen(() => artifacts.cleanupDeletedThread(threadId)),
+          Effect.mapError(
+            (cause) => new ResourceCleanupError({ operation: "preview", threadId, cause }),
+          ),
+        );
       }),
       cleanupAttachments: Effect.fn("ResourceCleanupService.cleanupAttachments")(function (
         attachmentIds: ReadonlyArray<string>,

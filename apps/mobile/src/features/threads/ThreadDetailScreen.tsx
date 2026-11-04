@@ -15,6 +15,9 @@ import { createThreadVisitTracker } from "@t3tools/client-runtime/state/thread-v
 import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 import { ChatGptUsageLimitNotice } from "./ChatGptUsageLimitNotice";
+import { ThreadWorkflowsPanel } from "./ThreadWorkflowsPanel";
+import { YesNoReplies } from "./YesNoReplies";
+import { endsWithYesNoQuestion } from "@t3tools/shared/yesNoQuestion";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import {
   effectiveSnoozed,
@@ -99,6 +102,7 @@ import {
 } from "react-native";
 import {
   KeyboardController,
+  KeyboardEvents,
   KeyboardStickyView,
   useKeyboardState,
   useReanimatedKeyboardAnimation,
@@ -263,6 +267,7 @@ export interface ThreadDetailScreenProps {
   readonly composerDraftKey: string | null;
   readonly followUpBehavior: FollowUpBehavior;
   readonly canSteerActiveTurn: boolean;
+  readonly canStartParallelAgent: boolean;
   readonly isSavingQueuedEdit: boolean;
   readonly onCancelQueuedRunEdit: () => void;
   readonly onRemoveQueuedEditAttachment: (attachmentId: string) => void;
@@ -446,8 +451,15 @@ function ThreadDetailBody(
         setKeyboardStateSuspect(!ownedInputFocusedRef.current);
       }
     });
+    // A real show animation always emits keyboardWillShow, even when the frozen state already
+    // reads open at the same height, so neither the state effect below nor a focus gain fires
+    // (the editor keeps focus across background). Without this the composer stays under the IME.
+    const showSubscription = KeyboardEvents.addListener("keyboardWillShow", () => {
+      setKeyboardStateSuspect(false);
+    });
     return () => {
       subscription.remove();
+      showSubscription.remove();
     };
   }, []);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the suspect flag whenever the native keyboard reports a visibility or height change
@@ -1304,6 +1316,26 @@ function ThreadDetailBody(
     return messageId;
   };
 
+  const composerDraft = props.composerDraftKey
+    ? getComposerDraftSnapshot(props.composerDraftKey)
+    : null;
+  const lastFeedMessage = selectedThreadFeed.findLast((entry) => entry.type === "message")?.message;
+  const offerYesNoReplies =
+    !props.draftMode &&
+    props.canOperateThread &&
+    !props.activeThreadBusy &&
+    props.selectedThreadQueueCount === 0 &&
+    props.queuedRunEdit === null &&
+    (composerDraft?.text ?? "").trim().length === 0 &&
+    (composerDraft?.attachments.length ?? 0) === 0 &&
+    lastFeedMessage?.role === "assistant" &&
+    !lastFeedMessage.streaming &&
+    endsWithYesNoQuestion(lastFeedMessage.text);
+  const handleYesNoReply = (text: "Yes" | "No") => {
+    props.onChangeDraftMessage(text);
+    void handleSendMessage();
+  };
+
   const handleEditPendingMessage = async (message: QueuedThreadMessage) => {
     if (pendingMessageEditBlocked) return;
     const scope = threadScope.current.signal;
@@ -1384,6 +1416,13 @@ function ThreadDetailBody(
 
   return (
     <View className="flex-1" onLayout={handleScreenLayout}>
+      {!props.draftMode ? (
+        <ThreadWorkflowsPanel
+          key={selectedThreadKey}
+          environmentId={props.environmentId}
+          threadId={props.selectedThread.id}
+        />
+      ) : null}
       {!usesNativeWorkspaceColumns ? <NativeLayoutObserver onChange={setScreenMetrics} /> : null}
       {props.draftMode ? (
         props.draftMode.content(
@@ -1735,6 +1774,7 @@ function ThreadDetailBody(
                     </View>
                   ) : (
                     <>
+                      {offerYesNoReplies ? <YesNoReplies onReply={handleYesNoReply} /> : null}
                       <ThreadComposer
                         isDraft={Boolean(props.draftMode)}
                         canOperateThread={props.canOperateThread}
@@ -1779,6 +1819,7 @@ function ThreadDetailBody(
                             : props.followUpBehavior
                         }
                         canSteerActiveTurn={props.canSteerActiveTurn}
+                        canStartParallelAgent={props.canStartParallelAgent}
                         hidden={composerSlotHidden}
                         queuedEdit={
                           props.queuedRunEdit === null

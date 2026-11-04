@@ -17,9 +17,13 @@ const KNOWN_BAILOUTS: Record<string, string> = {
   "src/components/ui/Menu.tsx": "ref read during render",
   "src/features/diffs/nativeReviewDiffSurface.ts": "ref read during render",
   "src/features/home/thread-swipe-actions.tsx": "ref read during render",
+  "src/features/home/useThreadListActions.ts": "try without catch",
+  "src/state/use-selected-thread-requests.ts": "try/finally",
+  "src/features/settings/SettingsVoiceRouteScreen.tsx": "try/finally",
   "src/features/threads/ThreadArrangementSheet.tsx": "ref read during render",
+  "src/features/threads/ThreadArtifactsModal.tsx": "dynamic import, try/finally",
   "src/features/voice-input/useVoiceInputController.ts": "ref read during render",
-  "src/native/T3ComposerEditor.ios.tsx": "ref read during render",
+  "src/features/voice-conversation/VoiceConversation.tsx": "dynamic import, try/finally",
   "src/native/T3ComposerEditor.native.tsx": "ref read during render",
 };
 

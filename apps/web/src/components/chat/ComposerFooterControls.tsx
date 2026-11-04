@@ -5,7 +5,7 @@ import type {
   RuntimeMode,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
-import { BotIcon, PencilRulerIcon } from "lucide-react";
+import { BotIcon, MicIcon, MicOffIcon, PencilRulerIcon } from "lucide-react";
 import { type ComponentProps, memo, useId, useRef, useState } from "react";
 
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
@@ -15,6 +15,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { Button } from "../ui/button";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderModelPicker } from "./ProviderModelPicker";
@@ -247,6 +248,9 @@ export function ComposerPermissionsSection(props: {
 
 export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
+  onToggleDictation?: (() => void) | undefined;
+  dictationDisabled: boolean;
+  dictationActive: boolean;
   canOperateThread: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   reserveContextWindowMeter: boolean;
@@ -263,6 +267,10 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   canInterrupt: boolean;
   followUpBehavior: "queue" | "steer";
   canSteer: boolean;
+  canStartParallelAgent: boolean;
+  onSendAction: (
+    action: import("@t3tools/client-runtime/state/composer-dispatch").ComposerDispatchMode,
+  ) => void;
   alternateShortcutLabel: string | null;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
@@ -298,6 +306,29 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
       ) : props.reserveContextWindowMeter ? (
         <ContextWindowMeterPlaceholder />
       ) : null}
+      {props.onToggleDictation ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant={props.dictationActive ? "secondary" : "ghost"}
+                size="icon-sm"
+                disabled={props.dictationDisabled}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={props.onToggleDictation}
+                aria-pressed={props.dictationActive}
+                aria-label={props.dictationActive ? "Stop dictation" : "Start dictation"}
+              />
+            }
+          >
+            {props.dictationActive ? <MicOffIcon /> : <MicIcon />}
+          </TooltipTrigger>
+          <TooltipPopup>
+            {props.dictationActive ? "Stop dictation" : "Start dictation"}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
       <ComposerPrimaryActions
         compact={props.compact}
         canOperateThread={props.canOperateThread}
@@ -306,6 +337,8 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         canInterrupt={props.canInterrupt}
         followUpBehavior={props.followUpBehavior}
         canSteer={props.canSteer}
+        canStartParallelAgent={props.canStartParallelAgent}
+        onSendAction={props.onSendAction}
         alternateShortcutLabel={props.alternateShortcutLabel}
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}

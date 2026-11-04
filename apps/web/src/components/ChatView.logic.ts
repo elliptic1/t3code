@@ -1423,6 +1423,7 @@ export function planComposerTurn(input: {
   // old history. The message queues behind the /compact run, since steering into it is
   // rejected.
   const compactBeforeSend =
+    input.dispatchMode !== "parallel" &&
     input.resumeCompactionTokens !== null &&
     !input.keepFullHistory &&
     !COMPACT_COMMAND_PATTERN.test(input.messageText);
@@ -1433,7 +1434,11 @@ export function planComposerTurn(input: {
     baseBranchForWorktree: shouldCreateWorktree ? input.activeThreadBranch : null,
     compactBeforeSend,
     turnDispatchMode:
-      compactBeforeSend || input.sendQueuesBehindSetup ? ("queue" as const) : input.dispatchMode,
+      input.dispatchMode === "parallel"
+        ? ("parallel" as const)
+        : compactBeforeSend || input.sendQueuesBehindSetup
+          ? ("queue" as const)
+          : input.dispatchMode,
     shouldQueueBehindActiveRun:
       compactBeforeSend ||
       input.sendQueuesBehindSetup ||

@@ -8,8 +8,8 @@ import {
 import type { WorkspaceTab } from "./workspace-tabs-state";
 import { rememberedSettingsPage, workspaceSelectionsIn } from "./workspace-tab-navigation";
 
-/** Settings joins the two list tabs as a top-level Android destination. */
-export type AndroidWorkspaceNavigationTab = WorkspaceTab | "settings";
+/** Usage and Settings join the two list tabs as top-level Android destinations. */
+export type AndroidWorkspaceNavigationTab = WorkspaceTab | "usage" | "settings";
 
 const WORKSPACE_ROUTES = new Set(["Home", "Thread", "PullRequest"]);
 

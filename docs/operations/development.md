@@ -261,6 +261,13 @@ DMGs default to the host architecture. Use `--arch` to choose another target and
 to retain packaging files for inspection. Run `vp run dist:desktop:artifact --help` for other
 options.
 
+Fork builds use `bash scripts/fork-build.sh` and require a persistent code-signing certificate
+and private key in the login keychain. Pin its SHA-1 fingerprint with
+`T3CODE_FORK_SIGNING_IDENTITY`, or store the fingerprint in
+`~/Library/Application Support/T3 Code Fork/signing-identity`. Reuse that certificate across
+builds so Keychain can recognize the updated app. A locally trusted certificate supports this
+Mac's fork builds; it does not provide Developer ID distribution or notarization.
+
 ### Prepared server bytecode
 
 Native macOS and Windows desktop artifact builds generate server bytecode with the packaged

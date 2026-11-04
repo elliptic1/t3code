@@ -11,6 +11,7 @@ import type { DeviceScreenSize } from "@t3tools/client-runtime/device/stream";
 
 export const PREVIEW_MINI_PLAYER_EDGE_GAP = 12;
 export const PREVIEW_MINI_PLAYER_CORNER_RADIUS = 12;
+export const PREVIEW_MINI_PLAYER_HEADER_HEIGHT = 36;
 // The mini-player shell straddles this webview at 47 and 49: above --z-sheet, under dialogs (50).
 export const PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX = 48;
 const PREVIEW_MINI_PLAYER_DEFAULT_BOX = { width: 320, height: 320 } as const;
@@ -117,15 +118,16 @@ function fitPreviewMiniPlayerWidth(
   desiredWidth: number,
   source: PreviewMiniPlayerSize,
   max: PreviewMiniPlayerSize,
+  headerHeight = 0,
   minimumWidth = minimumPreviewMiniPlayerWidth(source),
 ): PreviewMiniPlayerSize {
   const aspectRatio = source.width / source.height;
   const width = Math.min(
     Math.max(desiredWidth, minimumWidth),
     Math.max(1, max.width),
-    Math.max(1, max.height * aspectRatio),
+    Math.max(1, (max.height - headerHeight) * aspectRatio),
   );
-  return { width: Math.round(width), height: Math.round(width / aspectRatio) };
+  return { width: Math.round(width), height: Math.round(width / aspectRatio) + headerHeight };
 }
 
 function defaultPreviewMiniPlayerWidth(source: PreviewMiniPlayerSize): number {
@@ -231,6 +233,7 @@ export function resolvePreviewMiniPlayerFrame(input: {
   readonly source: PreviewMiniPlayerSize;
   readonly container: PreviewMiniPlayerSize;
   readonly obstacles?: PreviewMiniPlayerObstacles;
+  readonly headerHeight?: number;
 }): PreviewMiniPlayerFrame {
   const {
     width,
@@ -238,6 +241,7 @@ export function resolvePreviewMiniPlayerFrame(input: {
     source,
     container,
     obstacles = NO_PREVIEW_MINI_PLAYER_OBSTACLES,
+    headerHeight = 0,
   } = input;
   const size = fitPreviewMiniPlayerWidth(
     width ?? defaultPreviewMiniPlayerWidth(source),
@@ -247,6 +251,7 @@ export function resolvePreviewMiniPlayerFrame(input: {
       position && width ? { composer: obstacles.composer, detailsCard: null } : obstacles,
       position && width ? spanOf(position.x, width) : null,
     ),
+    headerHeight,
     width ?? undefined,
   );
   const { detailsCard } = obstacles;
@@ -268,6 +273,7 @@ export function resizePreviewMiniPlayer(input: {
   readonly source: PreviewMiniPlayerSize;
   readonly container: PreviewMiniPlayerSize;
   readonly obstacles?: PreviewMiniPlayerObstacles;
+  readonly headerHeight?: number;
 }): PreviewMiniPlayerFrame {
   const {
     start,
@@ -276,6 +282,7 @@ export function resizePreviewMiniPlayer(input: {
     source,
     container,
     obstacles = NO_PREVIEW_MINI_PLAYER_OBSTACLES,
+    headerHeight = 0,
   } = input;
   const east = direction.includes("east");
   const west = direction.includes("west");
@@ -299,7 +306,7 @@ export function resizePreviewMiniPlayer(input: {
         : floor - ceiling - PREVIEW_MINI_PLAYER_EDGE_GAP * 2,
   };
   const desiredWidth = start.width + (east ? delta.x : west ? -delta.x : 0);
-  const desiredHeight = start.height + (south ? delta.y : north ? -delta.y : 0);
+  const desiredHeight = start.height - headerHeight + (south ? delta.y : north ? -delta.y : 0);
   const horizontal = east || west;
   const vertical = north || south;
   const aspectRatio = source.width / source.height;
@@ -315,6 +322,7 @@ export function resizePreviewMiniPlayer(input: {
     desired,
     source,
     max,
+    headerHeight,
     Math.min(start.width, minimumPreviewMiniPlayerWidth(source)),
   );
   const position = clampPreviewMiniPlayerPosition(

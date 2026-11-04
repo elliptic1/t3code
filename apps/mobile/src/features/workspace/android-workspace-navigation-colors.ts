@@ -7,7 +7,7 @@ import {
 
 export function androidWorkspaceNavigationColors(
   colors: MobileThemeVariables,
-  rail: boolean,
+  rail = false,
   floating = false,
 ) {
   const header = flattenThemeColor(colors["--color-header"], colors["--color-screen"]);

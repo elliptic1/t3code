@@ -9325,7 +9325,7 @@ type UpdateChannel {
 type UpdateChannelMutation {
   """
   Create an EAS channel for an app.
-  
+
   In order to work with GraphQL formatting, the branchMapping should be a
   stringified JSON supplied to the mutation as a variable.
   """
@@ -9336,7 +9336,7 @@ type UpdateChannelMutation {
 
   """
   Edit an EAS channel.
-  
+
   In order to work with GraphQL formatting, the branchMapping should be a
   stringified JSON supplied to the mutation as a variable.
   """
