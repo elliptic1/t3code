@@ -1,6 +1,6 @@
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
-import { useState, type ReactNode } from "react";
-import { Linking, Platform, Pressable, useWindowDimensions, View } from "react-native";
+import { useRef, useState, type ReactNode } from "react";
+import { Linking, PanResponder, Platform, Pressable, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
   Extrapolation,
@@ -36,6 +36,7 @@ const ENTERING = FadeIn.duration(180).reduceMotion(ReduceMotion.System);
 export function GlobalVoiceInputControl(props: { readonly children: ReactNode }) {
   const voice = useGlobalVoiceInput();
   const [expanded, setExpanded] = useState(false);
+  const [offset, setOffset] = useState(0);
   const presentation = resolveVoiceComposerPresentation(voice.state, voice.elapsedSeconds);
   const visible =
     presentation.statusLabel !== null &&
@@ -43,7 +44,12 @@ export function GlobalVoiceInputControl(props: { readonly children: ReactNode })
   // A pill that reappears starts collapsed.
   if (!visible && expanded) setExpanded(false);
   const pill = visible ? (
-    <EdgeDictationPill expanded={expanded} onExpandedChange={setExpanded} />
+    <EdgeDictationPill
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+      offset={offset}
+      onOffsetChange={setOffset}
+    />
   ) : null;
   return (
     <>
@@ -63,11 +69,13 @@ export function GlobalVoiceInputControl(props: { readonly children: ReactNode })
 
 function EdgeDictationPill(props: {
   readonly expanded: boolean;
+  readonly offset: number;
+  readonly onOffsetChange: (offset: number) => void;
   readonly onExpandedChange: (expanded: boolean) => void;
 }) {
   const voice = useGlobalVoiceInput();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { fabSize } = useAndroidControlSizing();
   const { expanded, onExpandedChange: setExpanded } = props;
   const progress = useDerivedValue(() => withTiming(expanded ? 1 : 0, MORPH_TIMING));
@@ -88,6 +96,22 @@ function EdgeDictationPill(props: {
       ? Math.max(insets.bottom, 16) + 16 + fabSize + 12
       : Math.max(insets.bottom, 12) + IOS_BOTTOM_CHROME_CLEARANCE;
 
+  const dragStart = useRef(props.offset);
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 8,
+    onPanResponderGrant: () => {
+      dragStart.current = props.offset;
+    },
+    onPanResponderMove: (_, gesture) => {
+      props.onOffsetChange(
+        Math.max(
+          bottom + PILL_HEIGHT + insets.top - height,
+          Math.min(bottom - insets.bottom, dragStart.current + gesture.dy),
+        ),
+      );
+    },
+  });
+
   const presentation = resolveVoiceComposerPresentation(voice.state, voice.elapsedSeconds);
   const phase = voice.state.phase;
   const isError = phase === "error";
@@ -98,8 +122,9 @@ function EdgeDictationPill(props: {
     <View pointerEvents="box-none" className="absolute inset-0">
       <Animated.View
         entering={ENTERING}
+        {...panResponder.panHandlers}
         className="absolute rounded-l-full border border-r-0 border-border bg-card shadow-md shadow-black/10"
-        style={[{ bottom, right: insets.right, height: PILL_HEIGHT }, pillStyle]}
+        style={[{ bottom: bottom - Math.max(bottom + PILL_HEIGHT + insets.top - height, Math.min(bottom - insets.bottom, props.offset)), right: insets.right, height: PILL_HEIGHT }, pillStyle]}
       >
         <View className="flex-1 overflow-hidden rounded-l-full">
           <Animated.View
