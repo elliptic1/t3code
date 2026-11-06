@@ -187,6 +187,7 @@ const command = Effect.fn("nativeClient.command")(function* (
         ...environment,
         APP_VARIANT: "development",
         MOBILE_VERSION_POLICY: "appVersion",
+        T3CODE_IOS_PERSONAL_TEAM: "0",
         CI: "1",
         EXPO_NO_GIT_STATUS: "1",
         // macOS tar otherwise adds AppleDouble entries that change the extracted bundle.
@@ -341,6 +342,13 @@ export const installedBinary = Effect.fn("installedBinary")(function* (
   device: string,
   run: typeof command = command,
 ) {
+  if (platform === "ios") {
+    const apps = yield* run("xcrun", ["simctl", "listapps", device]);
+    if (!apps.includes(`"${bundleId}"`)) return null;
+    return yield* hashBundle(
+      yield* run("xcrun", ["simctl", "get_app_container", device, bundleId, "app"]),
+    );
+  }
   const installed = yield* run("adb", ["-s", device, "shell", "pm", "list", "packages", bundleId]);
   if (!installed.split("\n").some((line) => line.trim() === `package:${bundleId}`)) return null;
   const packages = yield* run("adb", ["-s", device, "shell", "pm", "path", bundleId]);

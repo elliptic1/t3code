@@ -9,11 +9,15 @@ const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
+const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 // Embedded in the app manifest at build time, so relaunching keeps the same date.
 const BUILD_TIMESTAMP = new Date().toISOString();
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
+
+const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 // Compiled into the native project. Without a relay, Observe's native side could dispatch to
 // Expo's own ingest before observe.ts turns it off; `.invalid` never resolves (RFC 6761).
@@ -24,8 +28,19 @@ const observeEndpointUrl = repoEnv.T3CODE_RELAY_URL?.trim()
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
 const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
+if (
+  isIosPersonalTeamBuild &&
+  (!personalTeamBundleIdentifier ||
+    !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
+) {
+  throw new Error(
+    "T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
+  );
+}
+
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   androidAdaptiveForeground,
   androidAdaptiveBackgroundColor: "#347FF8",
@@ -38,6 +53,7 @@ const DEVELOPMENT_ASSETS = {
 
 const PREVIEW_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
   androidAdaptiveForeground,
   androidAdaptiveBackgroundColor: "#111533",
@@ -50,6 +66,7 @@ const PREVIEW_ASSETS = {
 
 const RELEASE_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   androidAdaptiveForeground,
   androidAdaptiveBackgroundColor: "#000000",
@@ -101,7 +118,9 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
-const iosBundleIdentifier = variant.iosBundleIdentifier;
+const iosBundleIdentifier = isIosPersonalTeamBuild
+  ? personalTeamBundleIdentifier!
+  : variant.iosBundleIdentifier;
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -123,6 +142,42 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
         name: "SubscriptionUsage",
         displayName: "Subscription usage",
         description: "Subscription quotas from your connected T3 Code environments.",
+        ios: {
+          configuration: {
+            title: "Subscription usage",
+            description:
+              "Both shows Session and Weekly when available. The Lock Screen shows the tightest selected limit.",
+            parameters: {
+              codexPeriod: {
+                title: "Codex limits",
+                type: "enum",
+                default: "auto",
+                values: [
+                  { name: "Both", value: "auto" },
+                  { name: "Session", value: "session" },
+                  { name: "Weekly", value: "weekly" },
+                ],
+              },
+              claudePeriod: {
+                title: "Claude limits",
+                type: "enum",
+                default: "auto",
+                values: [
+                  { name: "Both", value: "auto" },
+                  { name: "Session", value: "session" },
+                  { name: "Weekly", value: "weekly" },
+                ],
+              },
+            },
+          },
+          supportedFamilies: [
+            "systemSmall",
+            "systemMedium",
+            "systemLarge",
+            "systemExtraLarge",
+            "accessoryRectangular",
+          ],
+        },
         android: {
           minWidth: 250,
           minHeight: 180,
@@ -133,6 +188,13 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
           initialLayout: "./src/widgets/SubscriptionUsage.android.tsx",
         },
       },
+      {
+        name: "AgentActivity",
+        displayName: "Agent Activity",
+        description: "Shows the current state of active T3 Code agents.",
+        android: null,
+        ios: { supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"] },
+      },
     ],
   },
 ];
@@ -140,6 +202,19 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
   "expo-sharing",
   {
+    ios: {
+      // Personal Teams cannot sign App Groups or extension targets; keep local builds usable.
+      enabled: !isIosPersonalTeamBuild,
+      extensionBundleIdentifier: `${iosBundleIdentifier}.sharing`,
+      appGroupId: `group.${iosBundleIdentifier}`,
+      activationRule: {
+        supportsText: true,
+        supportsWebUrlWithMaxCount: 1,
+        supportsImageWithMaxCount: 8,
+        supportsMovieWithMaxCount: 8,
+        supportsFileWithMaxCount: 8,
+      },
+    },
     android: {
       enabled: true,
       singleShareMimeTypes: ["*/*"],
@@ -153,7 +228,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 const config: ExpoConfig = {
   name: variant.appName,
   slug: "t3-code",
-  platforms: ["android"],
+  platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.2.0",
   runtimeVersion: {
@@ -168,6 +243,48 @@ const config: ExpoConfig = {
     url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
+  },
+  ios: {
+    icon: variant.assets.iosIcon,
+    supportsTablet: true,
+    requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
+    bundleIdentifier: iosBundleIdentifier,
+    // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
+    appleTeamId: "ARK85ZXQ4Z",
+    associatedDomains: [
+      `applinks:${variant.relyingParty}`,
+      `webcredentials:${variant.relyingParty}`,
+    ],
+    entitlements: {
+      "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
+    },
+    infoPlist: {
+      UISupportedInterfaceOrientations: [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+      ],
+      NSAppTransportSecurity: {
+        NSAllowsArbitraryLoads: true,
+      },
+      NSLocalNetworkUsageDescription:
+        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
+      NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
+      // System picture in picture needs background audio to start and survive outside the app.
+      UIBackgroundModes: ["audio"],
+      ITSAppUsesNonExemptEncryption: false,
+      // Capture builds disable multitasking because iPadOS otherwise ignores orientation requests.
+      ...(process.env.T3_SHOWCASE_CAPTURE_BUILD === "1"
+        ? {
+            "UISupportedInterfaceOrientations~ipad": [
+              "UIInterfaceOrientationPortrait",
+              "UIInterfaceOrientationPortraitUpsideDown",
+              "UIInterfaceOrientationLandscapeLeft",
+              "UIInterfaceOrientationLandscapeRight",
+            ],
+          }
+        : {}),
+    },
   },
   android: {
     icon: variant.assets.appIcon,
@@ -215,6 +332,9 @@ const config: ExpoConfig = {
     [
       "expo-font",
       {
+        ios: {
+          fonts: [dmSansFonts.regular, dmSansFonts.medium, dmSansFonts.bold],
+        },
         android: {
           fonts: [
             {
@@ -235,7 +355,9 @@ const config: ExpoConfig = {
     ],
     "expo-secure-store",
     "expo-sqlite",
-    sharingPlugin,
+    ...(isIosPersonalTeamBuild
+      ? [sharingPlugin]
+      : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
     [
       "expo-notifications",
       {
@@ -244,7 +366,8 @@ const config: ExpoConfig = {
         mode: APP_VARIANT === "development" ? "development" : "production",
       },
     ],
-    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: false }],
+    // Gate Clerk here: withoutIosPersonalTeamCapabilities runs too early to strip its entitlement.
+    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
     "expo-web-browser",
     [
       "expo-quick-actions",
@@ -320,11 +443,21 @@ const config: ExpoConfig = {
             "-keep class * extends androidx.work.InputMerger { <init>(); }",
           ].join("\n"),
         },
+        ios: {
+          deploymentTarget: "18.0",
+          // AppCheckCore 11.3+ includes Swift and needs module maps for these Objective-C dependencies.
+          extraPods: [
+            { name: "GoogleUtilities", modular_headers: true },
+            { name: "RecaptchaInterop", modular_headers: true },
+          ],
+        },
       },
     ],
-    // Only the accelerometer is used (device viewer shake).
+    "./plugins/withIosCocoaPodsUuidCache.cjs",
+    // Compile out the unused pedometer to avoid an iOS motion purpose string.
     ["expo-sensors", { motionPermission: false }],
-    widgetsPlugin,
+    // Mods run in reverse order; expo-widgets must create and wipe the target before assets are added.
+    ...(!isIosPersonalTeamBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
     "./plugins/withAndroidNetworkSecurityConfig.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
     "./plugins/withAndroidInputBackground.cjs",
@@ -332,9 +465,11 @@ const config: ExpoConfig = {
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
+    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
+    iosPersonalTeamBuild: isIosPersonalTeamBuild,
     buildTimestamp: BUILD_TIMESTAMP,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,

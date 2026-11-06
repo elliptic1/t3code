@@ -24,6 +24,7 @@ const KNOWN_BAILOUTS: Record<string, string> = {
   "src/features/threads/ThreadArtifactsModal.tsx": "dynamic import, try/finally",
   "src/features/voice-input/useVoiceInputController.ts": "ref read during render",
   "src/features/voice-conversation/VoiceConversation.tsx": "dynamic import, try/finally",
+  "src/native/T3ComposerEditor.ios.tsx": "ref read during render",
   "src/native/T3ComposerEditor.native.tsx": "ref read during render",
 };
 

@@ -1,5 +1,13 @@
 {
-  "platforms": ["android"],
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["T3NativeControlsModule", "T3KeyboardCommandsModule"],
+    "appDelegateSubscribers": [
+      "T3WorkspaceOrientationSubscriber",
+      "T3MenuDismissTouchGateSubscriber",
+      "T3BackgroundGraceSubscriber"
+    ]
+  },
   "android": {
     "modules": [
       "expo.modules.t3nativecontrols.T3NativeControlsModule",
