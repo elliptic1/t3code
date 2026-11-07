@@ -26,6 +26,7 @@ function thread(
     runStatus: "running",
     activeRunId: null,
     snoozed: false,
+    quietOutcome: false,
     ...state,
   };
 }
@@ -147,6 +148,16 @@ describe("nextBackgroundThreadAnnouncement", () => {
         { threads: [login({ runStatus: "completed" })] },
       ]),
     ).toEqual([]);
+  });
+
+  it("keeps how work another thread started ended quiet, but still speaks its requests", () => {
+    expect(
+      speak([
+        { threads: [login({ quietOutcome: true })] },
+        { threads: [login({ quietOutcome: true, request: "approval" })] },
+        { threads: [login({ quietOutcome: true, runStatus: "failed" })] },
+      ]),
+    ).toEqual(["Needs approval: Fix login redirect"]);
   });
 
   it("speaks threads that change together in one announcement", () => {

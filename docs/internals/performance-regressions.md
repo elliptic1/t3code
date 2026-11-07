@@ -94,7 +94,8 @@ The focused regression coverage lives in `OrchestrationEventStore.sequence.test.
 ## Background work and navigation
 
 The settlement worker reads active, unpinned threads without explicit settlement overrides from
-`ProjectionStore.getSettlementCandidates`. It reads the latest run and user-message timestamps,
+`ProjectionStore.getSettlementCandidates`. With every settlement setting off, it reads only threads
+another thread started and makes no pull request lookups. It reads the latest run and user-message timestamps,
 rejects active runs and pending requests, and checks background work using the same derivation as
 the shell. It does not load archived histories, fork ancestry, transcript counts, or provider
 sessions. The orchestrator still validates the current thread before applying settlement.

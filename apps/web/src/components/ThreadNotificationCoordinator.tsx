@@ -3,6 +3,7 @@ import {
   type PendingSubagentRequest,
   presentThreadShell,
 } from "@t3tools/client-runtime/state/models";
+import { belongsInStartedByAgents } from "@t3tools/client-runtime/state/thread-inbox";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import type { AnyRouter } from "@tanstack/react-router";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
@@ -42,6 +43,7 @@ interface NotificationState extends ThreadNotificationObservation {
   readonly subagentRequest: PendingSubagentRequest | null;
   readonly thread: EnvironmentThreadShell;
   readonly status: SidebarThreadStatus;
+  readonly startedByAgents: boolean;
 }
 
 interface WatchedEnvironment {
@@ -206,12 +208,13 @@ export function startThreadNotifications(
       const thread = presentThreadShell(environmentId, rawThread, subagentRequest);
       let status = resolveSidebarThreadStatus(thread);
       if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
+      // The thread that started this work hears how it ended; only a request needs the user.
+      const startedByAgents = belongsInStartedByAgents(thread);
       const attention =
         status === "input" ||
         status === "request" ||
         status === "approval" ||
-        status === "failed" ||
-        status === "limited"
+        (!startedByAgents && (status === "failed" || status === "limited"))
           ? `${thread.latestRun?.runId ?? ""}:${status}`
           : null;
       const completedAt = Date.parse(thread.latestRun?.completedAt ?? "");
@@ -221,6 +224,7 @@ export function startThreadNotifications(
         subagentRequest,
         thread,
         status,
+        startedByAgents,
         attention,
         settled,
         completedAt: settled && Number.isFinite(completedAt) ? completedAt : null,
@@ -234,7 +238,7 @@ export function startThreadNotifications(
     for (const [prior, state] of changed) {
       entry.gate.observe(state.thread.id, prior, state, {
         archived: state.thread.archivedAt !== null,
-        quiet: state.raw.latestRunStopRequested === true,
+        quiet: state.raw.latestRunStopRequested === true || state.startedByAgents,
       });
     }
   };

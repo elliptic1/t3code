@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import {
+  EnvironmentId,
   EventId,
   MessageId,
   NodeId,
@@ -144,6 +145,47 @@ it.effect(
       const idle = yield* createThread("idle");
       const completed = yield* createThread("completed");
       yield* createRun(completed);
+      const launched = yield* createThread("launched", { launchedByThreadId: idle });
+      yield* createRun(launched);
+      const delegated = yield* createThread("delegated", {
+        delegatedFrom: {
+          environmentId: EnvironmentId.make("environment:laptop"),
+          threadId: ThreadId.make("thread:laptop"),
+          title: "Laptop parent",
+        },
+      });
+      yield* createRun(delegated);
+      const limited = yield* createThread("limited", { launchedByThreadId: idle });
+      const limitedRun = yield* createRun(limited, "failed");
+      yield* store.apply({
+        id: EventId.make("event:settlement:limited-error"),
+        type: "turn-item.updated",
+        threadId: limited,
+        occurredAt: old,
+        payload: {
+          id: TurnItemId.make("item:settlement:limited-error"),
+          threadId: limited,
+          runId: limitedRun,
+          nodeId: null,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 1,
+          type: "error",
+          status: "failed",
+          title: null,
+          startedAt: old,
+          completedAt: old,
+          updatedAt: old,
+          failure: {
+            class: "usage_limit",
+            message: "Usage limit reached.",
+            code: null,
+            retryable: false,
+          },
+        },
+      });
       for (const [name, overrides] of [
         ["archived", { archivedAt: old }],
         ["deleted", { deletedAt: old }],
@@ -250,7 +292,33 @@ it.effect(
       );
       assert.deepEqual(
         new Set(eligible.map((thread) => thread.id)),
-        new Set([idle, completed, queued, woke, background, persistent, rolledBack]),
+        new Set([
+          idle,
+          completed,
+          launched,
+          delegated,
+          limited,
+          queued,
+          woke,
+          background,
+          persistent,
+          rolledBack,
+        ]),
+      );
+      const startedByAnotherThread = yield* store.getSettlementCandidates(undefined, {
+        startedByAnotherThread: true,
+      });
+      assert.deepEqual(
+        new Set(startedByAnotherThread.map((thread) => thread.id)),
+        new Set([launched, delegated, limited]),
+      );
+      assert.equal(
+        candidates.find((thread) => thread.id === limited)?.lastErrorClass,
+        "usage_limit",
+      );
+      assert.equal(
+        shell.threads.find((thread) => thread.id === launched)?.launchedByThreadId,
+        idle,
       );
       assert.deepEqual(
         new Set(eligible.map((thread) => thread.id)),

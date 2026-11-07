@@ -1,4 +1,5 @@
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { belongsInStartedByAgents } from "@t3tools/client-runtime/state/thread-inbox";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import { isListedThreadLineage } from "@t3tools/contracts";
 import type { AnyRouter } from "@tanstack/react-router";
@@ -54,6 +55,7 @@ export function startBackgroundThreadAnnouncements(
         runStatus: thread.latestRun?.status ?? null,
         activeRunId: thread.runtime?.activeRunId ?? null,
         snoozed: effectiveSnoozed(thread, { now }),
+        quietOutcome: belongsInStartedByAgents(thread),
       });
     }
     const next = nextBackgroundThreadAnnouncement(memory, snapshots, openThreadKey);

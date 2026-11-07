@@ -1,4 +1,5 @@
 // @effect-diagnostics globalTimers:off - Shelf placement timers run in web and native clients, outside an Effect runtime.
+import { belongsToAnotherThread } from "@t3tools/contracts";
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
 import { toSortableTimestamp } from "./threadSort.ts";
 import { effectiveSnoozed } from "./threadSettled.ts";
@@ -28,6 +29,30 @@ export function isThreadWorking(thread: WorkingThreadInput): boolean {
     run.status !== "waiting" &&
     thread.runtime?.activeRunId !== run.runId;
   return !(thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled);
+}
+
+/** Pinned, snoozed, and settled placement comes first; a request brings the thread to the user. */
+export function belongsInStartedByAgents(
+  thread: Pick<
+    EnvironmentThreadShell,
+    | "launchedByThreadId"
+    | "delegatedFrom"
+    | "settledOverride"
+    | "snoozedAt"
+    | "latestUserAuthoredMessageAt"
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "pendingSubagentRequest"
+    | "pendingGuestMessageCount"
+  >,
+): boolean {
+  return (
+    belongsToAnotherThread(thread) &&
+    !thread.hasPendingApprovals &&
+    !thread.hasPendingUserInput &&
+    thread.pendingSubagentRequest == null &&
+    (thread.pendingGuestMessageCount ?? 0) === 0
+  );
 }
 
 type InboxThreadInput = Pick<
@@ -98,6 +123,7 @@ type TrackedInboxThread = WorkingThreadInput &
       | "pinnedAt"
       | "settledOverride"
       | "settledAt"
+      | "settledOverride"
       | "snoozedAt"
       | "snoozedUntil"
       | "activeOrderKey"

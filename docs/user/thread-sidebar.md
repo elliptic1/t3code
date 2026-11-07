@@ -166,6 +166,21 @@ choice.
 While this is on, the active list is ordered by when each thread last came back to you, so you
 cannot drag or move threads within it. Your saved order returns when you turn it off.
 
+### Threads started by agents
+
+When an agent starts a new thread to do part of its work, that thread goes into a collapsed
+**Started by agents** section below the active list, on web, desktop, and mobile. A task another
+environment hands to this one goes there too, unless you can see the thread that sent it. Subagents
+still show inside the thread that started them.
+
+These threads settle on their own once their work ends, whether it finished, failed, or was stopped,
+even with automatic settlement turned off. One stopped by a usage limit stays open so it can resume.
+The agent that started a thread still gets its result, and finishing one does not notify you.
+A thread moves to your active list while it needs an approval or an answer. Sending it a message
+makes it yours and restores the usual settlement rules. Pin, snooze, and un-settle change its
+placement until you undo that choice or new activity resumes the usual rules. Threads an agent started here before this update stay where they are; tasks from another
+environment move there no matter when they started.
+
 ### Group threads by project (beta)
 
 Turn on **Settings → Labs → Boring sidebar (group by project)** on web and desktop to put active

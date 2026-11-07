@@ -1,4 +1,5 @@
 import {
+  belongsToAnotherThread,
   isListedThreadLineage,
   type EnvironmentId,
   type OrchestrationV2ThreadShell,
@@ -44,7 +45,11 @@ export interface ProjectThreadAwarenessV2Input {
   readonly thread: Pick<
     OrchestrationV2ThreadShell,
     | "activityRunStatus"
+    | "delegatedFrom"
     | "id"
+    | "launchedByThreadId"
+    | "snoozedAt"
+    | "latestUserAuthoredMessageAt"
     | "lineage"
     | "latestRunStopRequested"
     | "modelSelection"
@@ -67,6 +72,13 @@ export function projectThreadAwarenessV2(
     return null;
   }
   if (phase === "completed" && thread.latestRunStopRequested === true) return null;
+  if (
+    belongsToAnotherThread(thread) &&
+    phase !== "waiting_for_input" &&
+    phase !== "waiting_for_approval"
+  ) {
+    return null;
+  }
   // Resolve the phase first so live or waiting work stays visible after settlement.
   if (
     thread.settledOverride === "settled" &&

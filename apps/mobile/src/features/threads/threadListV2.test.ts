@@ -228,7 +228,7 @@ describe("sortThreadsForListV2", () => {
 });
 
 describe("getThreadListV2OrderedSection", () => {
-  it("uses each saved order and excludes settled, snoozed, and archived rows", () => {
+  it("uses each saved order and excludes settled, snoozed, archived, and agent-started rows", () => {
     const threads = [
       makeThread({ id: ThreadId.make("active-later"), title: "Later", activeOrderKey: "t" }),
       makeThread({ id: ThreadId.make("active-first"), title: "First", activeOrderKey: "f" }),
@@ -249,6 +249,12 @@ describe("getThreadListV2OrderedSection", () => {
       }),
       makeThread({ id: ThreadId.make("settled"), title: "Settled", settledOverride: "settled" }),
       makeThread({ id: ThreadId.make("archived"), title: "Archived", archivedAt: NOW }),
+      makeThread({
+        id: ThreadId.make("launched"),
+        title: "Launched",
+        activeOrderKey: "a",
+        launchedByThreadId: ThreadId.make("active-first"),
+      }),
       makeThread({
         id: ThreadId.make("snoozed"),
         title: "Snoozed",
@@ -1207,6 +1213,20 @@ describe("cross-section thread drops", () => {
       unsettle: true,
       unsnooze: true,
     });
+    expect(
+      threadDropLifecycle(
+        {
+          ...thread,
+          settledOverride: null,
+          snoozedAt: null,
+          snoozedUntil: null,
+          launchedByThreadId: ThreadId.make("launcher"),
+          latestUserAuthoredMessageAt: null,
+        },
+        "active",
+        NOW,
+      ).unsettle,
+    ).toBe(true);
     expect(threadDropLifecycle(thread, "pinned", NOW)).toEqual({
       pin: true,
       unpin: false,
@@ -1661,11 +1681,17 @@ describe("Working section beta", () => {
     expect(ids(layout).slice(1)).toEqual(["finished-early", "finished-late", "asks-approval"]);
   });
 
-  it("places the shelf after queued tasks and before snoozed and settled threads", () => {
+  it("places the shelf after queued tasks, then work other threads started, then snoozed and settled", () => {
     const layout = buildThreadListV2Items({
       threads: [
         makeThread({ id: ThreadId.make("active"), title: "active" }),
         makeThread({ id: ThreadId.make("working"), title: "working", runtime: running }),
+        makeThread({
+          id: ThreadId.make("launched"),
+          title: "launched",
+          runtime: running,
+          launchedByThreadId: ThreadId.make("active"),
+        }),
         makeThread({
           id: ThreadId.make("snoozed"),
           title: "snoozed",
@@ -1685,6 +1711,7 @@ describe("Working section beta", () => {
       now: NOW,
       workingShelfEnabled: true,
       workingShelfExpanded: true,
+      agentsShelfExpanded: true,
       snoozedShelfExpanded: true,
     });
     const items = buildThreadListV2ListItems({
@@ -1693,6 +1720,9 @@ describe("Working section beta", () => {
       workingCount: layout.workingCount,
       workingShelfExpanded: true,
       workingShelfHeaderIndex: layout.workingShelfHeaderIndex,
+      agentsCount: layout.agentsCount,
+      agentsShelfExpanded: true,
+      agentsShelfHeaderIndex: layout.agentsShelfHeaderIndex,
       snoozedCount: layout.snoozedCount,
       snoozedShelfExpanded: true,
       snoozedShelfHeaderIndex: layout.snoozedShelfHeaderIndex,
@@ -1712,6 +1742,8 @@ describe("Working section beta", () => {
       "active",
       "v2-working-shelf",
       "working",
+      "v2-agents-shelf",
+      "launched",
       "v2-snoozed-shelf",
       "snoozed",
       "v2-settled-shelf",

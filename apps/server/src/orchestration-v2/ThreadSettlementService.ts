@@ -5,7 +5,9 @@ import {
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
+  belongsToAnotherThread,
   CommandId,
+  isListedThreadLineage,
   isOrchestrationV2WorkActive,
   type ThreadId,
   type OrchestrationV2DomainEvent,
@@ -184,6 +186,17 @@ export function isSnoozed(
   return !wokeOnError;
 }
 
+function finishedWorkForAnotherThread(
+  thread: ProjectionStore.ProjectionSettlementCandidate,
+): boolean {
+  return (
+    belongsToAnotherThread(thread) &&
+    thread.latestRunCompletedAt !== null &&
+    // A usage-limit failure waits for its resume or model fallback, which skip settled threads.
+    !(thread.status === "failed" && thread.lastErrorClass === "usage_limit")
+  );
+}
+
 export function resolveAutoSettlementAt(input: {
   readonly thread: ProjectionStore.ProjectionSettlementCandidate;
   readonly pullRequest: SettlementPullRequest | null;
@@ -222,6 +235,7 @@ export function resolveAutoSettlementAt(input: {
       toMillis(thread.latestRunStartedAt),
       toMillis(thread.latestRunCompletedAt),
     ]) ?? DateTime.toEpochMillis(thread.createdAt);
+  if (finishedWorkForAnotherThread(thread)) return DateTime.makeUnsafe(activityAtMs);
   if (pullRequest !== null && pullRequestSettles(thread, pullRequest, input.autoSettleOnMerge)) {
     return DateTime.makeUnsafe(activityAtMs);
   }
@@ -310,10 +324,12 @@ export const make = Effect.gen(function* () {
     threadId?: ThreadId,
   ) {
     const settings = yield* settingsService.getSettings;
-    if (!autoSettlementConfigured(settings)) {
-      return;
-    }
-    const threads = yield* projections.getSettlementCandidates(threadId);
+    // With every rule off, work another thread started still settles when it ends.
+    const configured = autoSettlementConfigured(settings);
+    const threads = yield* projections.getSettlementCandidates(
+      threadId,
+      configured ? undefined : { startedByAnotherThread: true },
+    );
     if (threads.length === 0) return;
     const projectShells = yield* projectStore.listShells();
     const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
@@ -387,6 +403,8 @@ export const make = Effect.gen(function* () {
           thread.linkedPullRequest != null ||
           thread.branchPullRequest != null,
       );
+    // Pull request lookups serve only the merge and inactivity rules, which are all off here.
+    if (!configured) return;
     const lookupCwdByThreadId = new Map<string, string>();
     yield* Effect.forEach(
       lookupCandidates,
@@ -594,6 +612,11 @@ export const make = Effect.gen(function* () {
       // Recheck after closing and worktree I/O; re-engaged threads must not be cleaned up.
       const thread = yield* projections.getThread(threadId);
       if (thread.settledOverride !== "settled") return;
+      for (const sharer of yield* projections.getThreadWorktreePaths()) {
+        if (sharer.worktreePath !== worktreePath || sharer.threadId === threadId) continue;
+        const other = yield* projections.getThread(sharer.threadId);
+        if (isListedThreadLineage(other.lineage) && other.settledOverride !== "settled") return;
+      }
       const settledAtMs = toMillis(thread.settledAt);
       if (settledAtMs === null || settleActionRunAt.get(threadId) === settledAtMs) return;
       const run = yield* projectScripts.runForThread({

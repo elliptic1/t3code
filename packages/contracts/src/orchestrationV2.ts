@@ -138,6 +138,28 @@ export const OrchestrationV2DelegatedFrom = Schema.Struct({
 });
 export type OrchestrationV2DelegatedFrom = typeof OrchestrationV2DelegatedFrom.Type;
 
+/** Another thread's agent created this one, here or from a linked environment. */
+export const isStartedByAnotherThread = (thread: {
+  readonly launchedByThreadId?: ThreadId | null | undefined;
+  readonly delegatedFrom?: OrchestrationV2DelegatedFrom | null | undefined;
+}): boolean => thread.launchedByThreadId != null || thread.delegatedFrom != null;
+
+/**
+ * Work another thread started stays that thread's until the user writes in it or changes its placement: it
+ * settles when it ends, keeps to its own section, and only its requests reach the user.
+ */
+export const belongsToAnotherThread = (
+  thread: Parameters<typeof isStartedByAnotherThread>[0] & {
+    readonly latestUserAuthoredMessageAt?: unknown;
+    readonly settledOverride?: "active" | "settled" | null;
+    readonly snoozedAt?: unknown;
+  },
+): boolean =>
+  isStartedByAnotherThread(thread) &&
+  thread.latestUserAuthoredMessageAt == null &&
+  thread.settledOverride !== "active" &&
+  thread.snoozedAt == null;
+
 export const OrchestrationV2NativeRefStrength = Schema.Literals(["strong", "weak", "none"]);
 export type OrchestrationV2NativeRefStrength = typeof OrchestrationV2NativeRefStrength.Type;
 
@@ -469,6 +491,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  /** The thread whose agent created this top-level thread with T3 Code's thread tools. */
+  launchedByThreadId: Schema.optional(ThreadId),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
@@ -2089,6 +2113,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  launchedByThreadId: Schema.optional(ThreadId),
   latestRunId: Schema.NullOr(RunId),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -2916,6 +2941,8 @@ export const OrchestrationV2Command = Schema.Union([
     linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
     /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /** Only the server sets this, for a thread an agent's thread tools create. */
+    launchedByThreadId: Schema.optional(ThreadId),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({

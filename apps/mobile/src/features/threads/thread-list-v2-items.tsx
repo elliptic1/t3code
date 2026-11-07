@@ -258,7 +258,17 @@ type ThreadListV2ShelfHeaderProps = {
   readonly pane?: "screen" | "sidebar";
 };
 
-const SHELF_LABEL = { working: "Working", snoozed: "Snoozed", settled: "Settled" } as const;
+const SHELF_LABEL = {
+  working: "Working",
+  agents: "Started by agents",
+  snoozed: "Snoozed",
+  settled: "Settled",
+} as const;
+
+function shelfThreads(kind: keyof typeof SHELF_LABEL, count: number): string {
+  const noun = count === 1 ? "thread" : "threads";
+  return kind === "agents" ? `${noun} started by agents` : `${kind} ${noun}`;
+}
 
 function ThreadListV2ShelfHeader(
   props: ThreadListV2ShelfHeaderProps & { readonly kind: keyof typeof SHELF_LABEL },
@@ -273,8 +283,8 @@ function ThreadListV2ShelfHeader(
         expanded: props.expanded,
         disabled: props.disabled,
         onToggle: props.onToggle,
-        accessibilityLabel: `${props.count} ${props.kind} ${props.count === 1 ? "thread" : "threads"}`,
-        accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the ${props.kind} threads.`,
+        accessibilityLabel: `${props.count} ${shelfThreads(props.kind, props.count)}`,
+        accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the ${shelfThreads(props.kind, 2)}.`,
       }}
     />
   );
@@ -284,6 +294,12 @@ export const ThreadListV2WorkingShelfHeader = memo(function ThreadListV2WorkingS
   props: ThreadListV2ShelfHeaderProps,
 ) {
   return <ThreadListV2ShelfHeader {...props} kind="working" />;
+});
+
+export const ThreadListV2AgentsShelfHeader = memo(function ThreadListV2AgentsShelfHeader(
+  props: ThreadListV2ShelfHeaderProps,
+) {
+  return <ThreadListV2ShelfHeader {...props} kind="agents" />;
 });
 
 export const ThreadListV2SnoozedShelfHeader = memo(function ThreadListV2SnoozedShelfHeader(

@@ -3,6 +3,8 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import {
   DEFAULT_SERVER_SETTINGS,
+  EnvironmentId,
+  isStartedByAnotherThread,
   ProjectId,
   EventId,
   ProviderInstanceId,
@@ -399,6 +401,50 @@ describe("resolveAutoSettlementAt", () => {
     ).toBeNull();
   });
 
+  it("settles work another thread started once its run ends, until the user writes in it", () => {
+    const finished = shell({
+      launchedByThreadId: ThreadId.make("thread-launcher"),
+      createdAt: at(-10 * 60 * 1_000),
+      latestRunId: RunId.make("run-launched"),
+      latestUserMessageAt: at(-10 * 60 * 1_000),
+      latestUserAuthoredMessageAt: null,
+      latestRunRequestedAt: at(-10 * 60 * 1_000),
+      latestRunStartedAt: at(-9 * 60 * 1_000),
+      latestRunCompletedAt: at(-60 * 1_000),
+      status: "failed",
+    });
+    const input = {
+      thread: finished,
+      pullRequest: null,
+      nowMs: NOW_MS,
+      autoSettleAfterDays: null,
+      autoSettleOnMerge: false,
+    };
+    expect(ThreadSettlementService.resolveAutoSettlementAt(input)).toEqual(at(-60 * 1_000));
+    const settledAt = (thread: Partial<SettlementShell>) =>
+      ThreadSettlementService.resolveAutoSettlementAt({
+        ...input,
+        thread: { ...finished, ...thread },
+      });
+    expect(
+      settledAt({
+        launchedByThreadId: undefined,
+        delegatedFrom: {
+          environmentId: EnvironmentId.make("environment-laptop"),
+          threadId: ThreadId.make("thread-laptop"),
+          title: "Laptop parent",
+        },
+      }),
+    ).toEqual(at(-60 * 1_000));
+    expect(settledAt({ launchedByThreadId: undefined })).toBeNull();
+    expect(settledAt({ latestRunId: null, latestRunCompletedAt: null })).toBeNull();
+    expect(settledAt({ latestUserAuthoredMessageAt: at(-5 * 60 * 1_000) })).toBeNull();
+    expect(settledAt({ lastErrorClass: "usage_limit" })).toBeNull();
+    expect(settledAt({ settledOverride: "active" })).toBeNull();
+    expect(settledAt({ pinnedAt: at(-1_000) })).toBeNull();
+    expect(settledAt({ snoozedAt: at(-120_000), snoozedUntil: at(-30_000) })).toBeNull();
+  });
+
   it("does not settle on pull requests that were already merged when linked", () => {
     const link = (number: number, linkedAt: DateTime.Utc, mergedAt: DateTime.Utc) => ({
       host: "example.test",
@@ -658,15 +704,18 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
       listShells: () => Ref.get(snapshots).pipe(Effect.map((snapshot) => snapshot.projects)),
     }),
     Layer.mock(ProjectionStore.ProjectionStoreV2)({
-      getSettlementCandidates: (threadId) =>
+      getSettlementCandidates: (threadId, candidateOptions) =>
         Ref.update(candidateReads, (reads) => [...reads, threadId]).pipe(
           Effect.andThen(Ref.updateAndGet(snapshotReadCount, (count) => count + 1)),
           Effect.tap((count) => Queue.offer(snapshotReads, count)),
           Effect.andThen(Ref.get(snapshots)),
           Effect.map((snapshot) =>
-            threadId === undefined
-              ? snapshot.threads
-              : snapshot.threads.filter((thread) => thread.id === threadId),
+            snapshot.threads.filter(
+              (thread) =>
+                (threadId === undefined || thread.id === threadId) &&
+                (candidateOptions?.startedByAnotherThread !== true ||
+                  isStartedByAnotherThread(thread)),
+            ),
           ),
         ),
       getThread: (threadId) => {
@@ -675,6 +724,14 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
           ? Effect.succeed(thread)
           : Effect.die(new Error(`Unexpected thread read: ${threadId}`));
       },
+      getThreadWorktreePaths: () =>
+        Effect.succeed(
+          (options.currentThreads ?? []).flatMap((thread) =>
+            thread.worktreePath === null || thread.archivedAt !== null
+              ? []
+              : [{ threadId: thread.id, worktreePath: thread.worktreePath }],
+          ),
+        ),
     }),
     Layer.mock(Orchestrator.OrchestratorV2)({
       streamDomainEvents: Stream.fromPubSub(domainEvents),
@@ -872,6 +929,48 @@ describe("ThreadSettlementServiceV2 worker", () => {
           yield* startHarness(service, fixture.activation, fixture.snapshotReads);
           const commands = yield* Ref.get(fixture.commands);
           expect(commands.map((command) => command.threadId)).toEqual([thread.id]);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("settles finished work another thread started while every rule is off", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const finishedAt = DateTime.makeUnsafe("2026-08-28T11:59:00.000Z");
+        const finished = {
+          latestRunId: RunId.make("run-finished"),
+          latestRunCompletedAt: finishedAt,
+          branch: "feature",
+        };
+        const launched = makeThread("launched", {
+          ...finished,
+          launchedByThreadId: ThreadId.make("launcher"),
+          latestUserAuthoredMessageAt: null,
+        });
+        // The user wrote in this one, so it waits for rules that are off, without a PR lookup.
+        const takenOver = makeThread("taken-over", {
+          ...finished,
+          launchedByThreadId: ThreadId.make("launcher"),
+        });
+        const own = makeThread("own", finished);
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([launched, takenOver, own]),
+          settings: {
+            ...DEFAULT_SERVER_SETTINGS,
+            sidebarAutoSettleAfterDays: null,
+            sidebarAutoSettleOnMerge: false,
+          },
+        });
+        yield* Effect.gen(function* () {
+          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+          const commands = yield* Ref.get(fixture.commands);
+          expect(commands.map((command) => [command.threadId, command.settledAt])).toEqual([
+            [launched.id, finishedAt],
+          ]);
+          expect(yield* Ref.get(fixture.branchCalls)).toEqual([]);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),
@@ -1377,6 +1476,29 @@ describe("ThreadSettlementServiceV2 terminals", () => {
           assert.strictEqual(run.threadId, worktree.id);
           assert.strictEqual(run.worktreePath, "/worktrees/thread");
           assert.strictEqual(run.trigger, "settle");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("skips the settle script while another thread still works in the same worktree", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const child = appThread("launched-child", "settled", "/worktrees/shared");
+        const parent = appThread("working-parent", null, "/worktrees/shared");
+        const marker = appThread("marker-thread", "settled", "/worktrees/marker");
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([]),
+          currentThreads: [child, parent, marker],
+          existingWorktreePaths: ["/worktrees/shared", "/worktrees/marker"],
+        });
+
+        yield* Effect.gen(function* () {
+          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+          yield* fixture.publishEvent(settledEvent(child));
+          yield* fixture.publishEvent(settledEvent(marker));
+          assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, marker.id);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),

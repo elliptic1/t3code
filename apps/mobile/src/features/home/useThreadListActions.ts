@@ -650,8 +650,8 @@ export function useThreadListActions(options: { readonly dismissRows?: boolean }
             return false;
           }
         } else {
-          if (lifecycle.unpin && !(await unpinThread(thread))) return false;
           if (lifecycle.unsettle && !(await unsettleThread(thread))) return false;
+          if (lifecycle.unpin && !(await unpinThread(thread))) return false;
           if (lifecycle.unsnooze && !(await unsnoozeThread(thread))) return false;
         }
       }

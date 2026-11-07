@@ -30,6 +30,9 @@ describe("projectThreadAwarenessV2", () => {
         | "pendingRuntimeRequest"
         | "lineage"
         | "settledOverride"
+        | "launchedByThreadId"
+        | "snoozedAt"
+        | "latestUserAuthoredMessageAt"
       >
     > = {},
   ) => ({
@@ -85,6 +88,31 @@ describe("projectThreadAwarenessV2", () => {
         }),
       }),
     ).toBeNull();
+  });
+
+  it("publishes only the requests of work another thread started, until the user takes it over", () => {
+    const launched = (overrides: Parameters<typeof v2Thread>[0] = {}) =>
+      projectThreadAwarenessV2({
+        environmentId: "env-1" as EnvironmentId,
+        project,
+        thread: v2Thread({ launchedByThreadId: "parent" as ThreadId, ...overrides }),
+      })?.phase ?? null;
+    expect(launched({ status: "running" })).toBeNull();
+    expect(launched({ status: "completed" })).toBeNull();
+    expect(launched({ status: "failed" })).toBeNull();
+    expect(
+      launched({
+        pendingRuntimeRequest: {
+          id: RuntimeRequestId.make("request-launched"),
+          kind: "command",
+          createdAt: DateTime.makeUnsafe(NOW),
+        },
+      }),
+    ).toBe("waiting_for_approval");
+    expect(
+      launched({ status: "completed", latestUserAuthoredMessageAt: DateTime.makeUnsafe(NOW) }),
+    ).toBe("completed");
+    expect(launched({ status: "completed", settledOverride: "active" })).toBe("completed");
   });
 
   it("keeps an older activity run visible over a newer cancelled run", () => {

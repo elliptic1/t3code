@@ -54,6 +54,7 @@ import {
   OrchestrationV2ConversationMessageJson as OrchestrationV2ConversationMessageJsonSchema,
   OrchestrationV2ExecutionNodeJson as OrchestrationV2ExecutionNodeJsonSchema,
   OrchestrationV2PlanArtifact as OrchestrationV2PlanArtifactSchema,
+  OrchestrationV2ProviderFailureClass,
   OrchestrationV2ProviderSessionJson as OrchestrationV2ProviderSessionJsonSchema,
   OrchestrationV2ProviderThreadJson as OrchestrationV2ProviderThreadJsonSchema,
   OrchestrationV2ProviderTurnJson as OrchestrationV2ProviderTurnJsonSchema,
@@ -218,6 +219,9 @@ export type ProjectionSettlementCandidate = Pick<
   | "pendingRuntimeRequest"
   | "pendingBackgroundTasks"
   | "pendingGuestMessageCount"
+  | "launchedByThreadId"
+  | "delegatedFrom"
+  | "lastErrorClass"
 > &
   Pick<OrchestrationV2AppThread, "lastSnoozeWakeAt"> & {
     readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
@@ -515,6 +519,7 @@ export interface ProjectionStoreV2Shape {
   ) => Effect.Effect<number | null, ProjectionStoreV2Error>;
   readonly getSettlementCandidates: (
     threadId?: ThreadId,
+    options?: { readonly startedByAnotherThread?: boolean },
   ) => Effect.Effect<ReadonlyArray<ProjectionSettlementCandidate>, ProjectionStoreV2Error>;
   readonly getThreadsWithPullRequests: (
     threadId?: ThreadId,
@@ -1000,7 +1005,7 @@ type SettlementThreadRow = Pick<
   | "latest_run_completed_at"
   | "latest_user_message_at"
   | "latest_user_authored_message_at"
->;
+> & { readonly latest_run_failure_class: string | null };
 
 type ShellRunItemCountRow = {
   readonly thread_id: string;
@@ -1128,6 +1133,7 @@ const decodeContextTransferPayload = Schema.decodeUnknownEffect(
 );
 
 const isProjectionStoreThreadNotFoundError = Schema.is(ProjectionStoreThreadNotFoundError);
+const isProviderFailureClass = Schema.is(OrchestrationV2ProviderFailureClass);
 const isProjectionStoreReadError = Schema.is(ProjectionStoreReadError);
 
 function parseEncodedPayload(json: string): Record<string, unknown> {
@@ -1542,6 +1548,9 @@ export function threadShellFromProjection(
     ...(projection.thread.delegatedFrom === undefined
       ? {}
       : { delegatedFrom: projection.thread.delegatedFrom }),
+    ...(projection.thread.launchedByThreadId === undefined
+      ? {}
+      : { launchedByThreadId: projection.thread.launchedByThreadId }),
     latestRunId: latestRun?.id ?? null,
     latestRunRequestedAt: latestRun?.requestedAt ?? null,
     latestRunStartedAt: latestRun?.startedAt ?? null,
@@ -1825,6 +1834,9 @@ function shellFromState(input: {
     ...(input.state.thread.delegatedFrom === undefined
       ? {}
       : { delegatedFrom: input.state.thread.delegatedFrom }),
+    ...(input.state.thread.launchedByThreadId === undefined
+      ? {}
+      : { launchedByThreadId: input.state.thread.launchedByThreadId }),
     latestRunId: input.state.latestRunId,
     latestRunRequestedAt: input.state.latestRunRequestedAt,
     latestRunStartedAt: input.state.latestRunStartedAt,
@@ -6341,7 +6353,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       return { providerThreadsByThreadId, pendingTurnItemsByThreadId };
     });
 
-    const getSettlementCandidates: ProjectionStoreV2Shape["getSettlementCandidates"] = (threadId) =>
+    const getSettlementCandidates: ProjectionStoreV2Shape["getSettlementCandidates"] = (
+      threadId,
+      options,
+    ) =>
       sql
         .withTransaction(
           Effect.gen(function* () {
@@ -6368,7 +6383,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   AND NOT ${isIdleCompactionMessage("message")}
                 ORDER BY message.updated_at DESC, message.message_id DESC
                 LIMIT 1
-              ) AS latest_user_authored_message_at
+              ) AS latest_user_authored_message_at,
+              CASE WHEN r.status = 'failed' THEN (
+                SELECT json_extract(error.payload_json, '$.failure.class')
+                FROM orchestration_v2_projection_turn_items error
+                WHERE error.thread_id = t.thread_id AND error.run_id = r.run_id
+                  AND error.type = 'error' AND error.status = 'failed'
+                  AND error.node_id IS json_extract(r.payload_json, '$.rootNodeId')
+                ORDER BY error.updated_at DESC, error.ordinal DESC, error.turn_item_id DESC
+                LIMIT 1
+              ) END AS latest_run_failure_class
             FROM orchestration_v2_projection_threads t
             LEFT JOIN orchestration_v2_projection_runs r ON r.run_id = (
               SELECT latest.run_id FROM orchestration_v2_projection_runs latest
@@ -6377,7 +6401,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ORDER BY latest.ordinal DESC, latest.run_id DESC
               LIMIT 1
             )
-            WHERE t.deleted_at IS NULL${threadId === undefined ? sql`` : sql` AND t.thread_id = ${threadId}`}
+            WHERE t.deleted_at IS NULL${threadId === undefined ? sql`` : sql` AND t.thread_id = ${threadId}`}${
+              options?.startedByAnotherThread === true
+                ? sql` AND (json_extract(t.payload_json, '$.launchedByThreadId') IS NOT NULL
+                  OR json_extract(t.payload_json, '$.delegatedFrom') IS NOT NULL)`
+                : sql``
+            }
               AND json_extract(t.payload_json, '$.archivedAt') IS NULL
               AND json_extract(t.payload_json, '$.settledOverride') IS NULL
               AND json_extract(t.payload_json, '$.pinnedAt') IS NULL
@@ -6417,6 +6446,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   pinnedAt: thread.pinnedAt ?? null,
 
                   autoSettleDisabledAt: thread.autoSettleDisabledAt ?? null,
+                  lastErrorClass: isProviderFailureClass(row.latest_run_failure_class)
+                    ? row.latest_run_failure_class
+                    : null,
                   snoozedUntil: thread.snoozedUntil ?? null,
                   snoozedAt: thread.snoozedAt ?? null,
                   status,

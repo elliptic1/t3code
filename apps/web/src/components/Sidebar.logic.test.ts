@@ -1067,33 +1067,40 @@ describe("Working shelf (beta)", () => {
       row("a2", "active"),
       marker("working-header"),
       row("w1", "working"),
+      marker("agents-header"),
+      row("g1", "agents"),
       marker("settled-header"),
       row("s1", "settled"),
     ];
 
-    it("never drops into the Working shelf, and keeps it out of the inbox order", () => {
+    it("never drops into the Working or agents shelves, and keeps them out of the inbox order", () => {
       expect(resolveSidebarDropTarget(items, "a1", "w1")).toBeNull();
+      expect(resolveSidebarDropTarget(items, "a1", "g1")).toBeNull();
       expect(resolveSidebarDropTarget(items, "p1", "a2")).toEqual({
         section: "active",
         pinnedOrder: [],
         activeOrder: ["a1", "a2", "p1"],
       });
       expect(resolveSidebarDropVerb("active", "working")).toBeNull();
+      expect(resolveSidebarDropVerb("active", "agents")).toBeNull();
     });
 
     it.each([
-      ["pinned", "p1"],
-      ["active", "a2"],
-      ["settled", "s1"],
+      ["working", "pinned", "w1", "p1"],
+      ["working", "active", "w1", "a2"],
+      ["working", "settled", "w1", "s1"],
+      ["agents", "pinned", "g1", "p1"],
+      ["agents", "active", "g1", "a2"],
+      ["agents", "settled", "g1", "s1"],
     ] as const)(
-      "does not move a Working thread into %s when its reference drag ends in the sidebar",
-      (section, overKey) => {
-        const target = resolveSidebarDropTarget(items, "w1", overKey);
+      "does not move a %s thread into %s when its reference drag ends in the sidebar",
+      (activeSection, section, activeKey, overKey) => {
+        const target = resolveSidebarDropTarget(items, activeKey, overKey);
         expect(target?.section).toBe(section);
         expect(
           planSidebarThreadDrop({
-            activeKey: "w1",
-            activeSection: "working",
+            activeKey,
+            activeSection,
             target: target!,
             pinnedOrder: ["p1"],
             pinnedKeysById: new Map([["p1", "m"]]),

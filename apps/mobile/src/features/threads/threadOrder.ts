@@ -5,7 +5,7 @@ import {
   planPinnedReorder,
 } from "@t3tools/client-runtime/state/thread-sort";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { belongsToAnotherThread, type EnvironmentId } from "@t3tools/contracts";
 
 export type ThreadMoveDestination =
   | "up"
@@ -280,7 +280,7 @@ export function threadDropLifecycle(
   return {
     pin: false,
     unpin: thread.pinnedAt != null,
-    unsettle: thread.settledOverride === "settled",
+    unsettle: thread.settledOverride === "settled" || belongsToAnotherThread(thread),
     unsnooze: effectiveSnoozed(thread, { now }),
   };
 }

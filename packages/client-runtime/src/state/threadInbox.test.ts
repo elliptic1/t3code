@@ -2,6 +2,7 @@ import { EnvironmentId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/con
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  belongsInStartedByAgents,
   createInboxReturnTracker,
   isThreadWorking,
   sortInboxThreadsByReturn,
@@ -239,5 +240,49 @@ describe("sortWorkingThreadsBySend", () => {
     expect(
       sortWorkingThreadsBySend([launched, sentFirst, sentLast]).map((thread) => thread.id),
     ).toEqual(["sent-last", "sent-first", "launched"]);
+  });
+});
+
+describe("belongsInStartedByAgents", () => {
+  const launched = {
+    launchedByThreadId: ThreadId.make("launcher"),
+    delegatedFrom: null,
+    latestUserAuthoredMessageAt: null,
+    settledOverride: null,
+    snoozedAt: null,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    pendingSubagentRequest: null,
+    pendingGuestMessageCount: 0,
+  };
+
+  it.each([
+    ["work another thread launched here", {}, true],
+    [
+      "a task a linked environment delegated",
+      {
+        launchedByThreadId: null,
+        delegatedFrom: {
+          environmentId: EnvironmentId.make("environment-laptop"),
+          threadId: ThreadId.make("laptop-parent"),
+          title: "Laptop parent",
+        },
+      },
+      true,
+    ],
+    ["a thread the user started", { launchedByThreadId: null }, false],
+    ["one the user wrote in", { latestUserAuthoredMessageAt: "2026-06-01T00:00:00.000Z" }, false],
+    ["one the user pinned, snoozed, or un-settled", { settledOverride: "active" as const }, false],
+    ["one snoozed or woken by its timer", { snoozedAt: "2026-06-01T00:00:00.000Z" }, false],
+    ["one waiting on an approval", { hasPendingApprovals: true }, false],
+    ["one asking the user a question", { hasPendingUserInput: true }, false],
+    [
+      "one whose own subagent needs the user",
+      { pendingSubagentRequest: "approval" as const },
+      false,
+    ],
+    ["one with a guest message waiting", { pendingGuestMessageCount: 1 }, false],
+  ])("%s", (_name, overrides, expected) => {
+    expect(belongsInStartedByAgents({ ...launched, ...overrides })).toBe(expected);
   });
 });
