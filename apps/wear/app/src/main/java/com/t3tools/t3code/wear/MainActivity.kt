@@ -148,8 +148,6 @@ private fun WearApp(prefs: SharedPreferences, pairingLink: String?, openThreadId
                 onPaired = onPaired,
                 onMessage = { message = it },
             )
-        } else if (baseUrl == null) {
-            PhoneConnectionScreen(message)
         } else {
             key("paired-phone") {
                 val api = remember(context) { T3Api(context) }
