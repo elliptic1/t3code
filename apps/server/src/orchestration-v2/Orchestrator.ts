@@ -10079,19 +10079,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
       effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
     ) {
-      const parentProjection = yield* (
-        command.parentRunId === undefined
-          ? readCommandProjection(command.parentThreadId)
-          : projectionStore.getRunProviderRecords(
-              command.parentThreadId,
-              command.parentRunId,
-              command.parentNodeId,
-            )
-      ).pipe(
-        Effect.mapError(
-          (cause) => new OrchestratorProjectionError({ threadId: command.parentThreadId, cause }),
-        ),
-      );
+      const parentProjection =
+        command.parentRunId === undefined || command.parentNodeId === undefined
+          ? yield* readCommandProjection(command.parentThreadId)
+          : yield* projectionStore
+              .getRunProviderRecords(
+                command.parentThreadId,
+                command.parentRunId,
+                command.parentNodeId,
+              )
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestratorProjectionError({ threadId: command.parentThreadId, cause }),
+                ),
+              );
       const parentRun =
         command.parentRunId === undefined
           ? parentProjection.runs.findLast(isActiveRun)

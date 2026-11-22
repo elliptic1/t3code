@@ -43,10 +43,12 @@ vi.mock("./components/SettingsSection", () => ({
   SettingsSection: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../voice-conversation/VoiceButton", () => ({ VoiceButton: () => null }));
-vi.mock("../voice-conversation/actions", async () => {
-  const { voiceResult } = await import("@t3tools/client-runtime/voice-conversation/actions");
-  return { voiceResult };
-});
+vi.mock("../voice-conversation/actions", () => ({
+  voiceResult(result: AsyncResult.AsyncResult<unknown>) {
+    if (!AsyncResult.isSuccess(result)) throw new Error("Could not save settings");
+    return result.value;
+  },
+}));
 vi.mock("../../state/server", () => ({ serverEnvironment: { updateSettings: {} } }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => harness.update }));
 vi.mock("./settings-environment-filter", () => ({
