@@ -86,6 +86,9 @@ class T3NativeControlsModule : Module() {
       }
     }
 
+    // Module queue, not main: logcat can take a second on a busy device.
+    AsyncFunction("readAppLogs") { maxLines: Int -> readAppLogs(maxLines) }
+
     OnActivityResult { _, (requestCode) ->
       if (requestCode == 7343) {
         filePreviewPromise?.resolve(null)
@@ -154,4 +157,17 @@ private fun saveImageToPictures(context: Context, source: Uri, mimeType: String,
       null
     )
   }.onFailure { resolver.delete(target, null, null) }.getOrThrow()
+}
+
+// An unprivileged app sees only its own uid's lines, including the previous process's crash.
+private fun readAppLogs(maxLines: Int): String {
+  require(maxLines > 0) { "maxLines must be positive." }
+  val process = ProcessBuilder(
+    "logcat", "-d", "-v", "threadtime", "-b", "main,system,crash", "-t", maxLines.toString()
+  ).redirectErrorStream(true).start()
+  val output = process.inputStream.bufferedReader().use { it.readText() }
+  val exitCode = process.waitFor()
+  // Some builds refuse one buffer but still print the others; keep what it printed.
+  check(exitCode == 0 || output.isNotBlank()) { "logcat exited with code $exitCode." }
+  return if (exitCode == 0) output else "$output\n[logcat exited with code $exitCode]\n"
 }

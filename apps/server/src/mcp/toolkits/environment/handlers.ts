@@ -1,5 +1,6 @@
 import { OrchestratorMcpFailure, type ServerSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as ClientLogs from "../../../diagnostics/ClientLogs.ts";
 import * as Environment from "../../../environment/ServerEnvironment.ts";
 import * as ThreadCommandExecutor from "../../../orchestration-v2/ThreadCommandExecutor.ts";
 import * as Settings from "../../../serverSettings.ts";
@@ -55,6 +56,13 @@ export const layer = McpToolAccess.toLayer(EnvironmentToolkit, {
         preferences: preferences(current),
       };
     }),
+  ),
+  t3_client_logs_read: McpToolAccess.reads(({ clientId, maxLines }) =>
+    access.pipe(
+      Effect.andThen(ClientLogs.ClientLogs),
+      Effect.flatMap((clientLogs) => clientLogs.read({ clientId, maxLines })),
+      Effect.catchTags({ ClientLogReadError: () => Effect.fail(unavailable()) }),
+    ),
   ),
   t3_environment_preferences_update: McpToolAccess.writesEnvironment((patch, check) =>
     Effect.gen(function* () {

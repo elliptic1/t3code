@@ -130,6 +130,9 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverRefreshUsageRates]: AuthDiagnosticsReadScope,
   [WS_METHODS.serverSignalProcess]: AuthEnvironmentMaintainScope,
   [WS_METHODS.serverReportClientActivity]: AuthOrchestrationReadScope,
+  // The phone answers requests in the background, outside any command; only operators may listen.
+  [WS_METHODS.serverUploadClientLogs]: AuthOrchestrationOperateScope,
+  [WS_METHODS.subscribeClientLogRequests]: AuthOrchestrationOperateScope,
   [WS_METHODS.artifactsList]: AuthOrchestrationReadScope,
   [WS_METHODS.artifactsSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.workflowsGet]: AuthOrchestrationReadScope,

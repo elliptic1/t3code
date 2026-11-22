@@ -107,6 +107,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverRefreshUsageRates]: "server",
   [WS_METHODS.serverSignalProcess]: "server",
   [WS_METHODS.serverReportClientActivity]: "server",
+  [WS_METHODS.serverUploadClientLogs]: "server",
+  [WS_METHODS.subscribeClientLogRequests]: "server",
   [WS_METHODS.artifactsList]: "artifacts",
   [WS_METHODS.artifactsSubscribe]: "artifacts",
   [WS_METHODS.artifactsPublish]: "artifacts",

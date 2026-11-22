@@ -1,14 +1,19 @@
 import {
   BackgroundActivityProfile,
   BackgroundActivityProfileSelection,
+  CLIENT_LOG_MAX_LINES,
+  ClientActivityClientId,
+  ClientLogReadResult,
   ExecutionEnvironmentDescriptor,
   OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
   ServerSettings,
   ServerSettingsPatch,
+  clampedPositiveInt,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
+import * as ClientLogs from "../../../diagnostics/ClientLogs.ts";
 import * as ServerEnvironment from "../../../environment/ServerEnvironment.ts";
 import * as ThreadCommandExecutor from "../../../orchestration-v2/ThreadCommandExecutor.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -69,4 +74,31 @@ const EnvironmentPreferencesTool = Tool.make("t3_environment_preferences_update"
   }),
   success: Schema.Struct(PreferenceFields),
 }).annotate(Tool.Destructive, true);
-export const EnvironmentToolkit = Toolkit.make(EnvironmentReadTool, EnvironmentPreferencesTool);
+const ClientLogsReadTool = Tool.make("t3_client_logs_read", {
+  ...shared,
+  dependencies: [...shared.dependencies, ClientLogs.ClientLogs],
+  description:
+    "Read the T3 Code Android app's own logcat (crashes, errors, connection issues), fetched from the phone over its T3 connection, so it works where adb cannot reach. Falls back to the newest saved log; check `status` and `capturedAt`. `path` holds the full log.",
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    clientId: Schema.optionalKey(
+      ClientActivityClientId.annotate({
+        description: "One phone's id from an earlier result. Omit to take the first that answers.",
+      }),
+    ),
+    maxLines: Schema.optionalKey(
+      clampedPositiveInt(CLIENT_LOG_MAX_LINES).annotate({
+        description: "Logcat lines to capture. Default 5000.",
+      }),
+    ),
+  }),
+  success: ClientLogReadResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+export const EnvironmentToolkit = Toolkit.make(
+  EnvironmentReadTool,
+  EnvironmentPreferencesTool,
+  ClientLogsReadTool,
+);

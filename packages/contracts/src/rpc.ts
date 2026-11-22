@@ -116,6 +116,13 @@ import {
 } from "./auth.ts";
 import { ClientActivityReportInput } from "./background.ts";
 import {
+  ClientLogRequest,
+  ClientLogRequestsInput,
+  ClientLogUploadError,
+  ClientLogUploadInput,
+  ClientLogUploadResult,
+} from "./clientLogs.ts";
+import {
   FilesystemGetMetadataInput,
   FilesystemGetMetadataResult,
   FilesystemBrowseInput,
@@ -637,6 +644,7 @@ export const WS_METHODS = {
   serverPrepareTriage: "server.prepareTriage",
   serverSignalProcess: "server.signalProcess",
   serverReportClientActivity: "server.reportClientActivity",
+  serverUploadClientLogs: "server.uploadClientLogs",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
 
@@ -745,6 +753,7 @@ export const WS_METHODS = {
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
+  subscribeClientLogRequests: "subscribeClientLogRequests",
 } as const;
 
 const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -1226,6 +1235,19 @@ const WsCloudInstallRelayClientRpc = Rpc.make(WS_METHODS.cloudInstallRelayClient
 const WsServerReportClientActivityRpc = Rpc.make(WS_METHODS.serverReportClientActivity, {
   payload: ClientActivityReportInput,
   error: EnvironmentAuthorizationError,
+});
+
+const WsServerUploadClientLogsRpc = Rpc.make(WS_METHODS.serverUploadClientLogs, {
+  payload: ClientLogUploadInput,
+  success: ClientLogUploadResult,
+  error: Schema.Union([ClientLogUploadError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribeClientLogRequestsRpc = Rpc.make(WS_METHODS.subscribeClientLogRequests, {
+  payload: ClientLogRequestsInput,
+  success: ClientLogRequest,
+  error: EnvironmentAuthorizationError,
+  stream: true,
 });
 
 const PullRequestRpcError = Schema.Union([
@@ -2602,6 +2624,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsScheduledTasksListWebhookDeliveriesRpc,
   WsScheduledTasksGetWebhookDeliveryRpc,
   WsServerReportClientActivityRpc,
+  WsServerUploadClientLogsRpc,
+  WsSubscribeClientLogRequestsRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsPullRequestsListRpc,
