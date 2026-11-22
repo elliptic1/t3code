@@ -226,17 +226,11 @@ function mapSecretFieldGroups(
     ]),
   ) as ServerSettings["textGenerators"];
 
-  const voiceKey = map({
-    secretName: VOICE_CONNECTION_SECRET_NAME,
-    kind: "field",
-    value: settings.voiceConnection.apiKey,
-    redacted: settings.voiceConnection.apiKey === SECRET_REDACTED,
-    sensitive: true,
-  });
-  const voiceConnection = {
-    ...settings.voiceConnection,
-    apiKey: voiceKey.redacted ? SECRET_REDACTED : voiceKey.value,
-  };
+  const voiceConnection = mapFields(
+    settings.voiceConnection,
+    ["apiKey"],
+    () => VOICE_CONNECTION_SECRET_NAME,
+  ) as ServerSettings["voiceConnection"];
   const easDeviceHosts = settings.easDeviceHosts.map(
     (host) =>
       mapFields(

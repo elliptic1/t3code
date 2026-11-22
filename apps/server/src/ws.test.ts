@@ -1,3 +1,5 @@
+import * as ArtifactRpc from "./artifacts/rpc.ts";
+import * as Artifacts from "./artifacts/ThreadArtifactService.ts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { WebSocket } from "@effect/platform-node/NodeWS";
@@ -914,6 +916,9 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
 
 const layerConfigSources = Layer.mergeAll(
   Keybindings.layer,
+  Layer.mock(WorkflowService.WorkflowService)({}),
+  Layer.mock(VoiceHistory.VoiceHistory)({}),
+  ArtifactRpc.layer.pipe(Layer.provideMerge(Layer.mock(Artifacts.ThreadArtifactService)({}))),
   AssetSigner.layer.pipe(Layer.provide(ServerSecretStore.layer)),
   WorkspacePreviewRevisions.layer,
   ServerSettings.layer.pipe(

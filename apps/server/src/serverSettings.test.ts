@@ -2481,7 +2481,9 @@ it.effect(
       const saved = yield* service.updateSettings({ voiceConnection });
       assert.equal(saved.voiceConnection.apiKey, "voice-secret");
       assert.isTrue(Option.isSome(yield* secrets.get("voice-connection-api-key")));
-      const redacted = ServerSettingsModule.redactServerSettingsForClient(saved).voiceConnection;
+      const redacted = ServerSettingsModule.redactServerSettingsForClient(saved, {
+        secretReferences: true,
+      }).voiceConnection;
       assert.notEqual(redacted.apiKey, "voice-secret");
       const updated = yield* service.updateSettings({
         voiceConnection: { ...redacted, voice: "custom" },
@@ -2493,7 +2495,11 @@ it.effect(
       assert.isTrue(Option.isNone(yield* secrets.get("voice-connection-api-key")));
       assert.equal((yield* service.getSettings).voiceConnection.apiKey, "");
     }).pipe(
-      Effect.provide(layerServerSettingsWithSecrets().pipe(Layer.provideMerge(NodeServices.layer))),
+      Effect.provide(
+        layerServerSettingsWithSecrets().pipe(
+          Layer.provideMerge(Layer.merge(NodeServices.layer, NodeCrypto.layer)),
+        ),
+      ),
     ),
 );
 
