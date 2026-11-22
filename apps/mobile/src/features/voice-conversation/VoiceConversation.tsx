@@ -101,7 +101,7 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
   const clearance = useVoiceFabClearance();
   const toolbar = useToolbarLayout();
   const keyboardHeight = useKeyboardState((keyboard) => keyboard.height);
-  const [placement, setPlacement] = useState({ side: "right", vertical: "bottom" });
+  const [placement, setPlacement] = useState({ x: 1, y: 1 });
   // Screens without published bottom controls keep clearance above tab bars.
   const baseline = keyboardHeight + (clearance ?? Math.max(insets.bottom, 12) + 76) + 12;
   const topDock = toolbar.paddingTop + toolbar.height + toolbar.paddingBottom + 12;
@@ -120,13 +120,13 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
   useLayoutEffect(() => {
     const spring = { damping: 18, stiffness: 180, mass: 0.7 };
     x.set(
-      withSpring(placement.side === "right" ? right : left, {
+      withSpring(left + placement.x * (right - left), {
         ...spring,
         velocity: velocity.get().x,
       }),
     );
     y.set(
-      withSpring(placement.vertical === "bottom" ? bottom : top, {
+      withSpring(top + placement.y * (bottom - top), {
         ...spring,
         velocity: velocity.get().y,
       }),
@@ -139,7 +139,8 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
       { translateY: Math.max(top - 8, Math.min(bottom + 8, y.get())) },
     ],
   }));
-  const openDown = placement.vertical === "top";
+  const openDown = placement.y < 0.5;
+  const openLeft = placement.x >= 0.5;
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) + Math.abs(gesture.dy) > 8,
     onPanResponderGrant: () => {
@@ -175,8 +176,7 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
     transform: [
       {
         translateX:
-          Math.max(left - 8, Math.min(right + 8, x.get())) -
-          (placement.side === "right" ? panelWidth - FAB_SIZE : 0),
+          Math.max(left - 8, Math.min(right + 8, x.get())) - (openLeft ? panelWidth - FAB_SIZE : 0),
       },
       {
         translateY:
@@ -420,7 +420,7 @@ function VoiceSession(props: {
             accessibilityLabel={
               running ? resolveCopy(msg("Show voice conversation")) : resolveCopy(msg("Talk to T3"))
             }
-            accessibilityHint={resolveCopy(msg("Drag or fling toward a corner to move"))}
+            accessibilityHint={resolveCopy(msg("Drag to move"))}
             onPress={() => props.setOpen(!props.open)}
             className="items-center justify-center rounded-full border border-foreground/20 bg-card shadow-lg shadow-black/30 active:opacity-85"
             style={{ width: FAB_SIZE, height: FAB_SIZE, elevation: 12 }}

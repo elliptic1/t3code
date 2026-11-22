@@ -4,10 +4,14 @@ export function voiceFabDestination(
   bounds: { left: number; right: number; top: number; bottom: number },
 ) {
   // Project 220 ms of momentum; velocities are points per second, unlike PanResponder's ms.
-  const projectedX = position.x + velocity.x * 0.22;
-  const projectedY = position.y + velocity.y * 0.22;
+  // Returned as fractions of the bounds so the spot survives keyboard and rotation changes.
   return {
-    side: projectedX < (bounds.left + bounds.right) / 2 ? "left" : "right",
-    vertical: projectedY < (bounds.top + bounds.bottom) / 2 ? "top" : "bottom",
+    x: fraction(position.x + velocity.x * 0.22, bounds.left, bounds.right),
+    y: fraction(position.y + velocity.y * 0.22, bounds.top, bounds.bottom),
   };
+}
+
+function fraction(value: number, min: number, max: number) {
+  if (max <= min) return 1;
+  return Math.max(0, Math.min(1, (value - min) / (max - min)));
 }
