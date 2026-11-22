@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import { useAtomValue } from "@effect/atom-react";
 import { collectLimitAccounts, collectLimitPools } from "@t3tools/shared/usageLimits";
 import { useMemo } from "react";
@@ -33,9 +35,11 @@ export function ProviderLimitsStrip(props: { readonly onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Usage left: ${summaries
-        .map((s) => `${s.driver} ${s.remainingPercent}%`)
-        .join(", ")}`}
+      accessibilityLabel={resolveCopy(
+        msg("Usage left: {value1}", {
+          value1: summaries.map((s) => `${s.driver} ${s.remainingPercent}%`).join(", "),
+        }),
+      )}
       hitSlop={6}
       onPress={props.onPress}
       className="flex-row items-center gap-2.5 self-end pb-1 pr-3 active:opacity-60"

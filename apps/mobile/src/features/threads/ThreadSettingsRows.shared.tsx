@@ -1,3 +1,7 @@
+import { msg } from "gt-react-native";
+import { T } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
+import { useGT } from "gt-react-native";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -42,11 +46,12 @@ export function ModelRowContent(
       readonly selectedClassName?: string;
     },
 ) {
+  const gt = useGT();
   return (
     <View
       style={props.minimumHeight === undefined ? undefined : { minHeight: props.minimumHeight }}
       className={cn(
-        "mx-4 min-h-11 flex-row items-center gap-2 bg-grouped-card px-4",
+        "mx-4 min-h-[44px] flex-row items-center gap-2 bg-grouped-card px-4 android:min-h-[48px]",
         props.selectedClassName,
         props.isFirst && "rounded-t-2xl",
         props.isLast ? "rounded-b-2xl" : "border-b border-border-subtle",
@@ -61,10 +66,10 @@ export function ModelRowContent(
         }}
         accessibilityHint={
           props.onLongPressDefault
-            ? "Long press to make this the default model for new threads."
+            ? resolveCopy(msg("Long press to make this the default model for new threads."))
             : undefined
         }
-        className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2 active:opacity-70"
+        className="min-h-[44px] min-w-0 flex-1 flex-row items-center gap-2 active:opacity-70 android:min-h-[48px]"
         disabled={props.option.isUnavailable || props.option.isHidden}
         onLongPress={props.onLongPressDefault}
         onPress={props.onPress}
@@ -80,24 +85,34 @@ export function ModelRowContent(
             </Text>
             {props.option.isDefault ? (
               <View className="rounded-md bg-subtle-strong px-1.5 py-0.5">
-                <Text className="text-3xs font-t3-bold text-foreground-muted">Default</Text>
+                <Text className="text-3xs font-t3-bold text-foreground-muted">
+                  {gt("Default", { $context: "badge on the default model" })}
+                </Text>
               </View>
             ) : null}
             {props.isPreferredDefault ? (
               <View className="rounded-md bg-subtle px-1.5 py-0.5">
-                <Text className="text-3xs font-t3-bold text-foreground-muted">New thread</Text>
+                <Text className="text-3xs font-t3-bold text-foreground-muted">
+                  <T>New thread</T>
+                </Text>
               </View>
             ) : null}
             {props.option.isLegacy ? (
               <View className="rounded-md bg-subtle px-1.5 py-0.5">
-                <Text className="text-3xs font-t3-bold text-foreground-muted">Legacy</Text>
+                <Text className="text-3xs font-t3-bold text-foreground-muted">
+                  {gt("Legacy", { $context: "badge on an older model" })}
+                </Text>
               </View>
             ) : null}
             {props.option.isHidden ? (
-              <Text className="text-xs text-foreground-muted">Hidden</Text>
+              <Text className="text-xs text-foreground-muted">
+                {gt("Hidden", { $context: "model is hidden from the picker" })}
+              </Text>
             ) : null}
             {props.option.isUnavailable ? (
-              <Text className="text-xs text-foreground">Unavailable</Text>
+              <Text className="text-xs text-foreground">
+                {gt("Unavailable", { $context: "model cannot be used" })}
+              </Text>
             ) : null}
           </View>
           {props.option.subtitle ? (
@@ -113,10 +128,20 @@ export function ModelRowContent(
       </Pressable>
       {props.onToggleHidden ? (
         <Pressable
-          accessibilityLabel={`${props.option.isHidden ? "Show" : "Hide"} model: ${props.option.providerLabel}, ${props.option.label}`}
+          accessibilityLabel={
+            props.option.isHidden
+              ? gt("Show model: {provider}, {model}", {
+                  provider: props.option.providerLabel,
+                  model: props.option.label,
+                })
+              : gt("Hide model: {provider}, {model}", {
+                  provider: props.option.providerLabel,
+                  model: props.option.label,
+                })
+          }
           accessibilityRole="button"
           accessibilityState={{ disabled: props.hiddenUpdatePending === true }}
-          className="min-h-11 min-w-11 items-center justify-center"
+          className="min-h-[44px] min-w-[44px] items-center justify-center android:min-h-[48px] android:min-w-[48px]"
           disabled={props.hiddenUpdatePending}
           onPress={props.onToggleHidden}
         >
@@ -129,12 +154,20 @@ export function ModelRowContent(
         </Pressable>
       ) : null}
       <Pressable
-        accessibilityLabel={`${props.isFavorite ? "Remove from" : "Add to"} favorites: ${
-          props.option.providerLabel
-        }, ${props.option.label}`}
+        accessibilityLabel={
+          props.isFavorite
+            ? gt("Remove from favorites: {provider}, {model}", {
+                provider: props.option.providerLabel,
+                model: props.option.label,
+              })
+            : gt("Add to favorites: {provider}, {model}", {
+                provider: props.option.providerLabel,
+                model: props.option.label,
+              })
+        }
         accessibilityRole="button"
         accessibilityState={{ disabled: !props.favoritesLoaded, selected: props.isFavorite }}
-        className="min-h-11 min-w-11 items-center justify-center"
+        className="min-h-[44px] min-w-[44px] items-center justify-center android:min-h-[48px] android:min-w-[48px]"
         disabled={!props.favoritesLoaded}
         onPress={props.onToggleFavorite}
       >

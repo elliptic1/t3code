@@ -11,7 +11,7 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";
@@ -24,13 +24,8 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as ServerConfig from "../config.ts";
-import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
-import {
-  base64UrlDecodeUtf8,
-  base64UrlEncode,
-  signPayload,
-  timingSafeEqualBase64Url,
-} from "../auth/utils.ts";
+import * as PayloadSigner from "../auth/PayloadSigner.ts";
+import { base64UrlDecodeUtf8, base64UrlEncode } from "../auth/utils.ts";
 import { openMediaFile, streamMediaFile } from "../assets/MediaFile.ts";
 
 export const ARTIFACT_ROUTE_PREFIX = "/api/thread-artifacts";
@@ -121,14 +116,14 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const config = yield* ServerConfig.ServerConfig;
-  const secrets = yield* ServerSecretStore.ServerSecretStore;
-  const crypto = yield* Crypto.Crypto;
+  const signer = yield* PayloadSigner.make("thread-artifact-signing-key");
+  const random = yield* SecureRandom.SecureRandom;
   const mutex = yield* Semaphore.make(1);
   const changes = yield* PubSub.unbounded<ThreadId>();
   const root = path.join(config.stateDir, "thread-artifacts");
   yield* fs.makeDirectory(root, { recursive: true }).pipe(Effect.mapError(storageError));
   const filePath = (key: string) => path.join(root, key);
-  const uuid = crypto.randomUUIDv4().pipe(Effect.mapError(storageError));
+  const uuid = random.uuidV4();
   const now = DateTime.now.pipe(Effect.map(DateTime.formatIso));
   const notify = (id: ThreadId) => PubSub.publish(changes, id).pipe(Effect.asVoid);
   const discard = (key: string) =>
@@ -179,12 +174,10 @@ const make = Effect.gen(function* () {
     claims: typeof Claims.Type,
     route: string,
   ) {
-    const secret = yield* secrets
-      .getOrCreateRandom("thread-artifact-signing-key", 32)
-      .pipe(Effect.mapError(storageError));
     const payload = base64UrlEncode(encodeClaims(claims));
+    const signature = yield* signer.sign(payload).pipe(Effect.mapError(storageError));
     return {
-      relativeUrl: `${ARTIFACT_ROUTE_PREFIX}/${route}/${payload}.${signPayload(payload, secret)}`,
+      relativeUrl: `${ARTIFACT_ROUTE_PREFIX}/${route}/${payload}.${signature}`,
       expiresAt: claims.expiresAt,
     };
   });
@@ -192,10 +185,7 @@ const make = Effect.gen(function* () {
     const [payload, signature, extra] = token.split(".");
     if (!payload || !signature || extra)
       return yield* new ThreadArtifactError({ reason: "invalid_upload" });
-    const secret = yield* secrets
-      .getOrCreateRandom("thread-artifact-signing-key", 32)
-      .pipe(Effect.mapError(storageError));
-    if (!timingSafeEqualBase64Url(signature, signPayload(payload, secret)))
+    if (!(yield* signer.verify(payload, signature).pipe(Effect.mapError(storageError))))
       return yield* new ThreadArtifactError({ reason: "invalid_upload" });
     const claims = yield* Effect.try({
       try: () => base64UrlDecodeUtf8(payload),

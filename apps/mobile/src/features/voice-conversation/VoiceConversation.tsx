@@ -1,10 +1,29 @@
+import { msg } from "gt-react-native";
+import { T } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 /* oxlint-disable t3code/no-unreasoned-state-sync -- these effects run the live voice session: microphone, WebRTC, and speech playback outside React */
-import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
-import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { VoiceButton } from "./VoiceButton";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { openSettings } from "../settings/settings-navigation";
-import { AppState, Platform, Pressable, ScrollView, View } from "react-native";
+import {
+  AppState,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  useWindowDimensions,
+  View,
+  type GestureResponderHandlers,
+  type ViewStyle,
+} from "react-native";
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  type AnimatedStyle,
+} from "react-native-reanimated";
+import { useKeyboardState } from "react-native-keyboard-controller";
 import { useNavigation, type NavigationState } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { randomUUID } from "expo-crypto";
@@ -28,6 +47,11 @@ import {
 } from "./actions";
 import type { VoiceConnection } from "./connection";
 import { syncVoiceHistoryToWatch } from "./voiceHistory";
+import { useVoiceFabClearance } from "./voiceFabClearance";
+import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
+import { voiceFabDestination } from "./voiceFabPhysics";
+
+const FAB_SIZE = 60;
 
 type SessionOwner = { abort: AbortController; connection?: VoiceConnection };
 
@@ -73,14 +97,94 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
     return () => subscription.remove();
   }, [voiceEnabled, settingsKnown, isReady]);
   const insets = useSafeAreaInsets();
-  const { layout } = useAdaptiveWorkspaceLayout();
-  const { navigationBarHeight, fabClearance } = useAndroidControlSizing();
-  // The compact Android root stacks New thread and Filter above its bottom tabs.
-  const bottom =
-    Math.max(insets.bottom, 12) +
-    (Platform.OS === "android" && route?.name === "Home" && !layout.usesSplitView
-      ? navigationBarHeight + fabClearance + 16
-      : 88);
+  const window = useWindowDimensions();
+  const clearance = useVoiceFabClearance();
+  const toolbar = useToolbarLayout();
+  const keyboardHeight = useKeyboardState((keyboard) => keyboard.height);
+  const [placement, setPlacement] = useState({ side: "right", vertical: "bottom" });
+  // Screens without published bottom controls keep clearance above tab bars.
+  const baseline = keyboardHeight + (clearance ?? Math.max(insets.bottom, 12) + 76) + 12;
+  const topDock = toolbar.paddingTop + toolbar.height + toolbar.paddingBottom + 12;
+  const bounds = {
+    left: insets.left + 16,
+    right: Math.max(insets.left + 16, window.width - insets.right - FAB_SIZE - 16),
+    top: topDock,
+    bottom: Math.max(topDock, window.height - baseline - FAB_SIZE),
+  };
+  const x = useSharedValue(bounds.right);
+  const y = useSharedValue(bounds.bottom);
+  const start = useSharedValue({ x: bounds.right, y: bounds.bottom });
+  const velocity = useSharedValue({ x: 0, y: 0 });
+  const { left, right, top, bottom } = bounds;
+  // Synchronize docking with changing native window, keyboard, and screen-control bounds.
+  useLayoutEffect(() => {
+    const spring = { damping: 18, stiffness: 180, mass: 0.7 };
+    x.set(
+      withSpring(placement.side === "right" ? right : left, {
+        ...spring,
+        velocity: velocity.get().x,
+      }),
+    );
+    y.set(
+      withSpring(placement.vertical === "bottom" ? bottom : top, {
+        ...spring,
+        velocity: velocity.get().y,
+      }),
+    );
+    velocity.set({ x: 0, y: 0 });
+  }, [placement, left, right, top, bottom, x, y, velocity]);
+  const dragStyle = useAnimatedStyle<ViewStyle>(() => ({
+    transform: [
+      { translateX: Math.max(left - 8, Math.min(right + 8, x.get())) },
+      { translateY: Math.max(top - 8, Math.min(bottom + 8, y.get())) },
+    ],
+  }));
+  const openDown = placement.vertical === "top";
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) + Math.abs(gesture.dy) > 8,
+    onPanResponderGrant: () => {
+      setOpen(false);
+      cancelAnimation(x);
+      cancelAnimation(y);
+      start.set({ x: x.get(), y: y.get() });
+    },
+    onPanResponderMove: (_, gesture) => {
+      x.set(Math.max(left, Math.min(right, start.get().x + gesture.dx)));
+      y.set(Math.max(top, Math.min(bottom, start.get().y + gesture.dy)));
+    },
+    onPanResponderRelease: (_, gesture) => {
+      velocity.set({
+        x: Math.max(-1800, Math.min(1800, gesture.vx * 1000)),
+        y: Math.max(-1800, Math.min(1800, gesture.vy * 1000)),
+      });
+      setPlacement(
+        voiceFabDestination(
+          { x: x.get(), y: y.get() },
+          { x: gesture.vx * 1000, y: gesture.vy * 1000 },
+          bounds,
+        ),
+      );
+    },
+    onPanResponderTerminate: () => {
+      velocity.set({ x: 0, y: 0 });
+      setPlacement({ ...placement });
+    },
+  });
+  const panelWidth = Math.min(310, window.width - insets.left - insets.right - 32);
+  const panelStyle = useAnimatedStyle<ViewStyle>(() => ({
+    transform: [
+      {
+        translateX:
+          Math.max(left - 8, Math.min(right + 8, x.get())) -
+          (placement.side === "right" ? panelWidth - FAB_SIZE : 0),
+      },
+      {
+        translateY:
+          Math.max(top - 8, Math.min(bottom + 8, y.get())) + (openDown ? FAB_SIZE + 12 : -12),
+      },
+      { translateY: openDown ? "0%" : "-100%" },
+    ],
+  }));
   const enabled = environment !== undefined;
   if (!enabled && (selected !== null || open)) {
     setSelected(null);
@@ -88,30 +192,28 @@ export function VoiceConversation({ state }: { state: NavigationState }) {
   }
   if (!environment || !enabled) return null;
   return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: "absolute",
-        right: 28,
-        bottom,
-        maxWidth: "90%",
-      }}
-    >
-      <VoiceSession
-        key={environmentId}
-        environmentId={environment.environmentId}
-        label={environment.label}
-        focusedThread={params?.environmentId === environmentId ? (params?.threadId ?? null) : null}
-        open={open}
-        setOpen={setOpen}
-        onStarted={() => setSelected(environment.environmentId)}
-        onStopped={() => setSelected(null)}
-      />
-    </View>
+    <VoiceSession
+      fabHandlers={panResponder.panHandlers}
+      fabStyle={dragStyle}
+      panelStyle={panelStyle}
+      panelWidth={panelWidth}
+      key={environmentId}
+      environmentId={environment.environmentId}
+      label={environment.label}
+      focusedThread={params?.environmentId === environmentId ? (params?.threadId ?? null) : null}
+      open={open}
+      setOpen={setOpen}
+      onStarted={() => setSelected(environment.environmentId)}
+      onStopped={() => setSelected(null)}
+    />
   );
 }
 
 function VoiceSession(props: {
+  fabHandlers: GestureResponderHandlers;
+  fabStyle: AnimatedStyle<ViewStyle>;
+  panelStyle: AnimatedStyle<ViewStyle>;
+  panelWidth: number;
   environmentId: EnvironmentId;
   label: string;
   focusedThread: string | null;
@@ -143,7 +245,9 @@ function VoiceSession(props: {
       },
       () =>
         setError({
-          message: "Voice history could not be saved. End the conversation to retry.",
+          message: resolveCopy(
+            msg("Voice history could not be saved. End the conversation to retry."),
+          ),
           details: "Voice history sync failed.",
         }),
     ),
@@ -161,14 +265,17 @@ function VoiceSession(props: {
     setRunning(false);
     setConnected(false);
     setMuted(false);
-    setStatus("Saving conversation");
+    setStatus(resolveCopy(msg("Saving conversation")));
     void historySync.flush().then(
-      () => setStatus("Ended"),
+      () => setStatus(resolveCopy(msg("Ended"))),
       () => {
-        setStatus("History not saved");
+        setStatus(resolveCopy(msg("History not saved")));
         setError({
-          message:
-            "Voice history could not be saved. Check your connection before switching devices.",
+          message: resolveCopy(
+            msg(
+              "Voice history could not be saved. Check your connection before switching devices.",
+            ),
+          ),
           details: "Voice history sync failed.",
         });
       },
@@ -221,7 +328,7 @@ function VoiceSession(props: {
     session.current = owner;
     props.onStarted();
     setRunning(true);
-    setStatus("Connecting");
+    setStatus(resolveCopy(msg("Connecting")));
     setError(null);
     let transport = "";
     // Details are what "Copy details" puts on the clipboard for a bug report.
@@ -293,16 +400,50 @@ function VoiceSession(props: {
     }
   };
   return (
-    <>
+    <View
+      collapsable={false}
+      pointerEvents="box-none"
+      style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+    >
+      {/* Keep the native animation target stable when the panel mounts. */}
+      <Animated.View
+        key="voice-fab"
+        pointerEvents="box-none"
+        style={[
+          { position: "absolute", top: 0, left: 0, width: FAB_SIZE, height: FAB_SIZE },
+          props.fabStyle,
+        ]}
+      >
+        <View {...props.fabHandlers}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              running ? resolveCopy(msg("Show voice conversation")) : resolveCopy(msg("Talk to T3"))
+            }
+            accessibilityHint={resolveCopy(msg("Drag or fling toward a corner to move"))}
+            onPress={() => props.setOpen(!props.open)}
+            className="items-center justify-center rounded-full border border-foreground/20 bg-card shadow-lg shadow-black/30 active:opacity-85"
+            style={{ width: FAB_SIZE, height: FAB_SIZE, elevation: 12 }}
+          >
+            <T3Wordmark height={18} colorClassName="accent-wordmark" />
+          </Pressable>
+        </View>
+      </Animated.View>
       {props.open ? (
-        <View
-          className="rounded-xl border border-border bg-sheet p-4"
-          style={{ width: 310, maxWidth: "100%" }}
+        <Animated.View
+          key="voice-panel"
+          className="rounded-2xl border border-foreground/20 bg-card p-4 shadow-xl shadow-black/40"
+          style={[
+            { position: "absolute", top: 0, left: 0, width: props.panelWidth, elevation: 16 },
+            props.panelStyle,
+          ]}
         >
-          <Text className="text-lg text-foreground">Talk to T3</Text>
+          <Text className="text-lg text-foreground">
+            <T>Talk to T3</T>
+          </Text>
           <Text className="text-xs text-foreground-muted">{props.label}</Text>
           <Text accessibilityLiveRegion="polite" className="my-2 text-sm text-foreground">
-            {muted ? "Microphone muted" : status}
+            {muted ? resolveCopy(msg("Microphone muted")) : status}
           </Text>
           {error ? (
             <View className="mb-2">
@@ -310,12 +451,15 @@ function VoiceSession(props: {
                 {error.message}
               </Text>
               <VoiceButton
-                label="Copy details"
+                label={resolveCopy(msg("Copy details"))}
                 onPress={() => copyTextWithHaptic(error.details, { target: "error details" })}
               />
             </View>
           ) : null}
-          <ScrollView style={{ maxHeight: 180 }} accessibilityLabel="Conversation transcript">
+          <ScrollView
+            style={{ maxHeight: 180 }}
+            accessibilityLabel={resolveCopy(msg("Conversation transcript"))}
+          >
             {lines.map((line) => (
               <Text key={line.id} className="mb-2 text-sm text-foreground">
                 {line.speaker}: {line.text}
@@ -323,8 +467,10 @@ function VoiceSession(props: {
             ))}
             {!lines.length ? (
               <Text className="text-sm text-foreground-muted">
-                Ask about projects, start a thread, or tell an agent what to do. Your provider
-                receives audio and requested context.
+                <T>
+                  Ask about projects, start a thread, or tell an agent what to do. Your provider
+                  receives audio and requested context.
+                </T>
               </Text>
             ) : null}
           </ScrollView>
@@ -332,7 +478,7 @@ function VoiceSession(props: {
             {running ? (
               <>
                 <VoiceButton
-                  label={muted ? "Unmute" : "Mute"}
+                  label={muted ? resolveCopy(msg("Unmute")) : resolveCopy(msg("Mute"))}
                   disabled={!connected}
                   onPress={() => {
                     session.current?.connection?.mute(!muted);
@@ -344,19 +490,26 @@ function VoiceSession(props: {
             ) : (
               <>
                 <VoiceButton
-                  label={lines.length ? "Continue conversation" : "Start conversation"}
+                  label={
+                    lines.length
+                      ? resolveCopy(msg("Continue conversation"))
+                      : resolveCopy(msg("Start conversation"))
+                  }
                   onPress={() => void start()}
                 />
                 {lines.length ? (
                   <VoiceButton
-                    label="Start fresh"
+                    label={resolveCopy(msg("Start fresh"))}
                     onPress={() => {
                       void historySync.reset().then(
                         () => setLines([]),
                         () =>
                           setError({
-                            message:
-                              "Could not clear voice history. Check your connection and try again.",
+                            message: resolveCopy(
+                              msg(
+                                "Could not clear voice history. Check your connection and try again.",
+                              ),
+                            ),
                             details: "Voice history reset failed.",
                           }),
                       );
@@ -366,41 +519,16 @@ function VoiceSession(props: {
               </>
             )}
             <VoiceButton
-              label="Settings"
+              label={resolveCopy(msg("Settings"))}
               onPress={() => {
                 props.setOpen(false);
                 openSettings(navigation, "SettingsVoice");
               }}
             />
-            <VoiceButton label="Hide" onPress={() => props.setOpen(false)} />
+            <VoiceButton label={resolveCopy(msg("Hide"))} onPress={() => props.setOpen(false)} />
           </View>
-        </View>
+        </Animated.View>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={running ? "Show voice conversation" : "Talk to T3"}
-        onPress={() => props.setOpen(!props.open)}
-        className="mt-3 size-15 self-end rounded-full bg-black shadow-xl shadow-black/50 active:opacity-85"
-        style={{ elevation: 12 }}
-      >
-        {/* Clipped inner layer: iOS drops the shadow of a view that clips its own content. */}
-        <View
-          className="size-15 items-center justify-center overflow-hidden rounded-full border border-white/20"
-          style={{
-            experimental_backgroundImage: "linear-gradient(to bottom, #2b2b30 0%, #000 100%)",
-          }}
-        >
-          <T3Wordmark height={18} color="#f4f4f5" />
-          <View
-            pointerEvents="none"
-            className="absolute top-0 right-0 left-0 h-1/2 rounded-t-full"
-            style={{
-              experimental_backgroundImage:
-                "linear-gradient(to bottom, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.06) 100%)",
-            }}
-          />
-        </View>
-      </Pressable>
-    </>
+    </View>
   );
 }

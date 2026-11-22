@@ -1,3 +1,5 @@
+import { msg } from "gt-i18n";
+import { mFallback } from "gt-i18n";
 import { ORCHESTRATION_PROTOCOL_VERSION } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
@@ -102,6 +104,6 @@ function diagnosticUrl(value: string | null): string | null {
     url.hash = "";
     return url.toString();
   } catch {
-    return "Invalid URL";
+    return mFallback(msg("Invalid URL"));
   }
 }

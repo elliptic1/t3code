@@ -1,11 +1,14 @@
-import type { EnvironmentId, UnifiedSettings } from "@t3tools/contracts";
+import { msg } from "gt-react";
+import { m as resolveCopy } from "../../i18n/messages";
 import { useAtomValue } from "@effect/atom-react";
+import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
+import type { EnvironmentId, UnifiedSettings } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
-import { serverEnvironment } from "../../state/server";
-import { useAtomCommand } from "../../state/use-atom-command";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -19,8 +22,10 @@ import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { Input } from "../ui/input";
 import { AddUsageLimitSourceDialog } from "./AddUsageLimitSourceDialog";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+
+const CLI_PROXY_NAME = "CLI Proxy";
 
 export function UsageProviderSettings({
   environmentId,
@@ -39,6 +44,8 @@ export function UsageProviderSettings({
   readonly usageResetReminderNtfyUrl: string;
   readonly readOnly: boolean;
 }) {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const updateCursorSettings = useAtomCommand(serverEnvironment.updateSettings, {
     label: "update Cursor account usage",
@@ -80,17 +87,21 @@ export function UsageProviderSettings({
           !readOnly ? (
             <Button size="xs" variant="outline" onClick={() => setAdding(true)}>
               <PlusIcon className="size-3" aria-hidden />
-              Add hub
+              <T>Add hub</T>
             </Button>
           ) : null
         }
       >
         <SettingsRow
-          title="Usage reset reminders"
-          description="Get a notification in the final hour before a Claude or Codex subscription window resets, showing usage and remaining allowance. Use your ntfy topic below, or T3 Connect with Device Notifications."
+          title={resolveCopy(msg("Usage reset reminders"))}
+          description={resolveCopy(
+            msg(
+              "Get a notification in the final hour before a Claude or Codex subscription window resets, showing usage and remaining allowance. Use your ntfy topic below, or T3 Connect with Device Notifications.",
+            ),
+          )}
           control={
             <Switch
-              aria-label="Usage reset reminders"
+              aria-label={resolveCopy(msg("Usage reset reminders"))}
               checked={usageResetRemindersEnabled}
               disabled={readOnly || !canUpdateReminders || updatingReminders}
               onCheckedChange={(enabled) => {
@@ -104,12 +115,16 @@ export function UsageProviderSettings({
           }
         />
         <SettingsRow
-          title="ntfy topic URL"
-          description="Subscribe to this topic in the ntfy app. Leave empty to use T3 Connect. Use an unguessable topic name on public servers."
+          title={resolveCopy(msg("ntfy topic URL"))}
+          description={resolveCopy(
+            msg(
+              "Subscribe to this topic in the ntfy app. Leave empty to use T3 Connect. Use an unguessable topic name on public servers.",
+            ),
+          )}
           control={
             <div className="flex w-72 items-center gap-2">
               <Input
-                aria-label="ntfy topic URL"
+                aria-label={resolveCopy(msg("ntfy topic URL"))}
                 type="url"
                 placeholder="https://ntfy.sh/your-topic"
                 value={ntfyDraft ?? usageResetReminderNtfyUrl}
@@ -134,7 +149,7 @@ export function UsageProviderSettings({
                   }).finally(() => setUpdatingReminders(false));
                 }}
               >
-                Save
+                <T>Save</T>
               </Button>
             </div>
           }
@@ -142,11 +157,15 @@ export function UsageProviderSettings({
         {platform?.os === "darwin" ? (
           <SettingsRow
             id="cursor-keychain-usage"
-            title="Cursor account usage"
-            description="Read your existing Cursor CLI login from macOS Keychain to show account history and monthly limits. macOS may ask you to allow access."
+            title={resolveCopy(msg("Cursor account usage"))}
+            description={resolveCopy(
+              msg(
+                "Read your existing Cursor CLI login from macOS Keychain to show account history and monthly limits. macOS may ask you to allow access.",
+              ),
+            )}
             control={
               <Switch
-                aria-label="Cursor account usage"
+                aria-label={resolveCopy(msg("Cursor account usage"))}
                 checked={cursorKeychainUsageEnabled}
                 disabled={readOnly || updatingCursor}
                 onCheckedChange={(enabled) => void setCursorUsageEnabled(enabled)}
@@ -155,7 +174,7 @@ export function UsageProviderSettings({
           />
         ) : null}
         {entries.length === 0 ? (
-          <SettingsRow title="No hubs configured." />
+          <SettingsRow title={gt("No hubs configured.")} />
         ) : (
           entries.map(([id, source]) => {
             const label = source.label?.trim() || source.url;
@@ -165,7 +184,9 @@ export function UsageProviderSettings({
                 title={label}
                 description={
                   <span className="break-all">
-                    CLI Proxy{source.enabled ? "" : " · Disabled"}
+                    {source.enabled
+                      ? CLI_PROXY_NAME
+                      : gt("{name} · Disabled", { name: CLI_PROXY_NAME })}
                     {label !== source.url ? ` · ${source.url}` : ""}
                   </span>
                 }
@@ -206,20 +227,28 @@ function RemoveUsageProviderButton({
   return (
     <>
       <Button size="xs" variant="ghost" onClick={() => setOpen(true)}>
-        Remove
+        <T>Remove</T>
       </Button>
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {label}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <T>
+                Remove <Var>{label}</Var>?
+              </T>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              The hub's management key is deleted from this server. Its accounts leave the Limits
-              view; the hub itself is untouched. Add it again with the URL and key to bring them
-              back.
+              <T>
+                The hub's management key is deleted from this server. Its accounts leave the Limits
+                view; the hub itself is untouched. Add it again with the URL and key to bring them
+                back.
+              </T>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              <T>Cancel</T>
+            </AlertDialogClose>
             <Button
               variant="destructive"
               onClick={() => {
@@ -227,7 +256,7 @@ function RemoveUsageProviderButton({
                 onConfirm();
               }}
             >
-              Remove hub
+              <T>Remove hub</T>
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

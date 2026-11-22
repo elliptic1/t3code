@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import { AudioContext, AudioRecorder, type AudioBufferSourceNode } from "react-native-audio-api";
 import type { VoiceSessionConnection } from "@t3tools/contracts";
 
@@ -106,11 +108,11 @@ async function connectPcmSocketOnce(input: PcmSocketInput) {
       ({ buffer, numFrames }) => {
         if (muted || socket?.readyState !== WebSocket.OPEN || signal.aborted) return;
         if (socket.bufferedAmount > 24000 * 2 * 3) {
-          input.onError("Voice upload cannot keep up. Please reconnect.");
+          input.onError(resolveCopy(msg("Voice upload cannot keep up. Please reconnect.")));
           return;
         }
         if (buffer.sampleRate !== 24000) {
-          input.onError("This device could not provide 24 kHz voice audio.");
+          input.onError(resolveCopy(msg("This device could not provide 24 kHz voice audio.")));
           return;
         }
         const samples = buffer.getChannelData(0);
@@ -180,7 +182,7 @@ async function connectPcmSocketOnce(input: PcmSocketInput) {
         }
         input.onEvent(event.data);
       } catch {
-        input.onError("Invalid realtime audio received from the voice provider.");
+        input.onError(resolveCopy(msg("Invalid realtime audio received from the voice provider.")));
       }
     });
     await new Promise<void>((resolve, reject) => {

@@ -1,4 +1,5 @@
 import type { MenuAction } from "@react-native-menu/menu";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { Pressable } from "react-native";
 
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -7,9 +8,9 @@ import { Menu } from "../../components/ui/Menu";
 import type { ComposerMediaSource } from "../../lib/composerImages";
 
 const ATTACHMENT_MENU_ACTIONS: MenuAction[] = [
-  { id: "camera", title: "Take Photo", image: "camera" },
-  { id: "photos", title: "Photo Library", image: "photo" },
-  { id: "files", title: "Choose Files", image: "folder" },
+  { id: "camera", title: msg("Take Photo"), image: "camera" },
+  { id: "photos", title: msg("Photo Library"), image: "photo" },
+  { id: "files", title: msg("Choose Files"), image: "folder" },
 ];
 
 export function ComposerAttachmentButton(props: {
@@ -19,10 +20,12 @@ export function ComposerAttachmentButton(props: {
   readonly onPickMedia: (source?: ComposerMediaSource) => Promise<void>;
   readonly onPickFiles: () => Promise<void>;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { scale } = useAndroidControlSizing();
   const button = (
     <Pressable
-      accessibilityLabel="Add attachment"
+      accessibilityLabel={gt("Add attachment")}
       accessibilityRole="button"
       accessibilityState={{ disabled: props.disabled }}
       className="size-[44px] shrink-0 items-center justify-center rounded-full active:opacity-70 disabled:opacity-50"
@@ -45,9 +48,12 @@ export function ComposerAttachmentButton(props: {
   return (
     <Menu
       accessible
-      accessibilityLabel="Add attachment"
+      accessibilityLabel={gt("Add attachment")}
       accessibilityRole="button"
-      actions={props.supportsFiles ? ATTACHMENT_MENU_ACTIONS : ATTACHMENT_MENU_ACTIONS.slice(0, 2)}
+      actions={(props.supportsFiles
+        ? ATTACHMENT_MENU_ACTIONS
+        : ATTACHMENT_MENU_ACTIONS.slice(0, 2)
+      ).map((action) => ({ ...action, title: m(action.title) }))}
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "camera") {
           void props.onPickMedia("camera");

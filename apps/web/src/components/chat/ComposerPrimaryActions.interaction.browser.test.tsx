@@ -33,8 +33,6 @@ async function view() {
       canSteer
       canStartParallelAgent
       onSendAction={sendAction}
-      showPlanFollowUpPrompt={false}
-      promptHasText
       isSendBusy={false}
       sendDisabledReason={null}
       isEnvironmentUnavailable={false}
@@ -43,7 +41,6 @@ async function view() {
       onSubmitMessage={submit}
       onPreviousPendingQuestion={() => {}}
       onInterrupt={() => {}}
-      onImplementPlanInNewThread={() => {}}
     />,
   );
 }

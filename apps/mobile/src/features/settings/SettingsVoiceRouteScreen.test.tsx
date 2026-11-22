@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
@@ -10,6 +9,11 @@ const harness = vi.hoisted(() => ({
   update: vi.fn(),
 }));
 
+vi.mock("gt-react-native", () => ({
+  msg: (text: string) => text,
+  T: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock("../../i18n/messages", () => ({ m: (text: string) => text }));
 vi.mock("react-native", () => ({
   ScrollView: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   View: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -29,7 +33,7 @@ vi.mock("react-native", () => ({
   ),
   TextInput: () => null,
 }));
-vi.mock("../../components/AppText", () => ({
+vi.mock("../../components/ui/AppText", () => ({
   AppText: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 vi.mock("./components/SettingsScreen", () => ({
@@ -57,7 +61,7 @@ vi.mock("./settings-environment-filter", () => ({
   }),
 }));
 
-import { SettingsVoiceRouteScreen } from "./SettingsVoiceRouteScreen";
+import { VoiceConversationSettings as SettingsVoiceRouteScreen } from "./VoiceConversationSettings";
 
 let root: Root;
 let container: HTMLDivElement;

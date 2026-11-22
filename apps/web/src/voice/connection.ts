@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m as resolveCopy } from "../i18n/messages";
 import { voiceSessionConfiguration } from "@t3tools/client-runtime/voice-conversation/session";
 import type { VoiceSessionConnection } from "@t3tools/contracts";
 import {
@@ -56,11 +58,15 @@ export async function connectVoice(input: {
       audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
       void audio
         .play()
-        .catch(() => input.onError("Audio playback was blocked. End voice and start again."));
+        .catch(() =>
+          input.onError(resolveCopy(msg("Audio playback was blocked. End voice and start again."))),
+        );
     });
     pc.addEventListener("connectionstatechange", () => {
       if (["failed", "disconnected"].includes(pc.connectionState))
-        input.onError("Voice connection lost. Start a new conversation to reconnect.");
+        input.onError(
+          resolveCopy(msg("Voice connection lost. Start a new conversation to reconnect.")),
+        );
     });
     const channel = pc.createDataChannel("oai-events");
     send = (event) => {

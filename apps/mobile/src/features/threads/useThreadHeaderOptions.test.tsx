@@ -1,3 +1,4 @@
+import type { AppBarProps, AppBarMenuItem } from "../../components/ui/AppBar.types";
 import type { VcsStatusResult } from "@t3tools/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -7,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 // navigation snapshots the right items at each setOptions, as native-stack does.
 const harness = vi.hoisted(() => ({
   setOptionsCalls: 0,
-  renderedRightItems: [] as Array<ReadonlyArray<Record<string, unknown>>>,
+  appBar: null as AppBarProps | null,
   navigatedRoutes: [] as string[],
 }));
 
@@ -20,9 +21,8 @@ vi.mock("@react-navigation/native", () => {
       harness.navigatedRoutes.push(route);
     },
     addListener: () => () => {},
-    setOptions: (options: { unstable_headerRightItems?: () => Array<Record<string, unknown>> }) => {
+    setOptions: () => {
       harness.setOptionsCalls += 1;
-      harness.renderedRightItems.push(options.unstable_headerRightItems?.() ?? []);
     },
   };
   return {
@@ -33,16 +33,23 @@ vi.mock("@react-navigation/native", () => {
 vi.mock("../../native/useOpenPullRequest", () => ({ useOpenPullRequest: () => () => {} }));
 
 vi.mock("../../state/session", () => ({ useEnvironmentScope: () => true }));
-vi.mock("../../components/ui/AppBar", async () => {
-  const { NativeStackScreenOptions } = await import("../../native/StackHeader");
-  return {
-    AppBar: (props: import("../../components/ui/AppBar.types").AppBarProps) => (
-      <NativeStackScreenOptions options={props.options} optionsVersion={props.optionsVersion} />
-    ),
-  };
-});
+vi.mock("../../components/ui/AppBar", () => ({
+  AppBar: (props: AppBarProps) => {
+    harness.appBar = props;
+    return null;
+  },
+}));
+vi.mock("../layout/workspace/useAndroidWorkspaceNavigation", () => ({
+  useWorkspaceBackNavigation: () => () => {},
+}));
+vi.mock("gt-react-native", () => ({
+  msg: (text: string) => text,
+  useGT: () => (text: string) => text,
+  useMessages: () => (text: string) => text,
+}));
 vi.mock("react-native", () => ({ Alert: { alert: () => {} }, Linking: {}, Platform: {} }));
 vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
+  useWorkspacePaneState: () => ({ panes: { auxiliaryPaneVisible: false } }),
   useAdaptiveWorkspaceLayout: () => ({
     layout: { usesSplitView: false },
     panes: { primarySidebarVisible: false, auxiliaryPaneVisible: false },
@@ -95,8 +102,7 @@ function Header(props: {
     <ThreadHeader
       title={props.title ?? "Thread"}
       subtitle=""
-      headerColor="#000"
-      usesNativeHeaderGlass
+
       settled={false}
       regeneratingTitle={props.regeneratingTitle}
       onRegenerateTitle={props.onRegenerateTitle}
@@ -118,42 +124,22 @@ function Header(props: {
         onRunProjectScript: async () => {},
       }}
       hasThreadCwd
-      hasWorkspaceRoot
-      fileInspectorSupported={false}
+
       inspectorMode={null}
-      onToggleInspector={() => {}}
-      onOpenGitInspector={() => {}}
+
       onOpenFilesInspector={() => {}}
     />
   );
 }
 
-function renderedThreadMenuItems(): Array<{
-  label?: unknown;
-  disabled?: unknown;
-  onPress?: () => void;
-}> {
-  const items = harness.renderedRightItems.at(-1) ?? [];
-  const thread = items.find((item) => item.identifier === "thread-right-actions") as
-    | { menu: { items: Array<{ label?: unknown; disabled?: unknown; onPress?: () => void }> } }
-    | undefined;
-  return thread?.menu.items ?? [];
-}
-
-function renderedGitMenuItems(): Array<{
-  description?: unknown;
-  label?: unknown;
-  onPress?: () => void;
-}> {
-  const items = harness.renderedRightItems.at(-1) ?? [];
-  const git = items.find((item) => item.identifier === "thread-right-git") as
-    | { menu: { items: Array<{ description?: unknown; label?: unknown; onPress?: () => void }> } }
-    | undefined;
-  return git?.menu.items ?? [];
-}
+const renderedThreadMenuItems = () => harness.appBar?.actions ?? [];
+const renderedGitMenuItems = () =>
+  (harness.appBar?.menus?.[0]?.items ?? []).filter(
+    (item): item is Extract<AppBarMenuItem, { readonly onPress: () => void }> => "onPress" in item,
+  );
 
 function renderedGitStatusDescription(): unknown {
-  return renderedGitMenuItems()[0]?.description;
+  return renderedGitMenuItems()[0]?.subtitle;
 }
 
 let root: Root | null = null;
@@ -168,7 +154,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   harness.setOptionsCalls = 0;
-  harness.renderedRightItems = [];
+  harness.appBar = null;
   harness.navigatedRoutes = [];
 });
 
@@ -177,9 +163,13 @@ describe("ThreadHeader", () => {
     const regenerate = vi.fn();
     render(<Header gitStatus={status([])} onRegenerateTitle={regenerate} />);
 
-    const action = renderedThreadMenuItems().find((item) => item.label === "Regenerate title");
+    const action = renderedThreadMenuItems().find(
+      (item) => item.accessibilityLabel === "Regenerate title",
+    );
     expect(action).toBeDefined();
-    expect(renderedThreadMenuItems().some((item) => item.label === "Rename thread")).toBe(false);
+    expect(
+      renderedThreadMenuItems().some((item) => item.accessibilityLabel === "Rename thread"),
+    ).toBe(false);
 
     await act(async () => action?.onPress?.());
     expect(regenerate).toHaveBeenCalledOnce();
@@ -188,7 +178,7 @@ describe("ThreadHeader", () => {
   it("shows progress and disables title regeneration while it is running", () => {
     render(<Header gitStatus={status([])} onRegenerateTitle={() => {}} regeneratingTitle />);
     expect(renderedThreadMenuItems()).toContainEqual(
-      expect.objectContaining({ label: "Regenerating title…", disabled: true }),
+      expect.objectContaining({ accessibilityLabel: "Regenerating title…", disabled: true }),
     );
   });
 
@@ -203,16 +193,6 @@ describe("ThreadHeader", () => {
     expect(renderedGitStatusDescription()).toBe("Clean");
   });
 
-  it("does not re-apply options for re-renders with equivalent header content", () => {
-    render(<Header gitStatus={status([])} />);
-    const applied = harness.setOptionsCalls;
-
-    for (let index = 0; index < 20; index += 1) {
-      render(<Header gitStatus={status([])} />);
-    }
-    expect(harness.setOptionsCalls).toBe(applied);
-  });
-
   it("re-applies menu actions when the default ref changes behind the same label", async () => {
     const pushable = (isDefaultRef: boolean) =>
       status([], {
@@ -222,10 +202,10 @@ describe("ThreadHeader", () => {
         pr: { state: "open", url: "https://example.com/pr/1" },
       } as Partial<VcsStatusResult>);
     render(<Header gitStatus={pushable(false)} />);
-    expect(renderedGitMenuItems()[1]?.label).toBe("Push");
+    expect(renderedGitMenuItems()[1]?.title).toBe("Push");
 
     render(<Header gitStatus={pushable(true)} />);
-    expect(renderedGitMenuItems()[1]?.label).toBe("Push");
+    expect(renderedGitMenuItems()[1]?.title).toBe("Push");
     await act(async () => renderedGitMenuItems()[1]?.onPress?.());
     expect(harness.navigatedRoutes).toEqual(["GitConfirm"]);
   });

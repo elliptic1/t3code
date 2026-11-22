@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import type { PendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
 import type {
   EnvironmentId,
@@ -38,7 +40,7 @@ export function threadInputNotifications(
     environmentId: thread.environmentId,
     threadId: thread.id,
     requestId,
-    title: thread.title || "Thread needs your input",
+    title: thread.title || resolveCopy(msg("Thread needs your input")),
     body,
     actions,
     allowReply,
@@ -52,8 +54,8 @@ export function threadInputNotifications(
           ? []
           : (
               request.options ?? [
-                { decision: "accept", label: "Approve once" },
-                { decision: "decline", label: "Decline" },
+                { decision: "accept", label: resolveCopy(msg("Approve once")) },
+                { decision: "decline", label: resolveCopy(msg("Decline")) },
               ]
             )
               .filter(

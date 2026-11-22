@@ -54,6 +54,7 @@ describe("ElectronMenu", () => {
       const selectedItemId = yield* electronMenu.showContextMenu({
         window: {} as Electron.BrowserWindow,
         items: [],
+        source: Option.none(),
         position: Option.none(),
       });
 
@@ -82,6 +83,7 @@ describe("ElectronMenu", () => {
       const selectedItemId = yield* electronMenu.showContextMenu({
         window: makeWindow(),
         items: [{ id: "copy", label: "Copy" }],
+        source: Option.none(),
         position: Option.none(),
       });
 
@@ -106,6 +108,7 @@ describe("ElectronMenu", () => {
           { id: "copy", label: "Copy" },
           { id: "delete", label: "Delete", destructive: true, separatorBefore: true },
         ],
+        source: Option.none(),
         position: Option.some({ x: 10.8, y: 20.2 }),
       });
 
@@ -140,6 +143,7 @@ describe("ElectronMenu", () => {
           { id: "archive", label: "Archive", separatorBefore: true },
           { id: "delete", label: "Delete", destructive: true },
         ],
+        source: Option.none(),
         position: Option.none(),
       });
 
@@ -243,6 +247,7 @@ describe("ElectronMenu", () => {
         electronMenu.showContextMenu({
           window: { id: 42 } as Electron.BrowserWindow,
           items: [{ id: "copy", label: "Copy" }],
+          source: Option.none(),
           position: Option.none(),
         }),
       );

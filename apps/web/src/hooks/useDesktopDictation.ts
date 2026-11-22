@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m as resolveCopy } from "../i18n/messages";
 import { useEffect, useRef, useState } from "react";
 
 import { toastManager } from "../components/ui/toast";
@@ -11,6 +13,7 @@ export function useDesktopDictation(focusEditor: () => boolean) {
   const cancelled = useRef(false);
   const mounted = useRef(true);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers a native dictation cancellation listener while the composer is mounted
   useEffect(() => {
     mounted.current = true;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -45,7 +48,9 @@ export function useDesktopDictation(focusEditor: () => boolean) {
       if (mounted.current) {
         toastManager.add({
           type: "error",
-          title: `Could not ${stopping ? "stop" : "start"} dictation`,
+          title: resolveCopy(
+            msg("Could not {value1} dictation", { value1: stopping ? "stop" : "start" }),
+          ),
         });
       }
       pending.current = false;

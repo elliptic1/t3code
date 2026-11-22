@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { createRuntimeCommand, runAtomCommand } from "@t3tools/client-runtime/state/runtime";
@@ -206,7 +208,7 @@ function release() {
 }
 
 const holdConnection = createRuntimeCommand(connectionAtomRuntime, {
-  label: "running thread usage monitoring",
+  label: resolveCopy(msg("running thread usage monitoring")),
   execute: Effect.fn("RunningUsage.holdConnection")(function* () {
     yield* EnvironmentRegistry.EnvironmentRegistry;
     yield* Effect.promise(awaitAndroidRunningUsageStopped);

@@ -1,3 +1,6 @@
+import { msg } from "gt-react-native";
+import { T } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 /* oxlint-disable react/no-array-index-key -- Stage order is immutable for the lifetime of a workflow, so indices are stable keys. */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -50,7 +53,7 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
       input: {
         id: WorkflowId.make(uuidv4()),
         threadId: props.threadId,
-        title: "Fork → APK → manual installation",
+        title: resolveCopy(msg("Fork → APK → manual installation")),
         stages: APK_WORKFLOW_STAGES,
       },
     });
@@ -85,15 +88,15 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
         onPress={() => setExpanded((value) => !value)}
       >
         <Text className="text-sm text-foreground">
-          Workflows · {query.data?.workflows.length ?? "…"}
-          {query.error ? " · unavailable" : ""}
+          <T>Workflows ·</T> {query.data?.workflows.length ?? "…"}
+          {query.error ? resolveCopy(msg(" · unavailable")) : ""}
         </Text>
       </Pressable>
       {expanded ? (
         <ScrollView style={{ maxHeight: 240 }} contentContainerClassName="gap-3 py-2">
           {query.error ? (
             <Text accessibilityRole="alert" className="text-xs text-destructive">
-              Could not load workflows: {query.error}
+              <T>Could not load workflows:</T> {query.error}
             </Text>
           ) : null}
           {error ? (
@@ -106,13 +109,17 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
             disabled={!canCreate || busy}
             onPress={() => setShowDraft((value) => !value)}
           >
-            <Text className="text-sm text-link">APK example</Text>
+            <Text className="text-sm text-link">
+              <T>APK example</T>
+            </Text>
           </Pressable>
           {showDraft ? (
             <View className="gap-2">
               <Text className="text-xs text-muted-foreground">
-                Save a draft, then start it with this thread’s agent and permissions. Installation
-                remains manual.
+                <T>
+                  Save a draft, then start it with this thread’s agent and permissions. Installation
+                  remains manual.
+                </T>
               </Text>
               {APK_WORKFLOW_STAGES.map((stage, i) => (
                 <Text key={stage.title} className="text-xs text-foreground">
@@ -124,7 +131,9 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
                 disabled={!canCreate || busy}
                 onPress={() => void addDraft()}
               >
-                <Text className="text-sm text-link">Save draft</Text>
+                <Text className="text-sm text-link">
+                  <T>Save draft</T>
+                </Text>
               </Pressable>
             </View>
           ) : null}
@@ -152,7 +161,7 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
               <WorkflowHistory environmentId={props.environmentId} workflow={workflow} />
               {workflow.status === "running" ? (
                 <Text className="text-xs text-muted-foreground">
-                  Pause or cancel stops later stages. Current work can finish.
+                  <T>Pause or cancel stops later stages. Current work can finish.</T>
                 </Text>
               ) : null}
               <View className="flex-row flex-wrap gap-3">
@@ -166,7 +175,7 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
                   >
                     <Text className="text-xs text-foreground">
                       {action === "resume" && workflow.status === "waiting"
-                        ? "Resume when ready"
+                        ? resolveCopy(msg("Resume when ready"))
                         : action[0]!.toUpperCase() + action.slice(1)}
                     </Text>
                   </Pressable>
@@ -201,7 +210,9 @@ function WorkflowHistory(props: { environmentId: EnvironmentId; workflow: Workfl
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen((value) => !value)}
       >
-        <Text className="text-xs text-link">Instructions and full evidence</Text>
+        <Text className="text-xs text-link">
+          <T>Instructions and full evidence</T>
+        </Text>
       </Pressable>
       {query.error ? (
         <Text accessibilityRole="alert" className="text-xs text-destructive">
@@ -209,7 +220,9 @@ function WorkflowHistory(props: { environmentId: EnvironmentId; workflow: Workfl
         </Text>
       ) : null}
       {open && query.isPending && !query.data ? (
-        <Text className="text-xs text-muted-foreground">Loading history…</Text>
+        <Text className="text-xs text-muted-foreground">
+          <T>Loading history…</T>
+        </Text>
       ) : null}
       {open
         ? query.data?.workflow.stages.map((stage, index) => (
@@ -217,12 +230,12 @@ function WorkflowHistory(props: { environmentId: EnvironmentId; workflow: Workfl
               <Text className="text-xs font-semibold text-foreground">{stage.title}</Text>
               <Text className="text-xs text-foreground">{stage.instruction}</Text>
               <Text className="text-xs text-muted-foreground">
-                Success: {stage.successCriteria}
+                <T>Success:</T> {stage.successCriteria}
               </Text>
               {stage.attempts.map((attempt) => (
                 <Text key={attempt.number} className="text-xs text-muted-foreground">
-                  Attempt {attempt.number} · {attempt.status}:{" "}
-                  {attempt.evidence ?? "No result recorded."}
+                  <T>Attempt</T> {attempt.number} · {attempt.status}:{" "}
+                  {attempt.evidence ?? resolveCopy(msg("No result recorded."))}
                 </Text>
               ))}
             </View>

@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../i18n/messages";
 import { voiceSessionConfiguration } from "@t3tools/client-runtime/voice-conversation/session";
 import { createVoiceToolRunner } from "@t3tools/client-runtime/voice-conversation";
 import {
@@ -72,27 +74,46 @@ const preparedConnection = Effect.gen(function* () {
     Stream.map((value) => value.value),
     Stream.runHead,
   );
-  return yield* Effect.fromOption(prepared, () => new Error("Phone connection is unavailable."));
+  return yield* Effect.fromOption(prepared, () => watchError("Phone connection is unavailable."));
 });
 
 function onEnvironment<A, E, R>(environmentId: EnvironmentId, effect: Effect.Effect<A, E, R>) {
   return followStreamInEnvironment(environmentId, Stream.fromEffect(effect)).pipe(
     Stream.runHead,
     Effect.flatMap((value) =>
-      Effect.fromOption(value, () => new Error("Phone connection is unavailable.")),
+      Effect.fromOption(value, () => watchError("Phone connection is unavailable.")),
     ),
   );
 }
+
+class WatchCompanionError extends Schema.TaggedError<WatchCompanionError>()("WatchCompanionError", {
+  message: Schema.String,
+  cause: Schema.optionalKey(Schema.Unknown),
+}) {}
+
+const watchError = (message: string) => new WatchCompanionError({ message });
+const nativeCall = <A>(action: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: action,
+    catch: (cause) =>
+      new WatchCompanionError({
+        message: cause instanceof Error ? cause.message : "Could not reach the watch companion.",
+        cause,
+      }),
+  });
+
+const encodeWatchPayload = (value: unknown) => JSON.stringify(value);
 
 const loadShell = Effect.gen(function* () {
   const prepared = yield* preparedConnection;
   const loader = yield* ShellSnapshotLoader.ShellSnapshotLoader;
   const snapshot = yield* loader.load(prepared);
-  return yield* Effect.fromOption(snapshot, () => new Error("Could not load the phone's threads."));
+  if (Option.isSome(snapshot) && "projects" in snapshot.value) return snapshot.value;
+  return yield* watchError("Could not load the phone's threads.");
 });
 
 function phoneCommand<W, A, E>(command: AtomCommand<W, A, E>, input: W) {
-  return Effect.tryPromise(async () =>
+  return nativeCall(async () =>
     voiceResult(
       await runAtomCommand(appAtomRegistry, command, input, {
         reportFailure: false,
@@ -108,7 +129,7 @@ const sendWatchMessage = createEnvironmentRpcCommand(connectionAtomRuntime, {
 });
 
 const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
-  label: "watch companion request",
+  label: resolveCopy(msg("watch companion request")),
   execute: Effect.fn("Watch.handleRequest")(
     function* ({ request, nodeId }: { request: WatchCompanionRequest; nodeId: string }) {
       const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
@@ -139,25 +160,23 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
             input: {},
           });
           if (connection.transport !== "websocket")
-            return yield* Effect.fail(
-              new Error(
-                "Choose a WebSocket voice provider in your phone's voice settings for watch conversations.",
-              ),
+            return yield* watchError(
+              "Choose a WebSocket voice provider in your phone's voice settings for watch conversations.",
             );
           // A watch can enable the same opted-in presence while the phone stays locked.
-          yield* Effect.tryPromise(() => bridge().setConnectionReady(true));
-          yield* Effect.tryPromise(() =>
+          yield* nativeCall(() => bridge().setConnectionReady(true));
+          yield* nativeCall(() =>
             bridge().startVoiceRelay(
               nodeId,
               request.sessionId,
-              JSON.stringify(connection),
-              JSON.stringify(voiceSessionConfiguration(connection, history)),
+              encodeWatchPayload(connection),
+              encodeWatchPayload(voiceSessionConfiguration(connection, history)),
             ),
           );
           return { environmentId, history };
         }
-        return yield* Effect.fail(
-          new Error("Enable voice conversation for a connected environment on your phone."),
+        return yield* watchError(
+          "Enable voice conversation for a connected environment on your phone.",
         );
       }
       if (request.operation === "shell") {
@@ -176,8 +195,8 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
           Option.isSome(snapshot) ? [snapshot.value] : [],
         );
         if (enabled.length > 0 && available.length === 0)
-          return yield* Effect.fail(
-            new Error("The phone cannot reach its environments. Check T3 Code on your phone."),
+          return yield* watchError(
+            "The phone cannot reach its environments. Check T3 Code on your phone.",
           );
         return {
           projects: available.flatMap(({ entry, snapshot }) =>
@@ -202,7 +221,7 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
         };
       }
       if (!entries.get(request.environmentId)?.enabled)
-        return yield* Effect.fail(new Error("This environment is not enabled on your phone."));
+        return yield* watchError("This environment is not enabled on your phone.");
       if (request.operation === "voiceHistory") {
         const history = yield* phoneCommand(syncVoiceHistoryCommand, {
           environmentId: request.environmentId,
@@ -237,13 +256,13 @@ const requestCommand = createRuntimeCommand(connectionAtomRuntime, {
         const runTool = createVoiceToolRunner((action) => {
           if (action.action === "open_thread")
             return Promise.reject(
-              new Error(
+              watchError(
                 "Open the thread on your phone or Mac; the watch can read and manage it here.",
               ),
             );
           return actions(action);
         });
-        const output = yield* Effect.tryPromise(() =>
+        const output = yield* nativeCall(() =>
           runTool({ call_id: request.callId, name: request.name, arguments: request.arguments }),
         );
         return { output };
@@ -354,18 +373,20 @@ export async function handleWatchRequest(input: { nodeId: string; request: strin
         requestId,
         ok: false,
         error:
-          cause instanceof Error ? cause.message : "Check the connection in T3 Code on your phone.",
+          cause instanceof Error
+            ? cause.message
+            : resolveCopy(msg("Check the connection in T3 Code on your phone.")),
       }),
     );
   }
 }
 
 const presenceCommand = createRuntimeCommand(connectionAtomRuntime, {
-  label: "background voice connection",
+  label: resolveCopy(msg("background voice connection")),
   execute: Effect.fn("Watch.keepConnectionsAlive")(function* () {
     // Construct and retain the same registry, routes and credential stores used by the UI.
     yield* EnvironmentRegistry.EnvironmentRegistry;
-    yield* Effect.tryPromise(() =>
+    yield* nativeCall(() =>
       requireNativeModule<{
         awaitConnectionStopped: () => Promise<void>;
       }>("T3WearDataLayer").awaitConnectionStopped(),

@@ -1,237 +1,519 @@
+import { VoiceConversationSettings } from "./VoiceConversationSettings";
+import { msg, useGT, useMessages } from "gt-react-native";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
+import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import { useState } from "react";
-import { ScrollView, Switch, TextInput, View } from "react-native";
-import {
-  VOICE_CONNECTION_PRESETS,
-  type VoiceConnectionSettings,
-  type EnvironmentId,
-} from "@t3tools/contracts";
+import { Linking, Platform, useWindowDimensions, View } from "react-native";
+import Reanimated, { ReduceMotion, useAnimatedStyle, withTiming } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
+import { cn } from "../../lib/cn";
+import { m } from "../../i18n/messages";
+import { makePermissionStatusAtom } from "../../lib/permissionStatusAtom";
+import {
+  isMicrophoneDevice,
+  type MicrophoneEntry,
+  type MicrophoneKind,
+  microphoneEntryKey,
+} from "../../lib/microphonePriority";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { serverEnvironment } from "../../state/server";
-import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
+import { ListRowLayout } from "../../components/ui/ListRowLayout";
+import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
+import * as Dialog from "../../components/ui/Dialog";
+import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
+import {
+  chooseVoiceDestination,
+  cloudVoiceConnectionAtom,
+  voiceConnectionAtom,
+  voiceGrantAtom,
+  hasEnvironmentVoiceCapture,
+} from "../voice-input/voiceDestination";
+import { LocalModelChoice } from "./VoiceModelSection";
+import { CloudVoiceChoice } from "./CloudVoiceSection";
+import type { VoiceGrant } from "../voice-input/voiceGrantStorage";
+import type { EnvironmentId } from "@t3tools/contracts";
+import { ThreadSwipeable } from "../home/thread-swipe-actions";
+import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
+import { SettingsDragHandle } from "./components/SettingsDragHandle";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
-import { voiceResult } from "../voice-conversation/actions";
-import { VoiceButton } from "../voice-conversation/VoiceButton";
+import {
+  deviceMicrophoneOrder,
+  localVoiceTranscriberAtom,
+} from "../voice-input/VoiceInputProvider";
+
+type MicrophonePermission = "checking" | "granted" | "ask" | "denied";
+
+function toMicrophonePermission(response: {
+  readonly granted: boolean;
+  readonly canAskAgain: boolean;
+}): MicrophonePermission {
+  return response.granted ? "granted" : response.canAskAgain ? "ask" : "denied";
+}
+
+const readMicrophonePermission = () =>
+  getRecordingPermissionsAsync().then(toMicrophonePermission, (): MicrophonePermission => "ask");
+
+const microphonePermissionAtom = makePermissionStatusAtom<MicrophonePermission>({
+  label: "mobile:microphone-permission",
+  initial: "checking",
+  read: readMicrophonePermission,
+});
+
+function useMicrophonePermission() {
+  const permission = useAtomValue(microphonePermissionAtom);
+  const setPermission = useAtomSet(microphonePermissionAtom);
+  const request = () =>
+    void requestRecordingPermissionsAsync()
+      .then(toMicrophonePermission, readMicrophonePermission)
+      .then(setPermission);
+  return { permission, request };
+}
+
+const KINDS: Record<
+  MicrophoneKind,
+  {
+    readonly label: string;
+    readonly row: string;
+    readonly rowDescription: string;
+    readonly icon: AppSymbolName;
+  }
+> = {
+  wired: {
+    label: msg("Wired", { $context: "microphone connection type" }),
+    row: msg("Other wired"),
+    rowDescription: msg("Headsets and USB microphones not listed here"),
+    icon: "cable.connector",
+  },
+  bluetooth: {
+    label: msg("Bluetooth"),
+    row: msg("Other Bluetooth"),
+    rowDescription:
+      Platform.OS === "android"
+        ? msg("Earbuds, headsets, and cars, including Android Auto, not listed here")
+        : msg("AirPods, headsets, and cars not listed here"),
+    icon: "headphones",
+  },
+  builtIn: {
+    label: msg("Built-in", { $context: "microphone connection type" }),
+    row: msg("Built-in microphone"),
+    rowDescription: msg("The microphone on this device"),
+    icon: "iphone",
+  },
+  carPlay: {
+    label: "CarPlay",
+    row: "CarPlay",
+    rowDescription: msg("The car’s microphone"),
+    icon: "car",
+  },
+};
+
+const UNAVAILABLE_EXPLANATION =
+  Platform.OS === "android"
+    ? msg(
+        "Dictation on this device needs Android 12 or later and Google speech services that support your language. Your keyboard’s voice typing is separate.",
+      )
+    : msg(
+        "Dictation on this device needs iOS 26 or later, a supported device, and a supported language. Your keyboard’s dictation is separate.",
+      );
+
+function saveDestination(id: EnvironmentId | null) {
+  try {
+    chooseVoiceDestination(id);
+  } catch {
+    Dialog.alert(
+      m(msg("Could not save transcription choice")),
+      m(
+        msg(
+          "Dictation on an environment is off for this session. Save again before closing the app, or your previous choice may return when it restarts.",
+        ),
+      ),
+    );
+  }
+}
+
+function EnvironmentChoice({
+  environment,
+  selected,
+  onCloudOnly,
+}: {
+  environment: EnvironmentPresentation;
+  selected: boolean;
+  /** Called instead of a local grant when the environment only offers cloud transcription. */
+  onCloudOnly: () => void;
+}) {
+  const gt = useGT();
+  const local = useAtomValue(voiceConnectionAtom(environment.environmentId)) !== null;
+  const cloud = useAtomValue(cloudVoiceConnectionAtom(environment.environmentId)) !== null;
+  const usable = local || cloud;
+  return (
+    <ListChoiceRow
+      label={environment.label}
+      selected={selected}
+      disabled={!usable}
+      description={
+        environment.connection.phase !== "connected"
+          ? gt("Not connected")
+          : !usable
+            ? gt("Transcription unavailable")
+            : (environment.displayUrl ?? gt("Send finished recordings to this environment."))
+      }
+      separated
+      onPress={() => {
+        if (selected) return;
+        if (!local) return onCloudOnly();
+        Dialog.confirm({
+          title: gt("Send microphone audio to {environment}?", { environment: environment.label }),
+          message: gt(
+            "Finished recordings will be sent to {destination} for transcription. You can switch back to This device at any time.",
+            { destination: environment.displayUrl ?? environment.label },
+          ),
+          confirmText: gt("Use environment"),
+          onConfirm: () => saveDestination(environment.environmentId),
+        });
+      }}
+    />
+  );
+}
+
+/** How the selected environment transcribes: its own model or a cloud provider. */
+function EnvironmentMethodSection({
+  environment,
+  grant,
+  cloudOpen,
+  onCloudOpenChange,
+}: {
+  environment: EnvironmentPresentation;
+  grant: VoiceGrant | null;
+  cloudOpen: boolean;
+  onCloudOpenChange: (open: boolean) => void;
+}) {
+  const gt = useGT();
+  const id = environment.environmentId;
+  const destination = grant?.destination.environmentId === id ? grant.destination : null;
+  const cloudCapable =
+    environment.serverConfig?.environment.capabilities.cloudVoiceTranscription === true ||
+    destination?.kind === "cloud";
+  return (
+    <SettingsSection title={gt("Method on {environment}", { environment: environment.label })}>
+      <LocalModelChoice
+        environmentId={id}
+        label={environment.label}
+        selected={destination?.kind === "environment"}
+        // The user already agreed to send audio to this environment.
+        onSelect={() => saveDestination(id)}
+      />
+      {cloudCapable ? (
+        <CloudVoiceChoice
+          environment={environment}
+          active={destination?.kind === "cloud" ? destination : null}
+          open={cloudOpen}
+          onOpenChange={onCloudOpenChange}
+        />
+      ) : null}
+    </SettingsSection>
+  );
+}
 
 export function SettingsVoiceRouteScreen() {
-  const { availableTargets } = useSettingsEnvironmentFilter();
-  const [selected, setSelected] = useState<EnvironmentId | null>(null);
-  const target =
-    availableTargets.find((entry) => entry.environmentId === selected) ?? availableTargets[0];
+  const gt = useGT();
+  const m = useMessages();
+  const transcriber = useAtomValue(localVoiceTranscriberAtom);
+  const grant = useAtomValue(voiceGrantAtom);
+  const { environments, isReady } = useEnvironments();
+  const grantEnvironment = grant
+    ? environments.find(
+        (environment) => environment.environmentId === grant.destination.environmentId,
+      )
+    : undefined;
+  // An environment whose cloud sheet is open; it may not hold the grant yet.
+  const [cloudSheet, setCloudSheet] = useState<EnvironmentId | null>(null);
+  // A sheet whose environment lost cloud transcription is gone, so its pending choice is too.
+  const sheetEnvironment = environments.find(
+    (environment) =>
+      environment.environmentId === cloudSheet &&
+      environment.serverConfig?.environment.capabilities.cloudVoiceTranscription === true,
+  );
+  const methodEnvironment = sheetEnvironment ?? grantEnvironment;
+  const insets = useSafeAreaInsets();
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
+  const ready = AsyncResult.isSuccess(preferencesResult) && !preferencesResult.waiting;
+  const entries = deviceMicrophoneOrder(
+    AsyncResult.isSuccess(preferencesResult) ? preferencesResult.value.microphones : undefined,
+  );
+  const { permission, request: requestPermission } = useMicrophonePermission();
+  const [drag, setDrag] = useState<{ readonly key: string; readonly translation: number } | null>(
+    null,
+  );
+  const [rowHeight, setRowHeight] = useState(0);
+  // Each drop remounts the rows so the new order and the cleared offsets land in one frame.
+  const [drops, setDrops] = useState(0);
+
+  // Transforms apply to the stored order, so a device recorded meanwhile is kept.
+  const move = (key: string, steps: number) => {
+    void savePreferences({
+      transform: (current) => {
+        const next = [...deviceMicrophoneOrder(current.microphones)];
+        const from = next.findIndex((entry) => microphoneEntryKey(entry) === key);
+        const to = Math.min(next.length - 1, Math.max(0, from + steps));
+        if (from === -1 || from === to) return {};
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved!);
+        return { microphones: next };
+      },
+    });
+  };
+  const forget = (key: string) => {
+    void savePreferences({
+      transform: (current) => ({
+        microphones: deviceMicrophoneOrder(current.microphones).filter(
+          (entry) => microphoneEntryKey(entry) !== key,
+        ),
+      }),
+    });
+  };
+  const dropSteps = (from: number, translation: number) =>
+    rowHeight === 0
+      ? 0
+      : Math.min(entries.length - 1, Math.max(0, from + Math.round(translation / rowHeight))) -
+        from;
+
+  const dragFrom =
+    drag === null ? -1 : entries.findIndex((entry) => microphoneEntryKey(entry) === drag.key);
+  const dragTo = drag === null ? -1 : dragFrom + dropSteps(dragFrom, drag.translation);
+
   return (
-    <SettingsScreen title="Voice conversation">
+    <SettingsScreen title={gt("Voice")}>
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
-        keyboardShouldPersistTaps="handled"
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        className="flex-1"
+        contentContainerClassName="gap-3 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
-        <SettingsSection title="Environment">
-          {availableTargets.map((entry) => (
-            <VoiceButton
-              key={entry.environmentId}
-              label={`${entry.environmentId === target?.environmentId ? "✓ " : ""}${entry.label}`}
-              onPress={() => setSelected(entry.environmentId)}
+        <VoiceConversationSettings />
+        <SettingsSection title={gt("Transcribe on")}>
+          <ListChoiceRow
+            label={gt("This device")}
+            description={gt("Audio stays on this device and is transcribed here.")}
+            selected={!grant && !sheetEnvironment}
+            onPress={() => {
+              setCloudSheet(null);
+              saveDestination(null);
+            }}
+          />
+          {hasEnvironmentVoiceCapture &&
+            environments.map((environment) => (
+              <EnvironmentChoice
+                key={environment.environmentId}
+                environment={environment}
+                selected={
+                  sheetEnvironment
+                    ? sheetEnvironment.environmentId === environment.environmentId
+                    : grant?.destination.environmentId === environment.environmentId
+                }
+                onCloudOnly={() => setCloudSheet(environment.environmentId)}
+              />
+            ))}
+          {isReady && grant && !grantEnvironment ? (
+            <ListChoiceRow
+              label={gt("Previously selected environment")}
+              description={gt("No longer paired")}
+              separated
+              selected
+              disabled
+              onPress={() => {}}
             />
-          ))}
+          ) : null}
         </SettingsSection>
-        {target ? (
-          <VoiceSettings key={target.environmentId} target={target} />
-        ) : (
-          <Text className="text-foreground-muted">
-            Connect to an environment to configure voice.
-          </Text>
-        )}
+        {hasEnvironmentVoiceCapture && methodEnvironment ? (
+          <EnvironmentMethodSection
+            environment={methodEnvironment}
+            grant={grant}
+            cloudOpen={cloudSheet === methodEnvironment.environmentId}
+            onCloudOpenChange={(open) =>
+              setCloudSheet(open ? methodEnvironment.environmentId : null)
+            }
+          />
+        ) : null}
+        {!grant && transcriber === null ? (
+          <Text className="px-2 text-sm text-foreground-muted">{m(UNAVAILABLE_EXPLANATION)}</Text>
+        ) : null}
+        {permission === "ask" || permission === "denied" ? (
+          <>
+            <SettingsSection title={gt("Microphone access")}>
+              <SettingsActionRow
+                icon="mic"
+                label={permission === "ask" ? gt("Allow microphone access") : gt("Open Settings")}
+                onPress={
+                  permission === "ask" ? requestPermission : () => void Linking.openSettings()
+                }
+              />
+            </SettingsSection>
+            <Text className="px-2 text-sm text-foreground-muted">
+              {permission === "ask"
+                ? gt("Allow microphone access to record and to see your microphones.")
+                : gt("Turn on microphone access for {product} in Settings to use voice input.", {
+                    product: "T3 Code",
+                  })}
+            </Text>
+          </>
+        ) : null}
+        <SettingsSection title={gt("Preferred order")}>
+          {entries.map((entry, index) => {
+            const key = microphoneEntryKey(entry);
+            const shift =
+              dragFrom === -1 || index === dragFrom
+                ? 0
+                : dragFrom < dragTo && index > dragFrom && index <= dragTo
+                  ? -rowHeight
+                  : dragFrom > dragTo && index < dragFrom && index >= dragTo
+                    ? rowHeight
+                    : 0;
+            return (
+              <MicrophoneRow
+                key={`${key}:${drops}`}
+                entry={entry}
+                position={index + 1}
+                count={entries.length}
+                reorderable={ready}
+                offset={index === dragFrom ? (drag?.translation ?? 0) : shift}
+                lifted={index === dragFrom}
+                onHeight={setRowHeight}
+                onDragStart={() => setDrag({ key, translation: 0 })}
+                onDragMove={(translation) => setDrag({ key, translation })}
+                onDragEnd={(translation, cancelled) => {
+                  setDrag(null);
+                  setDrops((count) => count + 1);
+                  if (!cancelled) move(key, dropSteps(index, translation));
+                }}
+                onStep={(direction) => move(key, direction === "up" ? -1 : 1)}
+                onForget={isMicrophoneDevice(entry) ? () => forget(key) : undefined}
+              />
+            );
+          })}
+        </SettingsSection>
+        <Text className="px-2 text-sm text-foreground-muted">
+          {Platform.OS === "android"
+            ? gt(
+                "Voice input uses the first connected microphone in this list. A wired or Bluetooth microphone is added by name the first time you dictate with it connected; until then it falls under Other. Swipe left on a named microphone to forget it. Android may still use a different microphone if the preferred one can’t be routed.",
+              )
+            : gt(
+                "Voice input uses the first connected microphone in this list. A wired or Bluetooth microphone is added by name the first time you dictate with it connected; until then it falls under Other. Swipe left on a named microphone to forget it.",
+              )}
+        </Text>
       </ScrollView>
     </SettingsScreen>
   );
 }
 
-function VoiceSettings({ target }: { target: SettingsTarget }) {
-  const [draft, setDraft] = useState<VoiceConnectionSettings>({
-    ...target.serverConfig.settings.voiceConnection,
-    apiKey: "",
-  });
-  const [instructions, setInstructions] = useState(target.serverConfig.settings.voiceInstructions);
-  const [instructionsChanged, setInstructionsChanged] = useState(false);
-  const [keyChanged, setKeyChanged] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const update = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
-  const setEnabled = async (enabled: boolean) => {
-    if (saving) return;
-    const previous = draft.enabled;
-    setDraft((current) => ({ ...current, enabled }));
-    setSaving(true);
-    setMessage("");
-    try {
-      voiceResult(
-        await update({
-          environmentId: target.environmentId,
-          input: {
-            patch: {
-              voiceConnection: {
-                ...target.serverConfig.settings.voiceConnection,
-                enabled,
-              },
-            },
-          },
-        }),
-      );
-      setMessage("Saved");
-    } catch (error) {
-      setDraft((current) => ({ ...current, enabled: previous }));
-      setMessage(error instanceof Error ? error.message : "Could not save voice settings.");
-    } finally {
-      setSaving(false);
-    }
-  };
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    setMessage("");
-    try {
-      const { apiKey, ...connection } = draft;
-      voiceResult(
-        await update({
-          environmentId: target.environmentId,
-          input: {
-            patch: {
-              ...(instructionsChanged ? { voiceInstructions: instructions.trim() } : {}),
-              voiceConnection: {
-                ...connection,
-                apiKey: keyChanged ? apiKey : target.serverConfig.settings.voiceConnection.apiKey,
-              },
-            },
-          },
-        }),
-      );
-      setDraft((current) => ({ ...current, apiKey: "" }));
-      setKeyChanged(false);
-      setInstructionsChanged(false);
-      setMessage("Saved");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not save voice settings.");
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <View className="gap-3 pt-4">
-      <Text className="text-sm text-foreground-muted">
-        Credentials are stored on this T3 server and shared with your connected devices. Voice audio
-        goes to your configured provider. Local addresses must be reachable from your phone.
-      </Text>
-      <View className="flex-row items-center justify-between">
-        <Text className="text-foreground">Enable voice conversation</Text>
-        <Switch
-          accessibilityLabel="Enable voice conversation"
-          value={draft.enabled}
-          disabled={saving}
-          onValueChange={(enabled) => void setEnabled(enabled)}
-        />
-      </View>
-      <View className="flex-row flex-wrap">
-        {Object.entries(VOICE_CONNECTION_PRESETS).map(([name, preset]) => (
-          <VoiceButton
-            key={name}
-            label={name === "local" ? "Local / custom" : name === "xai" ? "Grok" : "OpenAI"}
-            disabled={saving}
-            onPress={() => {
-              setDraft({ ...preset, enabled: draft.enabled });
-              setKeyChanged(true);
-              setMessage("Preset selected. Enter its API key if required.");
-            }}
-          />
-        ))}
-      </View>
-      <Text className="text-foreground">Protocol</Text>
-      <View className="flex-row">
-        {(["openai", "xai"] as const).map((protocol) => (
-          <VoiceButton
-            key={protocol}
-            label={`${draft.protocol === protocol ? "✓ " : ""}${protocol}`}
-            disabled={saving}
-            onPress={() => setDraft({ ...draft, protocol })}
-          />
-        ))}
-      </View>
-      <Text className="text-foreground">Transport</Text>
-      <View className="flex-row">
-        {(["webrtc", "websocket"] as const).map((transport) => (
-          <VoiceButton
-            key={transport}
-            label={`${draft.transport === transport ? "✓ " : ""}${transport}`}
-            disabled={saving}
-            onPress={() => setDraft({ ...draft, transport })}
-          />
-        ))}
-      </View>
-      {(
-        [
-          ["endpoint", "Connection endpoint"],
-          ["tokenEndpoint", "Client-secret endpoint (optional for local servers)"],
-          ["model", "Model"],
-          ["voice", "Voice"],
-          ["transcriptionModel", "Transcription model (optional)"],
-          ["apiKey", "API key (leave blank to keep existing)"],
-        ] as const
-      ).map(([field, label]) => (
-        <View key={field} className="gap-1">
-          <Text className="text-sm text-foreground">{label}</Text>
-          <TextInput
-            accessibilityLabel={label}
-            value={draft[field]}
-            editable={!saving}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry={field === "apiKey"}
-            className="min-h-11 rounded-lg border border-border px-3 text-foreground"
-            onChangeText={(value) => {
-              setDraft({ ...draft, [field]: value });
-              if (field === "apiKey") setKeyChanged(true);
-            }}
-          />
-        </View>
-      ))}
-      <View className="gap-1">
-        <Text className="text-foreground">Saved instructions</Text>
-        <Text className="text-sm text-foreground-muted">
-          Ask your voice assistant to remember a role or preference for every session, or edit it
-          here. Clear these instructions to forget. Shared across devices connected to this
-          environment.
-        </Text>
-        <TextInput
-          accessibilityLabel="Saved voice instructions"
-          value={
-            instructionsChanged ? instructions : target.serverConfig.settings.voiceInstructions
-          }
-          editable={!saving}
-          multiline
-          maxLength={16000}
-          className="min-h-24 rounded-lg border border-border px-3 text-foreground"
-          onChangeText={(text) => {
-            setInstructions(text);
-            setInstructionsChanged(true);
-          }}
-        />
-      </View>
-      <VoiceButton
-        label="Remove saved API key"
-        disabled={saving}
-        onPress={() => {
-          setDraft({ ...draft, apiKey: "" });
-          setKeyChanged(true);
-          setMessage("Save to remove the existing key.");
+function MicrophoneRow(props: {
+  readonly entry: MicrophoneEntry;
+  readonly position: number;
+  readonly count: number;
+  readonly reorderable: boolean;
+  readonly offset: number;
+  readonly lifted: boolean;
+  readonly onHeight: (height: number) => void;
+  readonly onDragStart: () => void;
+  readonly onDragMove: (translation: number) => void;
+  readonly onDragEnd: (translation: number, cancelled: boolean) => void;
+  readonly onStep: (direction: "up" | "down") => void;
+  readonly onForget: (() => void) | undefined;
+}) {
+  const gt = useGT();
+  const m = useMessages();
+  const { lifted, offset, entry, onForget } = props;
+  const kind = KINDS[entry.kind];
+  const title = isMicrophoneDevice(entry) ? entry.name : m(kind.row);
+  const { width: windowWidth } = useWindowDimensions();
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: lifted
+          ? offset
+          : withTiming(offset, { duration: 160, reduceMotion: ReduceMotion.System }),
+      },
+    ],
+    zIndex: lifted ? 1 : 0,
+  }));
+  const row = (
+    // Opaque so the swipe actions stay hidden until the row slides over them.
+    <View className="flex-row items-center bg-grouped-card">
+      <View
+        accessible
+        accessibilityLabel={gt("{title}, {kind}, {position} of {count}", {
+          title,
+          kind: m(kind.label),
+          position: props.position,
+          count: props.count,
+        })}
+        accessibilityActions={
+          onForget
+            ? [{ name: "forget", label: gt("Forget", { $context: "verb, forget a microphone" }) }]
+            : undefined
+        }
+        onAccessibilityAction={({ nativeEvent }) => {
+          if (nativeEvent.actionName === "forget") onForget?.();
         }}
-      />
-      <VoiceButton
-        label={saving ? "Saving…" : "Save voice settings"}
-        disabled={saving}
-        onPress={() => void save()}
-      />
-      <Text accessibilityLiveRegion="polite" className="text-sm text-foreground">
-        {message}
-      </Text>
+        className="min-w-0 flex-1"
+      >
+        <ListRowLayout
+          icon={kind.icon}
+          label={title}
+          description={isMicrophoneDevice(entry) ? m(kind.label) : m(kind.rowDescription)}
+        />
+      </View>
+      {props.reorderable ? (
+        <SettingsDragHandle
+          title={title}
+          canMoveUp={props.position > 1}
+          canMoveDown={props.position < props.count}
+          onStart={props.onDragStart}
+          onMove={props.onDragMove}
+          onEnd={props.onDragEnd}
+          onStep={props.onStep}
+        />
+      ) : null}
     </View>
+  );
+  return (
+    <Reanimated.View
+      style={style}
+      onLayout={(event) => props.onHeight(event.nativeEvent.layout.height)}
+      className={cn(
+        props.position > 1 && !lifted && "border-t border-border-subtle",
+        lifted && "bg-grouped-card shadow-md",
+      )}
+    >
+      {onForget ? (
+        <ThreadSwipeable
+          backgroundColor="transparent"
+          fullSwipeAction="primary"
+          fullSwipeWidth={windowWidth - 40}
+          onDelete={onForget}
+          primaryAction={{
+            accessibilityLabel: gt("Forget {title}", { title }),
+            destructive: true,
+            icon: "trash",
+            label: gt("Forget", { $context: "verb, forget a microphone" }),
+            onPress: onForget,
+          }}
+          secondaryAction={null}
+          threadKey={`microphone:${microphoneEntryKey(entry)}`}
+          threadTitle={title}
+        >
+          {() => row}
+        </ThreadSwipeable>
+      ) : (
+        row
+      )}
+    </Reanimated.View>
   );
 }

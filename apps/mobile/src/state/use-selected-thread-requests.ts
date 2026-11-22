@@ -1,10 +1,17 @@
 import * as Dialog from "../components/ui/Dialog";
+import { msg } from "gt-react-native";
+import { m } from "../i18n/messages";
 import { useServerConfigs } from "./entities";
 import {
   questionAttachmentDraftKey,
   questionAttachmentDraftPrefix,
   questionAttachmentPreparationAtom,
 } from "./question-attachments";
+import {
+  appendUnsentQuestionAttachments,
+  resolveQuestionImagePreparations,
+} from "./question-attachment-preparation";
+import { scopedThreadKey } from "../lib/scopedEntities";
 import {
   clearComposerDraft,
   composerDraftsAtom,
@@ -36,7 +43,7 @@ import {
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
-import { environmentThreadDetails, threadEnvironment } from "../state/threads";
+import { environmentThreadDetails, threadEnvironment } from "./threads";
 import { serverEnvironment } from "./server";
 import {
   buildPendingUserInputAnswers,
@@ -107,6 +114,7 @@ function pruneResolvedRequestDrafts(
   environmentId: EnvironmentId,
   threadId: ThreadId,
   pendingRequestIds: ReadonlyArray<RuntimeRequestId>,
+  unansweredRequestIds: ReadonlyArray<RuntimeRequestId> = [],
 ): void {
   const drafts = appAtomRegistry.get(userInputDraftsByRequestKeyAtom);
   const prunedDrafts = pruneResolvedUserInputDrafts(
@@ -121,11 +129,15 @@ function pruneResolvedRequestDrafts(
   const attachmentDrafts = appAtomRegistry.get(questionAttachmentDraftsAtom(prefix));
   const counts = { ...appAtomRegistry.get(questionAttachmentPreparationAtom) };
   let changed = false;
-  for (const key of resolvedQuestionDraftKeys(
+  const resolved = resolvedQuestionDraftKeys(
     new Set([...Object.keys(attachmentDrafts), ...Object.keys(counts)]),
     prefix,
     pendingRequestIds,
-  )) {
+  );
+  const discard = new Set(resolvedQuestionDraftKeys(resolved, prefix, unansweredRequestIds));
+  const threadKey = scopedThreadKey(environmentId, threadId);
+  for (const key of resolved) {
+    resolveQuestionImagePreparations(key, discard.has(key) ? null : threadKey);
     if (attachmentDrafts[key]) clearComposerDraft(key);
     if (key in counts) {
       delete counts[key];
@@ -135,11 +147,33 @@ function pruneResolvedRequestDrafts(
   if (changed) appAtomRegistry.set(questionAttachmentPreparationAtom, counts);
 }
 
+/**
+ * Stop cancels an open question and a provider timeout expires it; neither sent
+ * its attachments, so they move to the thread's own draft before pruning.
+ */
+function returnUnsentAttachmentsToThreadDraft(
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  unansweredRequestIds: ReadonlyArray<RuntimeRequestId>,
+): void {
+  if (unansweredRequestIds.length === 0) return;
+  const prefix = questionAttachmentDraftPrefix(environmentId, threadId);
+  const drafts = appAtomRegistry.get(questionAttachmentDraftsAtom(prefix));
+  const otherRequestKeys = new Set(
+    resolvedQuestionDraftKeys(Object.keys(drafts), prefix, unansweredRequestIds),
+  );
+  const attachments = Object.entries(drafts).flatMap(([key, draft]) =>
+    otherRequestKeys.has(key) ? [] : draft.attachments,
+  );
+  appendUnsentQuestionAttachments(scopedThreadKey(environmentId, threadId), attachments);
+}
+
 // Resolution can come from anywhere: another device, an interrupt, the turn
 // ending, or a reload over drafts for requests that resolved meanwhile.
-onThreadRequestsResolved(({ environmentId, threadId, pendingRequestIds }) =>
-  pruneResolvedRequestDrafts(environmentId, threadId, pendingRequestIds),
-);
+onThreadRequestsResolved(({ environmentId, threadId, pendingRequestIds, unansweredRequestIds }) => {
+  returnUnsentAttachmentsToThreadDraft(environmentId, threadId, unansweredRequestIds);
+  pruneResolvedRequestDrafts(environmentId, threadId, pendingRequestIds, unansweredRequestIds);
+});
 
 /**
  * Drops `answeredRequestId`'s drafts as soon as the server accepts the
@@ -332,15 +366,15 @@ export function useSelectedThreadRequests() {
       ?.userInputs.find((entry) => entry.requestId === activePendingUserInput.requestId);
     if (!request || request.responseCapability === "not_resumable") {
       Dialog.alert(
-        "Request is no longer available",
-        "This request has changed or can no longer accept an answer.",
+        m(msg("Request is no longer available")),
+        m(msg("This request has changed or can no longer accept an answer.")),
       );
       return;
     }
     if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
       Dialog.alert(
-        "Cannot submit answers",
-        "This connection no longer has permission to answer. Reconnect and try again.",
+        m(msg("Cannot submit answers")),
+        m(msg("This connection no longer has permission to answer. Reconnect and try again.")),
       );
       return;
     }
@@ -366,8 +400,8 @@ export function useSelectedThreadRequests() {
       const preparing = (appAtomRegistry.get(questionAttachmentPreparationAtom)[key] ?? 0) > 0;
       if (preparing) {
         Dialog.alert(
-          "Attachments are not ready",
-          "Wait for attachment preparation to finish, then try again.",
+          m(msg("Attachments are not ready")),
+          m(msg("Wait for uploads to finish, or retry failed uploads.")),
         );
         return;
       }
@@ -389,8 +423,8 @@ export function useSelectedThreadRequests() {
           )
         ) {
           Dialog.alert(
-            "Attachments are not ready",
-            "Wait for uploads to finish, or retry failed uploads.",
+            m(msg("Attachments are not ready")),
+            m(msg("Wait for uploads to finish, or retry failed uploads.")),
           );
           return;
         }
@@ -413,7 +447,10 @@ export function useSelectedThreadRequests() {
     }
     const answers = buildPendingUserInputAnswers(request.questions, answerDrafts);
     if (answers === null) {
-      Dialog.alert("Answers are not ready", "Complete each required question before submitting.");
+      Dialog.alert(
+        m(msg("Answers are not ready")),
+        m(msg("Complete each required question before submitting.")),
+      );
       return;
     }
     userInputResponsesInFlight.current.add(responseKey);
@@ -432,8 +469,8 @@ export function useSelectedThreadRequests() {
       });
       if (result?._tag === "Failure")
         Dialog.alert(
-          "Couldn't submit answers",
-          "Your answers are still here. Check your connection and try again.",
+          m(msg("Couldn't submit answers")),
+          m(msg("Your answers are still here. Check your connection and try again.")),
         );
       if (result?._tag === "Success") {
         collectAnsweredRequestDrafts(environmentId, threadId, request.requestId);
@@ -441,8 +478,8 @@ export function useSelectedThreadRequests() {
       return result;
     } catch {
       Dialog.alert(
-        "Couldn't submit answers",
-        "Your answers are still here. Check your connection and try again.",
+        m(msg("Couldn't submit answers")),
+        m(msg("Your answers are still here. Check your connection and try again.")),
       );
     } finally {
       userInputResponsesInFlight.current.delete(responseKey);

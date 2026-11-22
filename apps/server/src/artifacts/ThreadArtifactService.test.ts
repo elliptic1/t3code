@@ -1,4 +1,5 @@
 import { expect, it } from "@effect/vitest";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import {
@@ -37,7 +38,7 @@ const layer = Artifacts.layer.pipe(
   Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(Persistence.layerMemory),
   Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-thread-artifacts-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.merge(NodeServices.layer, NodeCrypto.layer)),
 );
 const setup = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

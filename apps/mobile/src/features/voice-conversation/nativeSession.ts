@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import { Platform } from "react-native";
 import { startVoiceBackgroundSession } from "./backgroundSession";
 import { randomUUID } from "expo-crypto";
@@ -71,7 +73,8 @@ export async function connectNativeVoice(
     const awake = Platform.OS === "android" ? Promise.resolve() : activateKeepAwakeAsync(tag);
     void awake.catch(() => {});
     const interruption = AudioManager.addSystemEventListener("interruption", ({ type }) => {
-      if (type === "began") input.onError("Voice was interrupted. Start again when ready.");
+      if (type === "began")
+        input.onError(resolveCopy(msg("Voice was interrupted. Start again when ready.")));
     });
     let observing = true;
     releaseFocus = () => {

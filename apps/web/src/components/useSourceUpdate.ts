@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m as resolveCopy } from "../i18n/messages";
 import type { DesktopUpdateState } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { isElectron } from "../env";
@@ -10,9 +12,12 @@ import { stackedThreadToast, toastManager } from "./ui/toast";
 const sourceDir = import.meta.env.T3CODE_SOURCE_DIR.replace(/\/+$/u, "");
 
 export const SOURCE_UPDATE_TOOLTIP = {
-  title: "Update from source",
-  detail:
-    "Pull the latest commits into the checkout this app was built from, then rebuild, restart it, and push the result to your fork.",
+  title: resolveCopy(msg("Update from source")),
+  detail: resolveCopy(
+    msg(
+      "Pull the latest commits into the checkout this app was built from, then rebuild, restart it, and push the result to your fork.",
+    ),
+  ),
 } as const;
 
 const updatePrompt = `Update this app from source.
@@ -40,7 +45,12 @@ export function useSourceUpdate(state: DesktopUpdateState | null) {
     if (!available) return;
     try {
       const confirmed = await ensureLocalApi().dialogs.confirm(
-        `Update from source?\n\nAn agent thread pulls the latest commits into ${sourceDir}, rebuilds the app, and restarts it to install.`,
+        resolveCopy(
+          msg(
+            "Update from source?\n\nAn agent thread pulls the latest commits into {sourceDir}, rebuilds the app, and restarts it to install.",
+            { sourceDir },
+          ),
+        ),
       );
       if (!confirmed) return;
       const run = createVoiceActions(environmentId, async (threadId) => {
@@ -63,15 +73,18 @@ export function useSourceUpdate(state: DesktopUpdateState | null) {
       await run({
         action: "create_thread",
         projectId,
-        title: "Update from source",
+        title: resolveCopy(msg("Update from source")),
         message: updatePrompt,
       });
     } catch (error) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not start the update",
-          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+          title: resolveCopy(msg("Could not start the update")),
+          description:
+            error instanceof Error
+              ? error.message
+              : resolveCopy(msg("An unexpected error occurred.")),
         }),
       );
     }

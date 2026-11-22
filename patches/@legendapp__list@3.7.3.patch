@@ -1,0 +1,82 @@
+diff --git a/react-native.js b/react-native.js
+index 440b0ad..fd5d18d 100644
+--- a/react-native.js
++++ b/react-native.js
+@@ -1344,7 +1344,8 @@ function checkAtBottom(ctx, allowedEdge, allowGateCreatedInCurrentCheck) {
+     return;
+   }
+   if (contentSize > 0 && queuedInitialLayout) {
+-    const isContentLess = contentSize < scrollLength;
++    // T3 patch: a top inset (e.g. a translucent header) shrinks the room content has to fit in.
++    const isContentLess = contentSize + getContentInsetTop(ctx) < scrollLength;
+     set$(ctx, "isAtEnd", isContentLess || distanceFromEnd <= EDGE_POSITION_EPSILON);
+     set$(ctx, "isNearEnd", isContentLess || distanceFromEnd <= onEndReachedThreshold * scrollLength);
+     set$(
+@@ -6440,6 +6440,8 @@
+ function useContainerMeasurement({
+   containerId,
+   ctx,
++  data,
++  extraData,
+   horizontal,
+   itemKey,
+   ref
+@@ -6478,7 +6480,7 @@
+     if (IsNewArchitecture) {
+       scheduleContainerLayout(ctx, containerId);
+     }
+-  });
++  }, [containerId, ctx, data, extraData, horizontal, itemKey]);
+   const { onLayout } = useOnLayoutSync(
+     {
+       measureInLayoutEffect: !IsNewArchitecture,
+@@ -6584,6 +6586,8 @@
+   const { onLayout, triggerLayout } = useContainerMeasurement({
+     containerId: id,
+     ctx,
++    data,
++    extraData,
+     horizontal,
+     itemKey,
+     ref
+diff --git a/react-native.mjs b/react-native.mjs
+index b95e1f8..e2b013a 100644
+--- a/react-native.mjs
++++ b/react-native.mjs
+@@ -1323,7 +1323,8 @@ function checkAtBottom(ctx, allowedEdge, allowGateCreatedInCurrentCheck) {
+     return;
+   }
+   if (contentSize > 0 && queuedInitialLayout) {
+-    const isContentLess = contentSize < scrollLength;
++    // T3 patch: a top inset (e.g. a translucent header) shrinks the room content has to fit in.
++    const isContentLess = contentSize + getContentInsetTop(ctx) < scrollLength;
+     set$(ctx, "isAtEnd", isContentLess || distanceFromEnd <= EDGE_POSITION_EPSILON);
+     set$(ctx, "isNearEnd", isContentLess || distanceFromEnd <= onEndReachedThreshold * scrollLength);
+     set$(
+@@ -6419,6 +6419,8 @@
+ function useContainerMeasurement({
+   containerId,
+   ctx,
++  data,
++  extraData,
+   horizontal,
+   itemKey,
+   ref
+@@ -6457,7 +6459,7 @@
+     if (IsNewArchitecture) {
+       scheduleContainerLayout(ctx, containerId);
+     }
+-  });
++  }, [containerId, ctx, data, extraData, horizontal, itemKey]);
+   const { onLayout } = useOnLayoutSync(
+     {
+       measureInLayoutEffect: !IsNewArchitecture,
+@@ -6563,6 +6565,8 @@
+   const { onLayout, triggerLayout } = useContainerMeasurement({
+     containerId: id,
+     ctx,
++    data,
++    extraData,
+     horizontal,
+     itemKey,
+     ref

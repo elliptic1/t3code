@@ -1,4 +1,6 @@
 // @effect-diagnostics globalTimers:off - Polls client state between speech turns, outside an Effect runtime.
+import { msg } from "gt-i18n";
+import { mFallback } from "gt-i18n";
 import { voiceInstructionsWithHistory, type VoiceHistoryLine } from "./session.ts";
 import type { VoiceAction } from "./tools.ts";
 
@@ -29,15 +31,7 @@ export interface VoiceAgentThreadState {
 const READ_LIMIT = 6000;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/**
- * Speech in, a coding-agent turn, speech out. The agent runs on the user's own
- * provider subscription and reaches the application through its T3 tools, so no
- * voice provider is involved.
- *
- * Half-duplex on purpose: the microphone is closed while the agent thinks and
- * speaks, so there is no barge-in. That needs echo-cancelled capture that keeps
- * running during playback.
- */
+// Close the microphone while the coding agent thinks and speaks to avoid echo.
 export function startVoiceAgentConversation(input: {
   signal: AbortSignal;
   history?: readonly VoiceHistoryLine[];
@@ -116,6 +110,7 @@ export function startVoiceAgentConversation(input: {
                 .findLast((entry) => entry.role === "assistant" && entry.text.trim());
         if (reply) return reply.text;
         // The turn may not have started yet; a stale error predates this message.
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- agent messages use the prompt language
         if (sawRunning && state?.error) return `The agent reported an error: ${state.error}`;
       }
       if (waited > timeoutMs)
@@ -166,7 +161,9 @@ export function startVoiceAgentConversation(input: {
 
   void run().catch((error: unknown) => {
     if (!signal.aborted)
-      input.onError(error instanceof Error ? error.message : "Voice conversation failed.");
+      input.onError(
+        error instanceof Error ? error.message : mFallback(msg("Voice conversation failed.")),
+      );
   });
 
   return {

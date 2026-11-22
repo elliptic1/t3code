@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 
@@ -144,7 +146,14 @@ export function runningUsageNotification(
       return {
         reading,
         estimate,
-        text: `${reading.label}: ${Math.round(reading.remainingPercent)}% left${rate} · ${detail}`,
+        text: resolveCopy(
+          msg("{label}: {value2}% left{rate} · {detail}", {
+            label: reading.label,
+            value2: Math.round(reading.remainingPercent),
+            rate,
+            detail,
+          }),
+        ),
         summary: `${rate ? `${rate.slice(3)} · ` : ""}${detail} · ${reading.label}`,
       };
     })

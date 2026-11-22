@@ -1,3 +1,6 @@
+import { msg } from "gt-react";
+import { T } from "gt-react";
+import { m as resolveCopy } from "../../i18n/messages";
 import { useRef } from "react";
 import { VOICE_CONNECTION_PRESETS, type VoiceConnectionSettings } from "@t3tools/contracts";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
@@ -24,25 +27,33 @@ export function VoiceSettings() {
   const patch = (next: Partial<VoiceConnectionSettings>) =>
     update({ voiceConnection: { ...value, ...next } });
   return (
-    <SettingsSection id="voice-conversation" title="Voice conversation">
+    <SettingsSection id="voice-conversation" title={resolveCopy(msg("Voice conversation"))}>
       <SettingsRow
-        title="Talk to T3"
+        title={resolveCopy(msg("Talk to T3"))}
         serverScoped
         settingKeys={["voiceConnection"]}
-        description="Have a spoken conversation that can create projects, operate threads, and report progress. Audio and requested project/thread context go to your chosen voice provider."
+        description={resolveCopy(
+          msg(
+            "Have a spoken conversation that can create projects, operate threads, and report progress. Audio and requested project/thread context go to your chosen voice provider.",
+          ),
+        )}
         control={
           <Switch
             checked={value.enabled}
             onCheckedChange={(enabled) => patch({ enabled })}
-            aria-label="Enable voice conversation"
+            aria-label={resolveCopy(msg("Enable voice conversation"))}
           />
         }
       />
       <SettingsRow
-        title="Conversation engine"
+        title={resolveCopy(msg("Conversation engine"))}
         serverScoped
         settingKeys={["voiceConnection"]}
-        description="A realtime voice provider answers instantly and needs an API key. A coding agent uses your existing provider subscription instead: this browser transcribes and speaks, and the agent answers one turn at a time from its own thread."
+        description={resolveCopy(
+          msg(
+            "A realtime voice provider needs an API key. A coding agent uses your existing subscription and answers from its own thread. The browser transcribes and speaks.",
+          ),
+        )}
         control={
           <Select
             value={value.mode}
@@ -54,27 +65,35 @@ export function VoiceSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="realtime">Realtime voice provider</SelectItem>
-              <SelectItem value="agent">Coding agent (no API key)</SelectItem>
+              <SelectItem value="realtime">
+                <T>Realtime voice provider</T>
+              </SelectItem>
+              <SelectItem value="agent">
+                <T>Coding agent (no API key)</T>
+              </SelectItem>
             </SelectPopup>
           </Select>
         }
       />
       <SettingsRow
-        title="Saved instructions"
+        title={resolveCopy(msg("Saved instructions"))}
         serverScoped
         settingKeys={["voiceInstructions"]}
-        description="Your voice assistant remembers these instructions at every session start. Ask her to remember a role or preference, or edit them here. Clear them to forget. Shared across devices connected to this environment."
+        description={resolveCopy(
+          msg(
+            "Your voice assistant uses these instructions at each session start. Edit or clear them here. Devices connected to this environment share them.",
+          ),
+        )}
       >
         <div className="mt-3 max-w-2xl pb-3.5">
           <Textarea
             key={`${scopeKey}:${instructionsMixed}:${instructions}`}
-            aria-label="Saved voice instructions"
+            aria-label={resolveCopy(msg("Saved voice instructions"))}
             defaultValue={instructionsMixed ? "" : instructions}
             placeholder={
               instructionsMixed
-                ? "Mixed. Enter instructions for all selected environments."
-                : "Act as the COO of my company."
+                ? resolveCopy(msg("Mixed. Enter instructions for all selected environments."))
+                : resolveCopy(msg("Act as the COO of my company."))
             }
             rows={4}
             maxLength={16000}
@@ -105,10 +124,14 @@ function VoiceProviderSettings({
   return (
     <>
       <SettingsRow
-        title="Connection preset"
+        title={resolveCopy(msg("Connection preset"))}
         serverScoped
         settingKeys={["voiceConnection"]}
-        description="Start with a provider or customize a compatible local server below. Applying a preset clears the saved API key."
+        description={resolveCopy(
+          msg(
+            "Start with a provider or customize a compatible local server below. Applying a preset clears the saved API key.",
+          ),
+        )}
         control={
           <div className="flex gap-1">
             {(
@@ -131,7 +154,7 @@ function VoiceProviderSettings({
         }
       />
       <SettingsRow
-        title="Realtime protocol"
+        title={resolveCopy(msg("Realtime protocol"))}
         serverScoped
         settingKeys={["voiceConnection"]}
         control={
@@ -145,14 +168,18 @@ function VoiceProviderSettings({
               <SelectValue />
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="openai">OpenAI compatible</SelectItem>
-              <SelectItem value="xai">xAI compatible</SelectItem>
+              <SelectItem value="openai">
+                <T>OpenAI compatible</T>
+              </SelectItem>
+              <SelectItem value="xai">
+                <T>xAI compatible</T>
+              </SelectItem>
             </SelectPopup>
           </Select>
         }
       />
       <SettingsRow
-        title="Audio transport"
+        title={resolveCopy(msg("Audio transport"))}
         serverScoped
         settingKeys={["voiceConnection"]}
         control={
@@ -166,8 +193,12 @@ function VoiceProviderSettings({
               <SelectValue />
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="webrtc">WebRTC (SDP)</SelectItem>
-              <SelectItem value="websocket">WebSocket (PCM16, 24 kHz)</SelectItem>
+              <SelectItem value="webrtc">
+                <T>WebRTC (SDP)</T>
+              </SelectItem>
+              <SelectItem value="websocket">
+                <T>WebSocket (PCM16, 24 kHz)</T>
+              </SelectItem>
             </SelectPopup>
           </Select>
         }

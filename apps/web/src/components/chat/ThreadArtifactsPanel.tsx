@@ -1,3 +1,6 @@
+import { msg } from "gt-react";
+import { T } from "gt-react";
+import { m as resolveCopy } from "../../i18n/messages";
 import { useAtomValue } from "@effect/atom-react";
 import {
   THREAD_ARTIFACT_MAX_BYTES,
@@ -24,10 +27,10 @@ export function ThreadArtifactsPanel(props: { environmentId: EnvironmentId; thre
     <ThreadDetailsSection
       data-thread-artifacts-panel
       headingId="thread-artifacts-heading"
-      title="Artifacts"
+      title={resolveCopy(msg("Artifacts"))}
       actions={
         <Button size="micro" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "Hide" : "Open"}
+          {open ? resolveCopy(msg("Hide")) : resolveCopy(msg("Open"))}
         </Button>
       }
     >
@@ -67,6 +70,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
   const picker = useRef<HTMLInputElement>(null);
   const replacing = useRef<ThreadArtifact | null>(null);
   const transfer = useRef<AbortController | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- aborts the file transfer when the panel unmounts
   useEffect(() => () => transfer.current?.abort(), []);
 
   async function perform(action: () => Promise<void>) {
@@ -134,13 +138,13 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
   return (
     <div className="space-y-2 px-1.5">
       <p className="text-xs text-muted-foreground">
-        Files saved with this thread, available on every connected client.
+        <T>Files saved with this thread, available on every connected client.</T>
       </p>
       <Input
         ref={picker}
         type="file"
         hidden
-        aria-label="Choose artifact file"
+        aria-label={resolveCopy(msg("Choose artifact file"))}
         onChange={(event) => {
           const file = event.target.files?.[0];
           const previous = replacing.current;
@@ -159,17 +163,17 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
             picker.current?.click();
           }}
         >
-          Add file
+          <T>Add file</T>
         </Button>
         {busy ? (
           <Button size="xs" variant="ghost" onClick={() => transfer.current?.abort()}>
-            Cancel transfer
+            <T>Cancel transfer</T>
           </Button>
         ) : null}
       </div>
       {busy ? (
         <p role="status" className="text-xs text-muted-foreground">
-          Working…
+          <T>Working…</T>
         </p>
       ) : null}
       {error || query.error ? (
@@ -178,11 +182,13 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
         </p>
       ) : null}
       {!query.data && query.isPending ? (
-        <p className="text-xs text-muted-foreground">Loading artifacts…</p>
+        <p className="text-xs text-muted-foreground">
+          <T>Loading artifacts…</T>
+        </p>
       ) : null}
       {query.data?.artifacts.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No artifacts yet. Add a file or ask the agent to publish one.
+          <T>No artifacts yet. Add a file or ask the agent to publish one.</T>
         </p>
       ) : null}
       <div className="max-h-96 space-y-3 overflow-y-auto">
@@ -214,7 +220,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
               >
                 <Input
                   size="compact"
-                  aria-label="Artifact name"
+                  aria-label={resolveCopy(msg("Artifact name"))}
                   value={name}
                   onValueChange={setName}
                   autoFocus
@@ -226,7 +232,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                     type="submit"
                     disabled={busy || !canRename || !name.trim()}
                   >
-                    Save
+                    <T>Save</T>
                   </Button>
                   <Button
                     size="micro"
@@ -234,7 +240,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                     type="button"
                     onClick={() => setEditing(null)}
                   >
-                    Cancel
+                    <T>Cancel</T>
                   </Button>
                 </div>
               </form>
@@ -246,7 +252,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                   disabled={busy || !canDownload}
                   onClick={() => void download(artifact)}
                 >
-                  Download
+                  <T>Download</T>
                 </Button>
                 <Button
                   size="micro"
@@ -257,7 +263,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                     setName(artifact.name);
                   }}
                 >
-                  Rename
+                  <T>Rename</T>
                 </Button>
                 <Button
                   size="micro"
@@ -268,7 +274,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                     picker.current?.click();
                   }}
                 >
-                  Replace
+                  <T>Replace</T>
                 </Button>
                 <Button
                   size="micro"
@@ -282,7 +288,9 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
             )}
             {deleting === artifact.id ? (
               <div className="space-y-1">
-                <p className="text-xs">Delete this artifact from the server?</p>
+                <p className="text-xs">
+                  <T>Delete this artifact from the server?</T>
+                </p>
                 <div className="flex gap-1">
                   <Button
                     size="micro"
@@ -303,10 +311,10 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                       })
                     }
                   >
-                    Delete file
+                    <T>Delete file</T>
                   </Button>
                   <Button size="micro" variant="ghost" onClick={() => setDeleting(null)}>
-                    Keep file
+                    <T>Keep file</T>
                   </Button>
                 </div>
               </div>

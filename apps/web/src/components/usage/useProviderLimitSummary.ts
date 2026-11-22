@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ServerProvider } from "@t3tools/contracts";
 import { collectLimitAccounts, collectLimitPools } from "@t3tools/shared/usageLimits";
-import { useMemo } from "react";
 
 import { environmentPresentations } from "../../state/presentation";
 
@@ -21,29 +20,27 @@ export function useProviderLimitSummary(): ReadonlyMap<
   ProviderLimitSummary
 > {
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
-  return useMemo(() => {
-    // `now` only feeds pace, which the summary does not show.
-    const pools = collectLimitPools(collectLimitAccounts(presentations), 0);
-    return new Map(
-      pools.flatMap((pool) => {
-        const windows = pool.windows.map(({ label, remainingPercent }) => ({
-          label,
-          remainingPercent,
-        }));
-        return windows.length === 0
-          ? []
-          : [
-              [
-                pool.driver,
-                {
-                  remainingPercent: Math.min(...windows.map((w) => w.remainingPercent)),
-                  windows,
-                },
-              ] as const,
-            ];
-      }),
-    );
-  }, [presentations]);
+  // `now` only feeds pace, which the summary does not show.
+  const pools = collectLimitPools(collectLimitAccounts(presentations), 0);
+  return new Map(
+    pools.flatMap((pool) => {
+      const windows = pool.windows.map(({ label, remainingPercent }) => ({
+        label,
+        remainingPercent,
+      }));
+      return windows.length === 0
+        ? []
+        : [
+            [
+              pool.driver,
+              {
+                remainingPercent: Math.min(...windows.map((w) => w.remainingPercent)),
+                windows,
+              },
+            ] as const,
+          ];
+    }),
+  );
 }
 
 /** "Session 72% left · Weekly 40% left" */

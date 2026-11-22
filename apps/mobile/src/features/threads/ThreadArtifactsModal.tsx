@@ -1,3 +1,6 @@
+import { msg } from "gt-react-native";
+import { T } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import { useAtomValue } from "@effect/atom-react";
 import {
   THREAD_ARTIFACT_MAX_BYTES,
@@ -72,6 +75,7 @@ function ArtifactFiles(props: {
   const [editing, setEditing] = useState<ThreadArtifact | null>(null);
   const [name, setName] = useState("");
   const transfer = useRef<AbortController | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- aborts the native file transfer when the modal closes
   useEffect(() => () => transfer.current?.abort(), []);
 
   function absoluteUrl(relativeUrl: string) {
@@ -116,7 +120,7 @@ function ArtifactFiles(props: {
           (asset.name.toLowerCase().endsWith(".apk")
             ? "application/vnd.android.package-archive"
             : "application/octet-stream");
-        setStatus("Preparing upload…");
+        setStatus(resolveCopy(msg("Preparing upload…")));
         const result = await uploadUrl({
           environmentId: props.environmentId,
           input: {
@@ -138,7 +142,11 @@ function ArtifactFiles(props: {
           headers: { "Content-Type": mimeType },
           onProgress: ({ bytesSent, totalBytes }) =>
             setStatus(
-              `Uploading… ${totalBytes > 0 ? Math.floor((bytesSent / totalBytes) * 100) : 0}%`,
+              resolveCopy(
+                msg("Uploading… {value1}%", {
+                  value1: totalBytes > 0 ? Math.floor((bytesSent / totalBytes) * 100) : 0,
+                }),
+              ),
             ),
         });
         if (response.status < 200 || response.status >= 300)
@@ -151,7 +159,7 @@ function ArtifactFiles(props: {
   }
   async function download(artifact: ThreadArtifact, action: "open" | "install" | "share") {
     await perform(async (signal) => {
-      setStatus("Downloading…");
+      setStatus(resolveCopy(msg("Downloading…")));
       const result = await downloadUrl({
         environmentId: props.environmentId,
         input: { threadId: props.threadId, id: artifact.id },
@@ -165,25 +173,29 @@ function ArtifactFiles(props: {
     });
   }
   function confirmDelete(artifact: ThreadArtifact) {
-    Alert.alert("Delete artifact?", `Remove ${artifact.name} from the server?`, [
-      { text: "Keep file", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () =>
-          void perform(async () => {
-            const result = await remove({
-              environmentId: props.environmentId,
-              input: {
-                threadId: props.threadId,
-                id: artifact.id,
-                expectedRevision: artifact.revision,
-              },
-            });
-            if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-          }),
-      },
-    ]);
+    Alert.alert(
+      resolveCopy(msg("Delete artifact?")),
+      resolveCopy(msg("Remove {name} from the server?", { name: artifact.name })),
+      [
+        { text: resolveCopy(msg("Keep file")), style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () =>
+            void perform(async () => {
+              const result = await remove({
+                environmentId: props.environmentId,
+                input: {
+                  threadId: props.threadId,
+                  id: artifact.id,
+                  expectedRevision: artifact.revision,
+                },
+              });
+              if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+            }),
+        },
+      ],
+    );
   }
   return (
     <View
@@ -191,20 +203,30 @@ function ArtifactFiles(props: {
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
     >
       <View className="flex-row items-center justify-between border-b border-border px-4 py-2">
-        <Text className="text-lg font-semibold text-foreground">Artifacts</Text>
-        <Button label="Done" tone="text" onPress={props.onClose} />
+        <Text className="text-lg font-semibold text-foreground">
+          <T>Artifacts</T>
+        </Text>
+        <Button label={resolveCopy(msg("Done"))} tone="text" onPress={props.onClose} />
       </View>
       <ScrollView contentContainerClassName="gap-4 p-4" keyboardShouldPersistTaps="handled">
         <Text className="text-sm text-foreground-muted">
-          Files saved with this thread, available on every connected client.
+          <T>Files saved with this thread, available on every connected client.</T>
         </Text>
-        <Button label="Add file" disabled={busy || !canUpload} onPress={() => void upload()} />
+        <Button
+          label={resolveCopy(msg("Add file"))}
+          disabled={busy || !canUpload}
+          onPress={() => void upload()}
+        />
         {busy ? (
           <View className="gap-2">
             <Text accessibilityRole="text" className="text-sm text-foreground-muted">
-              {status ?? "Working…"}
+              {status ?? resolveCopy(msg("Working…"))}
             </Text>
-            <Button label="Cancel transfer" tone="text" onPress={() => transfer.current?.abort()} />
+            <Button
+              label={resolveCopy(msg("Cancel transfer"))}
+              tone="text"
+              onPress={() => transfer.current?.abort()}
+            />
           </View>
         ) : null}
         {error || query.error ? (
@@ -213,11 +235,13 @@ function ArtifactFiles(props: {
           </Text>
         ) : null}
         {!query.data && query.isPending ? (
-          <Text className="text-sm text-foreground-muted">Loading artifacts…</Text>
+          <Text className="text-sm text-foreground-muted">
+            <T>Loading artifacts…</T>
+          </Text>
         ) : null}
         {query.data?.artifacts.length === 0 ? (
           <Text className="text-sm text-foreground-muted">
-            No artifacts yet. Add a file or ask the agent to publish one.
+            <T>No artifacts yet. Add a file or ask the agent to publish one.</T>
           </Text>
         ) : null}
         {query.data?.artifacts.map((artifact) => (
@@ -229,7 +253,7 @@ function ArtifactFiles(props: {
             {editing?.id === artifact.id ? (
               <View className="gap-2">
                 <TextInput
-                  accessibilityLabel="Artifact name"
+                  accessibilityLabel={resolveCopy(msg("Artifact name"))}
                   className="rounded-lg border border-border px-3 py-2 text-foreground"
                   value={name}
                   onChangeText={setName}
@@ -238,7 +262,7 @@ function ArtifactFiles(props: {
                 />
                 <View className="flex-row flex-wrap gap-2">
                   <Button
-                    label="Save name"
+                    label={resolveCopy(msg("Save name"))}
                     disabled={busy || !canRename || !name.trim()}
                     onPress={() =>
                       void perform(async () => {
@@ -256,28 +280,36 @@ function ArtifactFiles(props: {
                       })
                     }
                   />
-                  <Button label="Cancel" tone="text" onPress={() => setEditing(null)} />
+                  <Button
+                    label={resolveCopy(msg("Cancel"))}
+                    tone="text"
+                    onPress={() => setEditing(null)}
+                  />
                 </View>
               </View>
             ) : (
               <>
                 <View className="flex-row flex-wrap gap-2">
                   <Button
-                    label={isApkFile(artifact) ? "Install and open" : "Open"}
+                    label={
+                      isApkFile(artifact)
+                        ? resolveCopy(msg("Install and open"))
+                        : resolveCopy(msg("Open"))
+                    }
                     disabled={busy || !canDownload}
                     onPress={() =>
                       void download(artifact, isApkFile(artifact) ? "install" : "open")
                     }
                   />
                   <Button
-                    label="Save or share"
+                    label={resolveCopy(msg("Save or share"))}
                     disabled={busy || !canDownload}
                     onPress={() => void download(artifact, "share")}
                   />
                 </View>
                 <View className="flex-row flex-wrap gap-2">
                   <Button
-                    label="Rename"
+                    label={resolveCopy(msg("Rename"))}
                     tone="text"
                     disabled={busy || !canRename}
                     onPress={() => {
@@ -286,7 +318,7 @@ function ArtifactFiles(props: {
                     }}
                   />
                   <Button
-                    label="Replace"
+                    label={resolveCopy(msg("Replace"))}
                     tone="text"
                     disabled={busy || !canUpload}
                     onPress={() => void upload(artifact)}

@@ -1,3 +1,6 @@
+import { msg } from "gt-react";
+import { T } from "gt-react";
+import { m as resolveCopy } from "../../i18n/messages";
 /* oxlint-disable react/no-array-index-key -- Stage order is immutable for the lifetime of a workflow, so indices are stable keys. */
 import { randomUUID } from "../../lib/utils";
 import { useAtomValue } from "@effect/atom-react";
@@ -50,7 +53,7 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
       input: {
         id: WorkflowId.make(randomUUID()),
         threadId: props.threadId,
-        title: "Fork → APK → manual installation",
+        title: resolveCopy(msg("Fork → APK → manual installation")),
         stages: APK_WORKFLOW_STAGES,
       },
     });
@@ -80,7 +83,7 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
   return (
     <ThreadDetailsSection
       headingId="thread-workflows-heading"
-      title="Workflows"
+      title={resolveCopy(msg("Workflows"))}
       actions={
         <Button
           size="micro"
@@ -88,13 +91,13 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
           disabled={!canCreate || busy}
           onClick={() => setShowDraft((value) => !value)}
         >
-          APK example
+          <T>APK example</T>
         </Button>
       }
     >
       {query.error ? (
         <p role="alert" className="px-2 text-xs text-destructive">
-          Could not load workflows: {query.error}
+          <T>Could not load workflows:</T> {query.error}
         </p>
       ) : null}
       {error ? (
@@ -105,9 +108,11 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
       {showDraft ? (
         <div className="space-y-2 px-2 text-xs">
           <p>
-            Create a draft for syncing your fork, checking, building, verifying and publishing an
-            APK, then confirming manual installation. Start runs these stages with this thread’s
-            agent and permissions.
+            <T>
+              Create a draft for syncing your fork, checking, building, verifying and publishing an
+              APK, then confirming manual installation. Start runs these stages with this thread’s
+              agent and permissions.
+            </T>
           </p>
           <ol className="list-decimal space-y-1 pl-4">
             {APK_WORKFLOW_STAGES.map((stage) => (
@@ -120,13 +125,13 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
             disabled={busy || !canCreate}
             onClick={() => void addDraft()}
           >
-            Save draft
+            <T>Save draft</T>
           </Button>
         </div>
       ) : null}
       {query.data?.workflows.length === 0 && !showDraft ? (
         <p className="px-2 text-xs text-muted-foreground">
-          Ask your agent to create a workflow, or use the APK example.
+          <T>Ask your agent to create a workflow, or use the APK example.</T>
         </p>
       ) : null}
       <div className="space-y-3 px-2">
@@ -143,11 +148,16 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
                     <summary className="cursor-pointer">
                       {index + 1}. {stage.title} · {stage.status}
                       {stage.attemptCount > 0
-                        ? ` · attempt ${stage.attemptCount}/${stage.maxAttempts}`
+                        ? resolveCopy(
+                            msg(" · attempt {attemptCount}/{maxAttempts}", {
+                              attemptCount: stage.attemptCount,
+                              maxAttempts: stage.maxAttempts,
+                            }),
+                          )
                         : ""}
                     </summary>
                     <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
-                      {stage.latestEvidence ?? "No result recorded."}
+                      {stage.latestEvidence ?? resolveCopy(msg("No result recorded."))}
                     </p>
                   </details>
                 </li>
@@ -161,7 +171,7 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
             <WorkflowHistory environmentId={props.environmentId} workflow={workflow} />
             {workflow.status === "running" ? (
               <p className="text-xs text-muted-foreground">
-                Pause or cancel stops later stages. Current work can finish.
+                <T>Pause or cancel stops later stages. Current work can finish.</T>
               </p>
             ) : null}
             <div className="flex flex-wrap gap-1">
@@ -174,7 +184,7 @@ export function ThreadWorkflowsPanel(props: { environmentId: EnvironmentId; thre
                   onClick={() => void act(workflow, action)}
                 >
                   {action === "resume" && workflow.status === "waiting"
-                    ? "Resume when ready"
+                    ? resolveCopy(msg("Resume when ready"))
                     : action[0]!.toUpperCase() + action.slice(1)}
                 </Button>
               ))}
@@ -203,7 +213,7 @@ function WorkflowHistory(props: { environmentId: EnvironmentId; workflow: Workfl
   return (
     <details onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer text-xs text-muted-foreground">
-        Instructions and full evidence
+        <T>Instructions and full evidence</T>
       </summary>
       {query.error ? (
         <p role="alert" className="text-xs text-destructive">
@@ -211,7 +221,9 @@ function WorkflowHistory(props: { environmentId: EnvironmentId; workflow: Workfl
         </p>
       ) : null}
       {open && query.isPending && !query.data ? (
-        <p className="text-xs text-muted-foreground">Loading history…</p>
+        <p className="text-xs text-muted-foreground">
+          <T>Loading history…</T>
+        </p>
       ) : null}
       <div className="space-y-2 text-xs">
         {query.data?.workflow.stages.map((stage, index) => (
@@ -219,12 +231,12 @@ function WorkflowHistory(props: { environmentId: EnvironmentId; workflow: Workfl
             <p className="font-medium">{stage.title}</p>
             <p className="whitespace-pre-wrap break-words">{stage.instruction}</p>
             <p className="whitespace-pre-wrap break-words text-muted-foreground">
-              Success: {stage.successCriteria}
+              <T>Success:</T> {stage.successCriteria}
             </p>
             {stage.attempts.map((attempt) => (
               <p key={attempt.number} className="mt-1 whitespace-pre-wrap break-words">
-                Attempt {attempt.number} · {attempt.status}:{" "}
-                {attempt.evidence ?? "No result recorded."}
+                <T>Attempt</T> {attempt.number} · {attempt.status}:{" "}
+                {attempt.evidence ?? resolveCopy(msg("No result recorded."))}
               </p>
             ))}
           </div>

@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import {
   type AtomCommand,
   isAtomCommandInterrupted,
@@ -23,7 +25,7 @@ export function useThreadQueueCommand<A, E, W>(
           failureTitle,
           failure instanceof Error
             ? failure.message
-            : "Please check your connection and try again.",
+            : resolveCopy(msg("Please check your connection and try again.")),
         );
       }
       return result;

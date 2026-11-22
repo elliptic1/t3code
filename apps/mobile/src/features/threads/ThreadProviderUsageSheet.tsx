@@ -1,6 +1,10 @@
+import { RefreshControl } from "../../components/ui/RefreshControl";
+import { msg } from "gt-react-native";
+import { T } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import type { EnvironmentId, ModelSelection, ServerConfig } from "@t3tools/contracts";
 import { useMemo } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Sheet } from "../../components/ui/Sheet";
 import { useRefreshLimits } from "../usage/UsageLimitsSection";
@@ -19,7 +23,7 @@ export function ThreadProviderUsageSheet(props: {
   );
   const snapshot = threadModelUsageSnapshot(props.environmentId, props.selection, props.config);
   return (
-    <Sheet title="Selected provider usage" onClose={props.onClose}>
+    <Sheet title={resolveCopy(msg("Selected provider usage"))} onClose={props.onClose}>
       <ScrollView
         contentContainerStyle={{ padding: 20, gap: 16 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
@@ -38,7 +42,10 @@ export function ThreadProviderUsageSheet(props: {
             <View key={window.id} className="gap-2 rounded-xl bg-card p-4">
               <View className="flex-row items-center justify-between gap-3">
                 <Text className="flex-1 text-sm">{window.label}</Text>
-                <Text className="font-t3-medium tabular-nums">{window.remainingPercent}% left</Text>
+                <Text className="font-t3-medium tabular-nums">
+                  {window.remainingPercent}
+                  <T>% left</T>
+                </Text>
               </View>
               <View className="h-2 flex-row overflow-hidden rounded-full bg-subtle">
                 <View className="h-full bg-foreground" style={{ flex: window.remainingPercent }} />
@@ -49,24 +56,24 @@ export function ThreadProviderUsageSheet(props: {
                   key={`${reset.member.account.key}:${reset.at}`}
                   className="text-xs text-foreground-muted"
                 >
-                  Resets {new Date(reset.at).toLocaleString()}
+                  <T>Resets</T> {new Date(reset.at).toLocaleString()}
                 </Text>
               ))}
             </View>
           ))
         ) : (
           <Text className="text-sm text-foreground-muted">
-            Usage is unavailable for this model’s provider account. Pull down to refresh.
+            <T>Usage is unavailable for this model’s provider account. Pull down to refresh.</T>
           </Text>
         )}
         {snapshot && Number.isFinite(snapshot.checkedAt) ? (
           <Text className="text-xs text-foreground-muted">
-            Last checked {new Date(snapshot.checkedAt).toLocaleString()}
+            <T>Last checked</T> {new Date(snapshot.checkedAt).toLocaleString()}
           </Text>
         ) : null}
         {failedLabels.length > 0 ? (
           <Text className="text-sm text-foreground-muted">
-            Could not refresh usage. Showing the last available data.
+            <T>Could not refresh usage. Showing the last available data.</T>
           </Text>
         ) : null}
       </ScrollView>

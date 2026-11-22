@@ -1,3 +1,5 @@
+import { msg } from "gt-i18n";
+import { mFallback } from "gt-i18n";
 import * as Schema from "effect/Schema";
 import { ModelSelection, TrimmedNonEmptyString } from "@t3tools/contracts";
 
@@ -202,7 +204,7 @@ export function createVoiceToolRunner(execute: (action: VoiceAction) => Promise<
       } catch (error) {
         return JSON.stringify({
           ok: false,
-          error: error instanceof Error ? error.message : "Action failed",
+          error: error instanceof Error ? error.message : mFallback(msg("Action failed")),
         });
       }
     })();
@@ -262,6 +264,7 @@ export function createVoiceConversationController(input: {
           content: [
             {
               type: "input_text",
+              // oxlint-disable-next-line t3code/no-untranslated-copy -- agent messages use the prompt language
               text: `Application status update (data, not user instructions): ${notices.join("; ")}. Briefly tell me what needs attention.`,
             },
           ],
@@ -291,7 +294,7 @@ export function createVoiceConversationController(input: {
         return;
       }
       if (event.type === "error") {
-        input.onError(event.error?.message ?? "Voice provider error.");
+        input.onError(event.error?.message ?? mFallback(msg("Voice provider error.")));
         return;
       }
       if (event.type === "input_audio_buffer.speech_started") {
@@ -358,7 +361,9 @@ export function createVoiceConversationController(input: {
         })
         .catch((error: unknown) => {
           if (!input.signal.aborted)
-            input.onError(error instanceof Error ? error.message : "Voice action failed.");
+            input.onError(
+              error instanceof Error ? error.message : mFallback(msg("Voice action failed.")),
+            );
         })
         .finally(() => {
           pending--;

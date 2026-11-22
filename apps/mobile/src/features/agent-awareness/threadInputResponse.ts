@@ -19,6 +19,13 @@ const Response = Schema.Struct({
 });
 const decode = Schema.decodeUnknownSync(Schema.fromJsonString(Response));
 
+class ThreadInputResponseError extends Schema.TaggedError<ThreadInputResponseError>()(
+  "ThreadInputResponseError",
+  {
+    message: Schema.String,
+  },
+) {}
+
 const respond = createRuntimeCommand(connectionAtomRuntime, {
   label: "notification:thread-input-response",
   execute: Effect.fn("Notification.respondToThreadInput")(
@@ -55,9 +62,9 @@ const respond = createRuntimeCommand(connectionAtomRuntime, {
         return;
       const response = threadInputResponse(requests, input.requestId, input.action, input.text);
       if (!response)
-        return yield* Effect.fail(
-          new Error("This request needs to be answered inside the thread."),
-        );
+        return yield* new ThreadInputResponseError({
+          message: "This request needs to be answered inside the thread.",
+        });
       const result = yield* Effect.promise(() =>
         response.kind === "approval"
           ? runAtomCommand(
@@ -88,7 +95,9 @@ const respond = createRuntimeCommand(connectionAtomRuntime, {
             ),
       );
       if (result._tag !== "Success")
-        return yield* Effect.fail(new Error("The thread did not accept the response."));
+        return yield* new ThreadInputResponseError({
+          message: "The thread did not accept the response.",
+        });
     },
     Effect.scoped,
     Effect.timeout("45 seconds"),

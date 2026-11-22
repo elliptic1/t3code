@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m as resolveCopy } from "../i18n/messages";
 import type { VoiceSessionConnection } from "@t3tools/contracts";
 
 export async function connectPcmSocket(input: {
@@ -63,7 +65,9 @@ export async function connectPcmSocket(input: {
     capture.port.addEventListener("message", (event: MessageEvent<ArrayBuffer>) => {
       if (muted || socket?.readyState !== WebSocket.OPEN || signal.aborted) return;
       if (socket.bufferedAmount > 24000 * 2 * 3) {
-        input.onError("Voice upload cannot keep up with the connection. Please reconnect.");
+        input.onError(
+          resolveCopy(msg("Voice upload cannot keep up with the connection. Please reconnect.")),
+        );
         return;
       }
       const bytes = new Uint8Array(event.data);
@@ -125,7 +129,7 @@ export async function connectPcmSocket(input: {
         }
         input.onEvent(event.data);
       } catch {
-        input.onError("Invalid realtime audio received from the voice provider.");
+        input.onError(resolveCopy(msg("Invalid realtime audio received from the voice provider.")));
       }
     });
     await new Promise<void>((resolve, reject) => {
@@ -138,12 +142,13 @@ export async function connectPcmSocket(input: {
       socket!.addEventListener("error", () => {
         signal.removeEventListener("abort", abort);
         reject(new Error("Could not connect to the realtime WebSocket."));
-        input.onError("Voice WebSocket connection failed.");
+        input.onError(resolveCopy(msg("Voice WebSocket connection failed.")));
       });
       socket!.addEventListener("close", () => {
         signal.removeEventListener("abort", abort);
         reject(new Error("Voice connection closed."));
-        if (!signal.aborted) input.onError("Voice connection closed. Start again to reconnect.");
+        if (!signal.aborted)
+          input.onError(resolveCopy(msg("Voice connection closed. Start again to reconnect.")));
       });
     });
     return {

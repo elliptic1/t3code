@@ -1,3 +1,6 @@
+import { msg } from "gt-react";
+import { T } from "gt-react";
+import { m as resolveCopy } from "../i18n/messages";
 /* oxlint-disable t3code/no-unreasoned-state-sync, react/set-state-in-effect, t3code/no-manual-memo -- these effects run the live voice session: microphone, WebRTC, and speech playback outside React */
 import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -77,7 +80,10 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
         voiceResult(
           await syncHistory({ environmentId, input: { lines, ...(reset ? { reset: true } : {}) } }),
         ),
-      () => setError("Voice history could not be saved. End the conversation to retry."),
+      () =>
+        setError(
+          resolveCopy(msg("Voice history could not be saved. End the conversation to retry.")),
+        ),
     ),
   );
   const [transcript, setTranscript] = useState<
@@ -209,13 +215,17 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     setRunning(false);
     setConnected(false);
     setMuted(false);
-    setStatus("Saving conversation");
+    setStatus(resolveCopy(msg("Saving conversation")));
     void historySync.flush().then(
-      () => setStatus("Ended"),
+      () => setStatus(resolveCopy(msg("Ended"))),
       () => {
-        setStatus("History not saved");
+        setStatus(resolveCopy(msg("History not saved")));
         setError(
-          "Voice history could not be saved. Check your connection before switching devices.",
+          resolveCopy(
+            msg(
+              "Voice history could not be saved. Check your connection before switching devices.",
+            ),
+          ),
         );
       },
     );
@@ -265,11 +275,11 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     setRunning(true);
     setError(null);
     const transcriptSessionId = randomUUID();
-    setStatus("Connecting");
+    setStatus(resolveCopy(msg("Connecting")));
     const timeout = setTimeout(() => {
       if (session.current === owner) {
         stop();
-        setError("Voice connection timed out. Check Settings and try again.");
+        setError(resolveCopy(msg("Voice connection timed out. Check Settings and try again.")));
       }
     }, 30_000);
     const shell = (threadId: string | null) =>
@@ -344,7 +354,11 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     } catch (cause) {
       if (session.current === owner) {
         stop();
-        setError(cause instanceof Error ? cause.message : "Could not start voice conversation.");
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : resolveCopy(msg("Could not start voice conversation.")),
+        );
       }
     } finally {
       clearTimeout(timeout);
@@ -359,15 +373,17 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
     >
       {open ? (
         <section
-          aria-label="Voice conversation"
+          aria-label={resolveCopy(msg("Voice conversation"))}
           className="w-80 rounded-xl border bg-popover p-4 text-popover-foreground shadow-lg"
         >
           <div className="flex items-center justify-between">
-            <h2 className="font-medium">Talk to T3</h2>
+            <h2 className="font-medium">
+              <T>Talk to T3</T>
+            </h2>
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="Voice settings"
+              aria-label={resolveCopy(msg("Voice settings"))}
               onClick={() => {
                 void navigate({ to: "/settings/integrations" });
               }}
@@ -376,20 +392,20 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            {environment?.label ?? "Connected environment"}
+            {environment?.label ?? resolveCopy(msg("Connected environment"))}
           </p>
           <p role="status" className="my-2 text-sm">
-            {muted ? "Microphone muted" : status}
+            {muted ? resolveCopy(msg("Microphone muted")) : status}
           </p>
           {error ? (
             <p role="alert" className="mb-2 text-sm text-destructive">
-              {error} Voice setup is in Settings → Integrations.
+              {error} <T>Voice setup is in Settings → Integrations.</T>
             </p>
           ) : null}
           {transcript.length ? (
             <div
               className="mb-3 max-h-52 overflow-y-auto text-sm"
-              aria-label="Conversation transcript"
+              aria-label={resolveCopy(msg("Conversation transcript"))}
             >
               {transcript.map((line) => (
                 <p key={line.id} className="mb-2">
@@ -400,10 +416,16 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
             </div>
           ) : (
             <p className="mb-3 text-xs text-muted-foreground">
-              Ask about your projects, start a thread, or tell an agent what to do.{" "}
+              <T>Ask about your projects, start a thread, or tell an agent what to do.</T>{" "}
               {mode === "agent"
-                ? "Your browser transcribes your speech, and a coding agent answers from its own thread."
-                : "Your configured provider receives the audio and requested context."}
+                ? resolveCopy(
+                    msg(
+                      "Your browser transcribes your speech, and a coding agent answers from its own thread.",
+                    ),
+                  )
+                : resolveCopy(
+                    msg("Your configured provider receives the audio and requested context."),
+                  )}
             </p>
           )}
           <div className="flex gap-2">
@@ -419,7 +441,7 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
                   disabled={!connected}
                 >
                   {muted ? <Mic className="size-4" /> : <MicOff className="size-4" />}
-                  {muted ? "Unmute" : "Mute"}
+                  {muted ? resolveCopy(msg("Unmute")) : resolveCopy(msg("Mute"))}
                 </Button>
                 <Button size="sm" variant="destructive" onClick={stop}>
                   <PhoneOff className="size-4" />
@@ -433,7 +455,7 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
                   void start();
                 }}
               >
-                Start conversation
+                <T>Start conversation</T>
               </Button>
             )}
             {!running && transcript.length ? (
@@ -445,17 +467,21 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
                     () => setTranscript([]),
                     () =>
                       setError(
-                        "Could not clear voice history. Check your connection and try again.",
+                        resolveCopy(
+                          msg(
+                            "Could not clear voice history. Check your connection and try again.",
+                          ),
+                        ),
                       ),
                   );
                 }}
               >
-                Start fresh
+                <T>Start fresh</T>
               </Button>
             ) : null}
             {!running ? (
               <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-                Close
+                <T>Close</T>
               </Button>
             ) : null}
           </div>
@@ -465,7 +491,9 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
         type="button"
         className="flex size-12 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground shadow-lg hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
         aria-expanded={open}
-        aria-label={running ? "Show voice conversation" : "Talk to T3"}
+        aria-label={
+          running ? resolveCopy(msg("Show voice conversation")) : resolveCopy(msg("Talk to T3"))
+        }
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           const rect = bubbleRef.current?.getBoundingClientRect();

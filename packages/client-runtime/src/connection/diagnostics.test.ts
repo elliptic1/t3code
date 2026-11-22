@@ -22,6 +22,7 @@ describe("connection diagnostics", () => {
     const error = "Connected environment actual-environment does not match expected-environment.";
     const report = connectionDiagnostics({
       environment: {
+        refusedRouteIds: [],
         entry: {
           target,
           enabled: true,

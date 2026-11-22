@@ -1,4 +1,5 @@
-/* oxlint-disable unicorn/prefer-add-event-listener -- Native WebRTC declares the on-event API but does not ship its EventTarget typings. */
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
 import {
   voiceSessionConfiguration,
@@ -58,7 +59,9 @@ export async function connectVoice(input: {
     for (const track of stream.getTracks()) pc.addTrack(track, stream);
     pc.onconnectionstatechange = () => {
       if (["failed", "disconnected"].includes(pc.connectionState))
-        input.onError("Voice connection lost. Start a new conversation to reconnect.");
+        input.onError(
+          resolveCopy(msg("Voice connection lost. Start a new conversation to reconnect.")),
+        );
     };
     const channel = pc.createDataChannel("oai-events");
     send = (event) => {

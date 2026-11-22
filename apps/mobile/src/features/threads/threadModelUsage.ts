@@ -1,9 +1,11 @@
+import { msg } from "gt-react-native";
+import { m as resolveCopy } from "../../i18n/messages";
+import { limitsNotice } from "@t3tools/shared/usageLimitsCopy";
 import type { EnvironmentId, ModelSelection, ServerConfig } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
   collectLimitPools,
   displayLimitWindows,
-  limitsNotice,
 } from "@t3tools/shared/usageLimits";
 
 /** The selected login's tightest allowance, rather than every login's combined balance. */
@@ -33,7 +35,7 @@ export function threadModelUsageSnapshot(
       [
         environmentId,
         {
-          entry: { target: { label: "Thread" } },
+          entry: { target: { label: resolveCopy(msg("Thread")) } },
           serverConfig: { providers: [provider], usageLimitSources: sources },
         },
       ],
