@@ -1,4 +1,3 @@
-import { T } from "gt-react-native";
 import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
 import Constants from "expo-constants";
 import { useGT } from "gt-react-native";
@@ -65,7 +64,7 @@ export function CompactBrandTitle(
           className="font-t3-medium text-foreground-muted"
           style={{ fontSize: 21 * scale, letterSpacing: -0.5 * scale }}
         >
-          <T>Code</T>
+          {WORDMARK_SUFFIX}
         </Text>
         {showStage ? (
           <View

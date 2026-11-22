@@ -120,7 +120,7 @@ describe("floating preview pointer gesture", () => {
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
         break;
       case "hidden": {
-        using hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+        using _hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
         document.dispatchEvent(new Event("visibilitychange"));
         break;
       }

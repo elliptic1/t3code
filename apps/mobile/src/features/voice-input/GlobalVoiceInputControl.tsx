@@ -1,6 +1,6 @@
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { useGT, useMessages } from "gt-react-native";
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Linking,
   PanResponder,
@@ -16,6 +16,7 @@ import Animated, {
   interpolate,
   ReduceMotion,
   useAnimatedStyle,
+  useSharedValue,
   useDerivedValue,
   withTiming,
 } from "react-native-reanimated";
@@ -109,15 +110,15 @@ function EdgeDictationPill(props: {
       ? Math.max(insets.bottom, 16) + 16 + fabSize + 12
       : Math.max(insets.bottom, 12) + IOS_BOTTOM_CHROME_CLEARANCE;
 
-  const dragStart = useRef(0);
+  const dragStart = useSharedValue(0);
   const onDragStart = () => {
-    dragStart.current = props.offset;
+    dragStart.set(props.offset);
   };
   const onDragMove = (dy: number) => {
     props.onOffsetChange(
       Math.max(
         bottom + PILL_HEIGHT + insets.top - height,
-        Math.min(bottom - insets.bottom, dragStart.current + dy),
+        Math.min(bottom - insets.bottom, dragStart.get() + dy),
       ),
     );
   };

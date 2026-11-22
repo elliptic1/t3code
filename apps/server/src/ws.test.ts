@@ -62,7 +62,7 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as ProviderInstallationGate from "./provider/ProviderInstallationGate.ts";
 import * as Ws from "./ws.ts";
-import { Rpc, RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
+import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
 import * as RpcTest from "effect/rpc/RpcTest";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Statement from "effect/sql/Statement";
