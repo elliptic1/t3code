@@ -157,7 +157,7 @@ object AgentNotifications {
     // Queue retries carry the same alert id. Keep a bounded history even when
     // notification A is retried after notification B has already arrived.
     val alertExpiresAt = data["alert_expires_at"]?.toLongOrNull()
-    if (alertExpiresAt != null && alertExpiresAt <= System.currentTimeMillis()) return
+    if (alertExpiresAt != null && alertExpiresAt <= System.currentTimeMillis()) return false
     val alertId = data["alert_id"]
     val seen = prefs.getString("seenAlertsOrdered", null)?.split('\n')
       ?: prefs.getStringSet("seenAlerts", emptySet()).orEmpty().toList()
