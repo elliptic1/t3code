@@ -352,6 +352,7 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
       if (owner.abort.signal.aborted) owner.connection.close();
       else setConnected(true);
     } catch (cause) {
+      clearTimeout(timeout);
       if (session.current === owner) {
         stop();
         setError(
@@ -360,9 +361,9 @@ function VoiceConversationSession({ environmentId }: { environmentId: Environmen
             : resolveCopy(msg("Could not start voice conversation.")),
         );
       }
-    } finally {
-      clearTimeout(timeout);
+      return;
     }
+    clearTimeout(timeout);
   };
   if (!environmentId) return null;
   return (
