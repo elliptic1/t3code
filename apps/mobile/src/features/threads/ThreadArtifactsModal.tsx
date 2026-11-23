@@ -16,6 +16,7 @@ import { Alert, Modal, ScrollView, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import {
   downloadAndShareAttachment,
   installAndOpenApk,
@@ -47,10 +48,11 @@ function ArtifactFiles(props: {
 }) {
   const insets = useSafeAreaInsets();
   const connection = usePreparedConnection(props.environmentId);
+  const [scope, setScope] = useState<"thread" | "all">("thread");
   const query = useEnvironmentQuery(
     serverEnvironment.artifactsLive({
       environmentId: props.environmentId,
-      input: { threadId: props.threadId },
+      input: scope === "all" ? {} : { threadId: props.threadId },
     }),
   );
   const canUpload = useAtomValue(
@@ -124,7 +126,7 @@ function ArtifactFiles(props: {
         const result = await uploadUrl({
           environmentId: props.environmentId,
           input: {
-            threadId: props.threadId,
+            threadId: previous?.threadId ?? props.threadId,
             name: previous?.name ?? asset.name,
             mimeType,
             sizeBytes,
@@ -162,7 +164,7 @@ function ArtifactFiles(props: {
       setStatus(resolveCopy(msg("Downloading…")));
       const result = await downloadUrl({
         environmentId: props.environmentId,
-        input: { threadId: props.threadId, id: artifact.id },
+        input: { threadId: artifact.threadId, id: artifact.id },
       });
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       const url = absoluteUrl(result.value.relativeUrl);
@@ -186,7 +188,7 @@ function ArtifactFiles(props: {
               const result = await remove({
                 environmentId: props.environmentId,
                 input: {
-                  threadId: props.threadId,
+                  threadId: artifact.threadId,
                   id: artifact.id,
                   expectedRevision: artifact.revision,
                 },
@@ -209,8 +211,23 @@ function ArtifactFiles(props: {
         <Button label={resolveCopy(msg("Done"))} tone="text" onPress={props.onClose} />
       </View>
       <ScrollView contentContainerClassName="gap-4 p-4" keyboardShouldPersistTaps="handled">
+        <SegmentedControl
+          options={[
+            { value: "thread", label: resolveCopy(msg("This thread")) },
+            { value: "all", label: resolveCopy(msg("All threads")) },
+          ]}
+          selected={scope}
+          onSelect={setScope}
+          role="tab"
+        />
         <Text className="text-sm text-foreground-muted">
-          <T>Files saved with this thread, available on every connected client.</T>
+          {scope === "all" ? (
+            resolveCopy(
+              msg("Files saved with every thread, newest first. New files go to this thread."),
+            )
+          ) : (
+            <T>Files saved with this thread, available on every connected client.</T>
+          )}
         </Text>
         <Button
           label={resolveCopy(msg("Add file"))}
@@ -247,6 +264,13 @@ function ArtifactFiles(props: {
         {query.data?.artifacts.map((artifact) => (
           <View key={artifact.id} className="gap-2 rounded-xl border border-border p-3">
             <Text className="text-base font-semibold text-foreground">{artifact.name}</Text>
+            {scope === "all" ? (
+              <Text className="text-xs text-foreground-muted">
+                {artifact.threadId === props.threadId
+                  ? resolveCopy(msg("This thread"))
+                  : (artifact.threadTitle ?? resolveCopy(msg("Another thread")))}
+              </Text>
+            ) : null}
             <Text className="text-xs text-foreground-muted">
               {formatAttachmentSize(artifact.sizeBytes)}
             </Text>
@@ -269,7 +293,7 @@ function ArtifactFiles(props: {
                         const result = await rename({
                           environmentId: props.environmentId,
                           input: {
-                            threadId: props.threadId,
+                            threadId: artifact.threadId,
                             id: artifact.id,
                             expectedRevision: editing?.revision ?? artifact.revision,
                             name: name.trim(),

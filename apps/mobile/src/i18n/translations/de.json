@@ -5468,5 +5468,9 @@
   "ad208e3e32c85029": "Alle ausblenden",
   "3328503592789bed": "Zen",
   "856812e7e1fc445e": "Tool-Aufrufe im Chat",
-  "8d545d54c0a9e950": "Die Befehle, Bearbeitungen und Suchen ausblenden, die Agenten ausführen. „Erfolgreiche ausblenden“ behält Fehler. „Zen“ zeigt nur endgültige Antworten. Genehmigungen, Fragen und Fehler werden immer angezeigt."
+  "8d545d54c0a9e950": "Die Befehle, Bearbeitungen und Suchen ausblenden, die Agenten ausführen. „Erfolgreiche ausblenden“ behält Fehler. „Zen“ zeigt nur endgültige Antworten. Genehmigungen, Fragen und Fehler werden immer angezeigt.",
+  "0fdf303b060c2739": "Dieser Thread",
+  "5cba2c5bf39f6de2": "Alle Threads",
+  "775294bab03a1d8f": "Dateien aus allen Threads, neueste zuerst. Neue Dateien landen in diesem Thread.",
+  "008378cdbd5969a1": "Anderer Thread"
 }

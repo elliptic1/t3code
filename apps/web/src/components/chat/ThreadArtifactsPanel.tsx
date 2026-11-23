@@ -17,6 +17,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { readPreparedConnection } from "../../state/session";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 
 export function ThreadArtifactsPanel(props: { environmentId: EnvironmentId; threadId: ThreadId }) {
@@ -40,10 +41,11 @@ export function ThreadArtifactsPanel(props: { environmentId: EnvironmentId; thre
 }
 
 function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId }) {
+  const [scope, setScope] = useState<"thread" | "all">("thread");
   const query = useEnvironmentQuery(
     serverEnvironment.artifactsLive({
       environmentId: props.environmentId,
-      input: { threadId: props.threadId },
+      input: scope === "all" ? {} : { threadId: props.threadId },
     }),
   );
   const canUpload = useAtomValue(
@@ -97,7 +99,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
       const result = await uploadUrl({
         environmentId: props.environmentId,
         input: {
-          threadId: props.threadId,
+          threadId: previous?.threadId ?? props.threadId,
           name: previous?.name ?? file.name,
           mimeType:
             file.type ||
@@ -124,7 +126,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
     await perform(async () => {
       const result = await downloadUrl({
         environmentId: props.environmentId,
-        input: { threadId: props.threadId, id: artifact.id },
+        input: { threadId: artifact.threadId, id: artifact.id },
       });
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
       const link = document.createElement("a");
@@ -137,8 +139,29 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
   }
   return (
     <div className="space-y-2 px-1.5">
+      <ToggleGroup
+        aria-label={resolveCopy(msg("Artifacts to show"))}
+        value={[scope]}
+        onValueChange={(next) => {
+          const value = next[0];
+          if (value === "thread" || value === "all") setScope(value);
+        }}
+      >
+        <Toggle value="thread">
+          <T>This thread</T>
+        </Toggle>
+        <Toggle value="all">
+          <T>All threads</T>
+        </Toggle>
+      </ToggleGroup>
       <p className="text-xs text-muted-foreground">
-        <T>Files saved with this thread, available on every connected client.</T>
+        {scope === "all" ? (
+          resolveCopy(
+            msg("Files saved with every thread, newest first. New files go to this thread."),
+          )
+        ) : (
+          <T>Files saved with this thread, available on every connected client.</T>
+        )}
       </p>
       <Input
         ref={picker}
@@ -195,6 +218,13 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
         {query.data?.artifacts.map((artifact) => (
           <div key={artifact.id} className="space-y-1">
             <p className="break-all text-sm font-medium">{artifact.name}</p>
+            {scope === "all" ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {artifact.threadId === props.threadId
+                  ? resolveCopy(msg("This thread"))
+                  : (artifact.threadTitle ?? resolveCopy(msg("Another thread")))}
+              </p>
+            ) : null}
             <p className="text-xs text-muted-foreground">
               {formatAttachmentSize(artifact.sizeBytes)}
             </p>
@@ -207,7 +237,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                     const result = await rename({
                       environmentId: props.environmentId,
                       input: {
-                        threadId: props.threadId,
+                        threadId: artifact.threadId,
                         id: artifact.id,
                         expectedRevision: editing?.revision ?? artifact.revision,
                         name: name.trim(),
@@ -301,7 +331,7 @@ function ArtifactFiles(props: { environmentId: EnvironmentId; threadId: ThreadId
                         const result = await remove({
                           environmentId: props.environmentId,
                           input: {
-                            threadId: props.threadId,
+                            threadId: artifact.threadId,
                             id: artifact.id,
                             expectedRevision: artifact.revision,
                           },

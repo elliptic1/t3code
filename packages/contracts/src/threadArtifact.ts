@@ -20,9 +20,12 @@ export const ThreadArtifact = Schema.Struct({
   revision: NonNegativeInt,
   createdAt: Schema.String,
   updatedAt: Schema.String,
+  /** Present only when listing every thread's artifacts. */
+  threadTitle: Schema.optionalKey(Schema.String),
 });
 export type ThreadArtifact = typeof ThreadArtifact.Type;
-export const ThreadArtifactListInput = Schema.Struct({ threadId: ThreadId });
+/** Omitting threadId lists the artifacts of every thread, newest first. */
+export const ThreadArtifactListInput = Schema.Struct({ threadId: Schema.optionalKey(ThreadId) });
 export const ThreadArtifactListResult = Schema.Struct({ artifacts: Schema.Array(ThreadArtifact) });
 export type ThreadArtifactListResult = typeof ThreadArtifactListResult.Type;
 export const ThreadArtifactTarget = Schema.Struct({ threadId: ThreadId, id: ThreadArtifactId });

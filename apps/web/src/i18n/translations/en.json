@@ -12469,5 +12469,11 @@
   "27d76249d09eb69f": "Review guide ready",
   "faa3bb26abb39c93": "Review guide failed",
   "b7df38b7d8792d78": "Open guide",
-  "9e91e9a77b664e4e": "Could not start a review guide"
+  "9e91e9a77b664e4e": "Could not start a review guide",
+  "abdfbdb53a104c04": "Artifacts to show",
+  "775294bab03a1d8f": "Files saved with every thread, newest first. New files go to this thread.",
+  "0fdf303b060c2739": "This thread",
+  "008378cdbd5969a1": "Another thread",
+  "21a392236b8f4581": "This thread",
+  "2763be595fdda7ff": "All threads"
 }

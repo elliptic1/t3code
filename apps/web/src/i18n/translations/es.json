@@ -12455,5 +12455,11 @@
   "27d76249d09eb69f": "Guía de revisión lista",
   "faa3bb26abb39c93": "Falló la guía de revisión",
   "b7df38b7d8792d78": "Abrir guía",
-  "9e91e9a77b664e4e": "No se pudo iniciar una guía de revisión"
+  "9e91e9a77b664e4e": "No se pudo iniciar una guía de revisión",
+  "abdfbdb53a104c04": "Artefactos que mostrar",
+  "775294bab03a1d8f": "Archivos guardados en todos los hilos, los más recientes primero. Los archivos nuevos se añaden a este hilo.",
+  "0fdf303b060c2739": "Este hilo",
+  "008378cdbd5969a1": "Otro hilo",
+  "21a392236b8f4581": "Este hilo",
+  "2763be595fdda7ff": "Todos los hilos"
 }

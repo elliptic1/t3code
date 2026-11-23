@@ -12460,5 +12460,11 @@
   "27d76249d09eb69f": "Review-Leitfaden bereit",
   "faa3bb26abb39c93": "Review-Leitfaden fehlgeschlagen",
   "b7df38b7d8792d78": "Leitfaden öffnen",
-  "9e91e9a77b664e4e": "Review-Leitfaden konnte nicht gestartet werden"
+  "9e91e9a77b664e4e": "Review-Leitfaden konnte nicht gestartet werden",
+  "abdfbdb53a104c04": "Anzuzeigende Artefakte",
+  "775294bab03a1d8f": "Dateien aus allen Threads, neueste zuerst. Neue Dateien landen in diesem Thread.",
+  "0fdf303b060c2739": "Dieser Thread",
+  "008378cdbd5969a1": "Anderer Thread",
+  "21a392236b8f4581": "Dieser Thread",
+  "2763be595fdda7ff": "Alle Threads"
 }

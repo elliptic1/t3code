@@ -5462,5 +5462,9 @@
   "ad208e3e32c85029": "Ocultar todo",
   "3328503592789bed": "Zen",
   "856812e7e1fc445e": "Llamadas a herramientas en el chat",
-  "8d545d54c0a9e950": "Oculta los comandos, ediciones y búsquedas que ejecutan los agentes. Ocultar las correctas mantiene los fallos. Zen solo muestra las respuestas finales. Las aprobaciones, preguntas y errores siempre se muestran."
+  "8d545d54c0a9e950": "Oculta los comandos, ediciones y búsquedas que ejecutan los agentes. Ocultar las correctas mantiene los fallos. Zen solo muestra las respuestas finales. Las aprobaciones, preguntas y errores siempre se muestran.",
+  "0fdf303b060c2739": "Este hilo",
+  "5cba2c5bf39f6de2": "Todos los hilos",
+  "775294bab03a1d8f": "Archivos guardados en todos los hilos, los más recientes primero. Los archivos nuevos se añaden a este hilo.",
+  "008378cdbd5969a1": "Otro hilo"
 }

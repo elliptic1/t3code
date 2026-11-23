@@ -57,6 +57,7 @@ type Row = {
   storage_key: string;
   created_at: string;
   updated_at: string;
+  thread_title?: string;
 };
 const metadata = (row: Row): ThreadArtifact => ({
   id: row.id,
@@ -67,6 +68,7 @@ const metadata = (row: Row): ThreadArtifact => ({
   revision: row.revision,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  ...(row.thread_title === undefined ? {} : { threadTitle: row.thread_title }),
 });
 const storageError = (cause: unknown) => new ThreadArtifactError({ reason: "storage", cause });
 const isArtifactError = Schema.is(ThreadArtifactError);
@@ -76,11 +78,12 @@ type UrlResult = { readonly relativeUrl: string; readonly expiresAt: number };
 export class ThreadArtifactService extends Context.Service<
   ThreadArtifactService,
   {
+    /** Omitting threadId lists every live thread's artifacts. */
     readonly list: (
-      threadId: ThreadId,
+      threadId?: ThreadId,
     ) => Effect.Effect<ThreadArtifactListResult, ThreadArtifactError>;
     readonly subscribe: (
-      threadId: ThreadId,
+      threadId?: ThreadId,
     ) => Stream.Stream<ThreadArtifactListResult, ThreadArtifactError>;
     readonly publish: (
       input: ThreadArtifactPublishInput,
@@ -152,7 +155,14 @@ const make = Effect.gen(function* () {
     if (!rows[0]) return yield* new ThreadArtifactError({ reason: "not_found" });
     return rows[0];
   });
-  const list = Effect.fn("ThreadArtifactService.list")(function* (threadId: ThreadId) {
+  const list = Effect.fn("ThreadArtifactService.list")(function* (threadId?: ThreadId) {
+    if (threadId === undefined) {
+      const rows =
+        yield* sql<Row>`SELECT a.*, t.title AS thread_title FROM thread_artifacts a JOIN orchestration_v2_projection_threads t ON t.thread_id = a.thread_id WHERE t.deleted_at IS NULL ORDER BY a.updated_at DESC, a.id`.pipe(
+          Effect.mapError(storageError),
+        );
+      return { artifacts: rows.map(metadata) };
+    }
     yield* assertThread(threadId);
     const rows =
       yield* sql<Row>`SELECT * FROM thread_artifacts WHERE thread_id = ${threadId} ORDER BY created_at, id`.pipe(
@@ -352,7 +362,7 @@ const make = Effect.gen(function* () {
           return Stream.concat(
             Stream.fromEffect(list(threadId)),
             Stream.fromSubscription(queue).pipe(
-              Stream.filter((id) => id === threadId),
+              Stream.filter((id) => threadId === undefined || id === threadId),
               Stream.mapEffect(() => list(threadId)),
             ),
           );

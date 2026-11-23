@@ -296,6 +296,29 @@ it.effect("notifies subscribed clients of agent mutations without polling", () =
   }).pipe(Effect.provide(layer)),
 );
 
+it.effect("lists every live thread's artifacts newest first and streams their changes", () =>
+  Effect.gen(function* () {
+    const h = yield* setup;
+    const ready = yield* Deferred.make<void>();
+    const fiber = yield* h.service.subscribe().pipe(
+      Stream.tap(() => Deferred.succeed(ready, undefined)),
+      Stream.take(3),
+      Stream.runCollect,
+      Effect.forkChild,
+    );
+    yield* Deferred.await(ready);
+    const first = (yield* h.service.publish(h.publish)).artifact;
+    yield* TestClock.adjust(1000);
+    const second = (yield* h.service.publish({ ...h.publish, threadId: otherThread })).artifact;
+    const results = Array.from(yield* Fiber.join(fiber));
+    const titled = [second, first].map((artifact) => ({ ...artifact, threadTitle: "Artifacts" }));
+    expect(results.at(-1)).toEqual({ artifacts: titled });
+    expect((yield* h.service.list(threadId)).artifacts).toEqual([first]);
+    yield* h.sql`UPDATE orchestration_v2_projection_threads SET deleted_at = '2026-10-22' WHERE thread_id = ${otherThread}`;
+    expect((yield* h.service.list()).artifacts).toEqual([titled[1]]);
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect("cleans a cancelled streaming upload without publishing a partial artifact", () =>
   Effect.gen(function* () {
     const h = yield* setup;
